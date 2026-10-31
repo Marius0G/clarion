@@ -9,7 +9,11 @@ export interface SimSnapshot {
   simTime: number | null
   counts: Record<string, Partial<Record<Where, number>>>
   phones: { unknown: number; notified: number; read: number; acting: number }
+  /** Unity flow.report queues; absent on older backends. */
+  flow?: Partial<Record<FlowZone, FlowRow>>
 }
+export type FlowZone = 'check_in' | 'bag_drop' | 'security' | 'arrivals_hall' | 'taxi_rank' | 'kerb'
+export interface FlowRow { waiting: number; capacity: number | null; waitMin: number | null; peak: number; updatedAt: string }
 
 /** Unity telemetry from GET /api/sim (public, in-memory on the backend). Null until the first answer. */
 export function useSim(intervalMs = 2000): SimSnapshot | null {
