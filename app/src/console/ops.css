@@ -163,9 +163,9 @@
 }
 
 /* Map only: the building fills the screen; floors and settings in one corner, panels appear on demand. */
-.ops-maponly .ops-stage { grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: ". corner" ". panel" "evac evac"; }
+.ops-maponly .ops-stage { padding: 0; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: ". corner" ". panel" "evac evac"; }
 @media (min-width: 1101px) {
-  .ops-maponly .ops-stage > .ops-canvas { padding: 24px 84px 24px 24px; }
+  .ops-maponly .ops-stage > .ops-canvas { padding: 16px; }
   .ops-maponly .ops-stage.has-panel > .ops-canvas { padding-right: 368px; }
 }
 .ops-maponly .ops-canvas .t2-zoom { right: 14px; bottom: 14px; }

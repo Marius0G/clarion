@@ -8,7 +8,7 @@ import { desksForGroup, mapNodeId } from '../../../backend/src/mapIds'
 import type { SimSnapshot } from '../backend/sim'
 import { TerminalMap, type MapLayers, type ZoneView } from '../map/t2/TerminalMap'
 import { backend } from '../backend/config'
-import { levelNames, levels, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
+import { points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
 import './ops.css'
 
 /** D16: the admin's single screen. Terminal map, people seen by the cameras, load per zone and the D12 decisions. */
@@ -98,7 +98,6 @@ export function OpsDashboard() {
   const targets = zone ? redirectTargets(shown, zone) : []
   const destination = targets.some(z => z.id === target) ? target : targets[0]?.id ?? ''
   const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind }] : [])
-  const perFloor = (l: Level) => pins.filter(p => p.level === l).length
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(z => z !== id) : [...current, id])
 
   async function send(command: OpsCommand) {
@@ -117,7 +116,6 @@ export function OpsDashboard() {
   const history = [...server, ...local.filter(l => !known.has(l.key))].sort((a, b) => b.at - a.at)
   const commands = history.slice(0, 5)
 
-  const floorShort: Record<Level, string> = { G: 'P', U: '1', X: 'Ext' }
 
   const flightsN = sim?.flights?.length ?? 0
   /** Desk groups that share the selected hall (D8): one button each, so a single group can be acted on. */
@@ -150,18 +148,6 @@ export function OpsDashboard() {
           focus={mapSelected} wheelZoom keys describe={describe} cameras={layers.cameras} base={layers.base}
           layers={{ dots: layers.dots, heat: layers.heat, labels: layers.labels, points: layers.points, pins: layers.pins }}
           markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
-      </div>
-
-      <div className="ops-corner">
-        <nav className="ops-floors" aria-label="Etaj">
-          {levels.map(l => <button key={l} aria-pressed={floor === l} aria-label={levelNames[l].ro} title={levelNames[l].ro} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
-            <span>{floorShort[l]}</span>{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
-          </button>)}
-        </nav>
-        <button className={`ops-gear${settings ? ' on' : ''}`} aria-label="Setări" aria-expanded={settings} title="Setări" onClick={() => { setSettings(o => !o); setActive(null) }} data-testid="settings-toggle">
-          <i className={`ops-health ${sim == null ? 'down' : unity && cameras ? 'up' : 'off'}`} aria-hidden="true" />
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
-        </button>
       </div>
 
       {settings && <aside className="ops-settings" aria-label="Setări" data-testid="settings">
