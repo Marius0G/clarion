@@ -1,7 +1,5 @@
-import { useEffect } from 'react'
-import { connectBackend } from './backend/client'
-import { DispatcherConsole } from './console/DispatcherConsole'
+import { OpsDashboard } from './console/OpsDashboard'
+/** D16: one admin screen. Reads GET /api/sim, sends decisions to POST /api/ops/command. */
 export default function App() {
-  useEffect(() => connectBackend(), [])
-  return <DispatcherConsole />
+  return <OpsDashboard />
 }
