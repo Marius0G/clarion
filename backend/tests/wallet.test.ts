@@ -44,6 +44,14 @@ describe('shared Wallet', () => {
     const again = parts((await wallet.pass(engine, sub.id)).saveUrl.split('/save/')[1]!);
     expect(again.body.payload.genericObjects[0].id).toBe(object.id);
   });
+  it('puts the same START link in the pending join pass link module and QR', async () => {
+    const link = 'https://wa.me/15556318672?text=START%20W6%203751%20abcd';
+    const result = await new Wallet(env).joinPass('abcd', 'W6 3751', '2026-11-01T12:00:00Z', link);
+    const object = parts(result.saveUrl.split('/save/')[1]!).body.payload.genericObjects[0];
+    expect(object.linksModuleData.uris).toEqual([{ uri: link, description: 'Deschide WhatsApp' }]);
+    expect(object.barcode).toEqual({ type: 'QR_CODE', value: link });
+    expect(object.subheader.defaultValue.value).toBe('W6 3751');
+  });
   it('falls back for missing/partial credentials and rejects absent or expired subscriptions', async () => {
     const { engine, sub } = fixture();
     for (const secrets of [{}, { GOOGLE_WALLET_ISSUER_ID: '123456' }]) {

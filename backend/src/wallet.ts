@@ -76,7 +76,18 @@ export class Wallet {
   }
   async pass(engine: Engine, subscriptionId: unknown) {
     const sub = this.active(engine, subscriptionId);
+    const result = await this.createPass(sub, this.status(engine, sub));
+    this.passes.add(sub.id);
+    await this.persist();
+    return result;
+  }
+  /** Pending web join: no phone subscription exists until START arrives. */
+  async joinPass(id: string, flight: string, expiresAt: string, waLink: string) {
+    return this.createPass({ id, flight, expiresAt, role: 'passenger_home' }, 'Deschide WhatsApp pentru alerte', waLink);
+  }
+  private async createPass(sub: Pick<Subscription, 'id' | 'flight' | 'expiresAt' | 'role'>, status: string, waLink?: string) {
     let saveUrl = `/join/wallet-demo?sub=${encodeURIComponent(sub.id)}`;
+    if (waLink) saveUrl += `&waLink=${encodeURIComponent(waLink)}`;
     if (this.enabled) {
       const classId = `${this.env.GOOGLE_WALLET_ISSUER_ID}.clarion`;
       const jwt = await this.sign({ iss: this.env.GOOGLE_WALLET_SA_EMAIL, aud: 'google',
@@ -85,14 +96,14 @@ export class Wallet {
           id: this.objectId(sub.id), classId, state: 'ACTIVE',
           cardTitle: localized('Clarion · Simulare'), header: localized('Clarion'),
           subheader: localized(sub.flight ?? 'Aeroportul Craiova'), hexBackgroundColor: '#111111',
-          textModulesData: rows(sub.role, sub.flight ?? '—', this.status(engine, sub)),
+          textModulesData: rows(sub.role, sub.flight ?? '—', status),
+          ...(waLink && { linksModuleData: { uris: [{ uri: waLink, description: 'Deschide WhatsApp' }] },
+            barcode: { type: 'QR_CODE', value: waLink } }),
           validTimeInterval: { end: { date: sub.expiresAt } },
         }] },
       });
       saveUrl = `https://pay.google.com/gp/v/save/${jwt}`;
     }
-    this.passes.add(sub.id);
-    await this.persist();
     return { saveUrl, demo: !this.enabled };
   }
   private async accessToken() {
