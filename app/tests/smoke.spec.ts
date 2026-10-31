@@ -74,6 +74,37 @@ test('map and list share hover and click selection', async ({ page }) => {
   await page.getByTestId('zone-U_GATE_1').dispatchEvent('click')
   await expect(page.getByTestId('zone-panel')).toContainText('Poarta 1')
 })
+test('map fills its stage beside operations and retains working zoom controls', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await mock(page, () => live)
+  // Obsolete browser preferences cannot hide the map content.
+  await page.addInitScript(() => localStorage.setItem('clarion.map', JSON.stringify({ layers: { labels: false, pins: false }, refreshMs: 5000 })))
+  await page.goto('/')
+  const canvas = page.getByTestId('terminal-map')
+  const stage = await page.locator('.ops-stage').boundingBox()
+  const rail = await page.locator('.ops-rail').boundingBox()
+  const bounds = await canvas.boundingBox()
+  expect(stage).not.toBeNull()
+  expect(rail).not.toBeNull()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.x).toBe(stage!.x)
+  expect(bounds!.y).toBe(stage!.y)
+  expect(bounds!.height).toBe(stage!.height)
+  expect(bounds!.width).toBe(rail!.x - stage!.x)
+  await expect(canvas).toHaveCSS('padding', '16px')
+  await expect(page.locator('.ops-corner, .ops-settings')).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Etaj' })).toHaveCount(0)
+  await expect(canvas.getByRole('button', { name: /^(Parter|Etaj 1)$/ })).toHaveCount(0)
+  await expect(canvas.getByRole('group', { name: 'Zoom', exact: true }).getByRole('button')).toHaveCount(3)
+  const svg = canvas.locator('svg.t2map')
+  const width = async () => Number((await svg.getAttribute('viewBox'))!.split(/\s+/)[2])
+  const initial = await width()
+  await canvas.getByRole('button', { name: 'Mărește', exact: true }).click()
+  await expect.poll(width).toBeLessThan(initial)
+  const enlarged = await width()
+  await canvas.getByRole('button', { name: 'Micșorează', exact: true }).click()
+  await expect.poll(width).toBeGreaterThan(enlarged)
+})
 test('recommendation sends unchanged command and tracks ack then camera effect', async ({ page }) => {
   let sim = { ...live, flow: { security: row(88, 12, { forecast: [{ inMin: 30, waitMin: 18 }], advice: { lanes: 3, by: 50700, waitMin: 7, waitMinIfNot: 18 } }) }, ops: [] as Record<string, unknown>[] }
   const posted: Record<string, unknown>[] = []
@@ -144,9 +175,6 @@ test('alarms acknowledge, shelve and remain in the single journal', async ({ pag
   await expect(current).toContainText('10:00 · Verificare cameră')
   expect(posted).toEqual([{ type: 'ack', id: alarm.id }, { type: 'ack', id: 'density:U_GATE_1' }, { type: 'shelve', id: alarm.id, durationSec: 600, reason: 'Verificare cameră' }])
   await expect(page.getByTestId('journal')).toContainText('Verificare cameră')
-  await expect(page.getByTestId('floor-X')).toHaveCount(0)
-  await expect(page.getByTestId('floor-U')).toHaveCSS('color', 'rgb(14, 47, 87)')
-  await expect(page.getByTestId('settings-toggle')).toHaveCSS('border-top-color', 'rgb(138, 138, 138)')
 })
 
 test('alarm command errors preserve acknowledgement controls', async ({ page }) => {
