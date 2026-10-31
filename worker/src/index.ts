@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { agentRoute, opsCommand, opsWire, simCommand } from '../../backend/src/sim.js';
 import { Engine } from '../../backend/src/engine.js';
-import type { Envelope } from '../../backend/src/types.js';
+import type { Client, Envelope } from '../../backend/src/types.js';
 import { Telegram } from '../../backend/src/channels/telegram.js';
 import { createWhatsApp, verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
 import { webpush } from '../../backend/src/channels/webpush.js';
@@ -20,7 +20,6 @@ export interface Env extends Secrets, WaEnv {
   SIM_SPEED?: string; SIM_SEED?: string; AUTO_CONFIRM?: string;
   WAVES_ENABLED?: string; WAVE_COUNT?: string; WAVE_MINUTES?: string;
 }
-type Client = 'twin' | 'console' | 'viewer';
 const ALARM_SPACING_MS = 500;
 const json = (body: unknown, status = 200) => Response.json(body, {
   status, headers: { 'Cache-Control': 'no-store' },
@@ -151,6 +150,8 @@ export class Tower extends DurableObject<Env> {
     }
   }
   private twins() { return this.ctx.getWebSockets('twin').filter(ws => ws.readyState === WebSocket.OPEN); }
+  /** The camera service (D0). At most one: a new connection closes the previous one. */
+  private visions() { return this.ctx.getWebSockets('vision').filter(ws => ws.readyState === WebSocket.OPEN); }
   /** Backend → Unity (ops.command, agent.route). False when Unity is not connected. */
   private toTwins(type: string, data: unknown) {
     const twins = this.twins();
@@ -214,9 +215,10 @@ export class Tower extends DurableObject<Env> {
         if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
-          if (!['twin', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
+          if (!['twin', 'vision', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
           if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'WebSocket upgrade required' }, 426);
           if (client !== 'viewer' && this.env.DEMO_TOKEN && !await equalSecret(url.searchParams.get('token'), this.env.DEMO_TOKEN)) return json({ error: 'Operator token required' }, 401);
+          if (client === 'vision') for (const old of this.ctx.getWebSockets('vision')) { try { old.close(4001, 'Replaced by a newer vision client'); } catch { /* Already closed. */ } }
           const pair = new WebSocketPair();
           this.ctx.acceptWebSocket(pair[1], [client]);
           pair[1].serializeAttachment({ client });
@@ -224,7 +226,7 @@ export class Tower extends DurableObject<Env> {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         if (request.method === 'GET') {
-          if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics));
+          if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics, this.visions().length > 0));
           // D11: staff reports for the dashboard pins.
           if (path === '/api/reports') return json(await this.whatsapp.reports.list());
           if (path === '/api/sim/agents') return json(this.engine.sim.agents(url.searchParams));
@@ -316,6 +318,8 @@ export class Tower extends DurableObject<Env> {
             if (!this.twins().length) return json({ connected: false }, 409);
             const record = this.engine.sim.sent(command);
             this.toTwins('ops.command', opsWire(record));
+            // Vision gets every command too, to know the open lanes and blocked zones (contract v2).
+            for (const ws of this.visions()) ws.send(packet('ops.command', opsWire(record)));
             // D10: passengers hear about it; vision's evac.plan brings the routes, else a generic message after 3 s.
             if (record.type === 'evacuate') this.ctx.waitUntil(this.whatsapp.messaging.evacuate(record.zones, record.id));
             return json({ connected: true, command: record }, 202);

@@ -84,6 +84,35 @@ describe('Worker Unity integration', () => {
     expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
     twin.ws.close();
   });
+  it('client=vision: one at a time, camera flow, lanes, truth and every ops.command', async () => {
+    expect((await unauthorized('/ws?client=vision')).status).toBe(401);
+    const first = await connect('vision');
+    const closed = new Promise<number>(r => first.ws.addEventListener('close', e => r(e.code)));
+    const vision = await connect('vision');
+    expect(await closed).toBe(4001);
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).vision).toBe(true);
+    vision.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'check_in:2', waiting: 14, waitMin: 6, coverage: 0.7, density: 1.1, advice: { lanes: 3, by: 50700, waitMinIfNot: 18 } }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).flow['check_in:2']).toMatchObject({ waiting: 14, coverage: 0.7, density: 1.1, source: 'vision', stale: false, advice: { lanes: 3 } });
+    vision.ws.send(JSON.stringify(envelope('ops.ack', { id: 'x' })));
+    await expect.poll(() => vision.messages.find(m => m.type === 'error')?.data.message).toBe('Client cannot issue this event');
+    const twin = await connect('twin');
+    // Legacy Unity flow is ignored while the cameras report.
+    twin.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'check_in:2', waiting: 99, staff: 2 }] })));
+    twin.ws.send(JSON.stringify(envelope('truth.report', { zones: [{ zone: 'check_in:2', waiting: 15, waitMin: 7 }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).truth?.zones['check_in:2']).toEqual({ waiting: 15, waitMin: 7 });
+    expect((await (await request('/api/sim')).json() as any).flow['check_in:2'].waiting).toBe(14);
+    const before = (await (await request('/api/sim')).json() as any).lanes['check_in:2'];
+    const res = await request('/api/ops/command', { type: 'staff', zone: 'check_in:2', delta: 1 });
+    expect(res.status).toBe(202);
+    const { command } = await res.json() as any;
+    expect((await (await request('/api/sim')).json() as any).lanes['check_in:2']).toBe(before + 1);
+    for (const client of [twin, vision]) await expect.poll(() => client.messages.find(m => m.type === 'ops.command')?.data).toEqual({ type: 'staff', zone: 'check_in:2', delta: 1, id: command.id });
+    twin.ws.send(JSON.stringify(envelope('metric.report', { name: 'evacT90', value: 42 })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).metrics.evacT90).toBe(42);
+    expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
+    twin.ws.close(); vision.ws.close();
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).vision).toBe(false);
+  });
   it('keeps live connectivity but clears telemetry after hibernation', async () => {
     const twin = await connect('twin');
     twin.ws.send(JSON.stringify(envelope('sim.status', {running:true,scenario:'S2',arm:'A',coverage:.5,seed:42,speed:60,simTime:1,agents:0})));
