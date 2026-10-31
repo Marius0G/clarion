@@ -1,8 +1,9 @@
-import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { Miniflare, Response, convertV4MiniflareOptions } from 'miniflare';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { roles } from '../../backend/src/types.js';
 
 let mf: Miniflare;
 const persist = resolve('.test-state', crypto.randomUUID());
@@ -13,6 +14,9 @@ function start(simSpeed = '60000') {
     name: 'clarion-test', modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-10-30',
     durableObjects: { TOWER: { className: 'Tower', useSQLite: true } },
     resourcePersistencePath: persist, unsafeInspectDurableObjects: true,
+    outboundService: async request => Response.json(request.url.startsWith('https://fids.flightradar.live/') ? [{
+      flight_iata: 'W63412', dep_iata: 'BGY', arr_iata: 'CRA', dep_time_ts: 1793462400, arr_time_ts: 1793469600,
+    }] : []),
     bindings: { SIM_SPEED: simSpeed, TELEGRAM_WEBHOOK_SECRET: 'test-secret',
       WHATSAPP_VERIFY_TOKEN: 'verify-me', WHATSAPP_APP_SECRET: 'meta-secret' },
   }));
@@ -49,6 +53,82 @@ beforeEach(async () => { for (const ws of sockets.splice(0)) ws.close(); await a
 afterAll(async () => { for (const ws of sockets) ws.close(); await mf.dispose(); await rm(persist, { recursive: true, force: true }); });
 
 describe('Worker + SQLite Tower in workerd', () => {
+  it('serves the contract HTTP routes and rejects invalid commands', async () => {
+    expect(await request('/health').then(r => r.json())).toEqual({ ok: true, service: 'clarion', telegram: 'dry-run' });
+    expect(await request('/api/aircraft').then(r => r.json())).toEqual({ aircraft: [], source: 'OpenSky (empty on timeout/unavailable)' });
+    expect((await request('/api/state').then(r => r.json()) as any).reach).toHaveLength(6);
+    expect((await request('/api/state').then(r => r.json()) as any).dataSource).toBe('fids');
+    expect((await request('/missing')).status).toBe(404);
+    expect((await request('/api/action', envelope('agent.register', { agents: [] }))).status).toBe(400);
+    expect((await request('/ws?client=invalid')).status).toBe(400);
+    expect((await request('/ws?client=twin')).status).toBe(426);
+  });
+  it('runs all incident messages, approvals, metrics and recovery waves through the shared engine', async () => {
+    const twin = await connect('twin');
+    const viewer = await connect('viewer');
+    const send = async (type: string, data = {}) => {
+      const count = twin.messages.filter(m => m.type === 'state').length;
+      twin.ws.send(JSON.stringify(envelope(type, data)));
+      await expect.poll(() => twin.messages.filter(m => m.type === 'state').length).toBeGreaterThan(count);
+      expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
+      return request('/api/state').then(r => r.json()) as Promise<any>;
+    };
+    await send('agent.register', { agents: roles.map(role => ({ agentId: `contract-${role}`, role, channel: 'telegram' })) });
+    const detected = await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '27', source: 'radar', lat: 44.32, lon: 23.88 });
+    expect(detected.drone).toMatchObject({ lat: 44.32, lon: 23.88 });
+    const suspended = await send('ops.suspended', { reason: 'drone', estimatedReopen: new Date(Date.now() + 3600000).toISOString() });
+    expect(suspended.phase).toBe('detection');
+    expect(roles.every(role => suspended.counters[role].sent === 0)).toBe(true);
+    await action('console.confirm_suspension');
+    await action('console.approve_messages', { roles });
+    await send('flight.diverted', { flight: 'W6 3412', from: 'BGY', to: 'OTP', eta: new Date().toISOString() });
+    await send('intercept.launched', { count: 2 });
+    await send('intercept.captured', { method: 'net' });
+    await send('payload.suspicious', { evacuate: true, zone: 'T2' });
+    const roalert = await action('console.request_roalert');
+    expect(roalert.roalertDraft).toBeTruthy();
+    expect(roalert.reach[5]).toMatchObject({ reached: 1, status: 'draft' });
+    for (const [name, value] of [['isuTimeToT2', 0], ['carsStartedInVain', 2], ['kerbPeak', 3]] as const) {
+      expect((await send('metric.report', { name, value })).metrics[name]).toBe(value);
+    }
+    await send('ops.reopened');
+    const recovery = await action('console.reopen');
+    expect(recovery.phase).toBe('recovery');
+    for (const wave of recovery.waves) {
+      await action('console.open_wave', { wave: wave.wave });
+      await expect.poll(() => twin.messages.some(m => m.type === 'wave.green' && m.data.wave === wave.wave)).toBe(true);
+    }
+    const end = await action('console.reopen');
+    expect(end.phase).toBe('normal');
+    expect(end.drone).toBeNull();
+    expect(end.roalertDraft).toBeNull();
+    expect(end.flights.some((f: any) => f.status === 'suspended')).toBe(false);
+    await expect.poll(() => twin.messages.some(m => m.type === 'alert.sent')).toBe(true);
+    await expect.poll(() => twin.messages.some(m => m.type === 'agent.notified')).toBe(true);
+    expect(viewer.messages.every(m => m.type === 'state')).toBe(true);
+  });
+  it.each(['telegram', 'sms', 'whatsapp', 'webpush'])('accepts the %s subscription contract', async channel => {
+    const response = await request('/api/subscribe', { role: 'rideshare', channel, lang: 'en', consent: true, source: 'qr' });
+    expect(response.status).toBe(201);
+    const subscription = await response.json() as any;
+    expect(subscription.subscriptionId).toMatch(/^[\da-f-]{36}$/);
+    expect(Object.keys(subscription).sort()).toEqual(channel === 'telegram' ? ['subscriptionId', 'telegramLink'] : ['subscriptionId']);
+  });
+  it('broadcasts agent.update presence, validates locations and persists it through hibernation', async () => {
+    const twin = await connect('twin');
+    const viewer = await connect('viewer');
+    twin.ws.send(JSON.stringify(envelope('agent.register', { agents: [{ agentId: 'location-test', role: 'rent_a_car_ubt', channel: 'telegram' }] })));
+    await expect.poll(() => viewer.messages.some(m => m.type === 'state' && m.data.presence.rent_a_car_ubt.unknown === 1)).toBe(true);
+    for (const location of ['home', 'road', 'terminal', 'kerb']) {
+      twin.ws.send(JSON.stringify(envelope('agent.update', { agentId: 'location-test', role: 'rent_a_car_ubt', location, action: 'moving' })));
+      await expect.poll(() => viewer.messages.some(m => m.type === 'state' && m.data.presence.rent_a_car_ubt[location] === 1)).toBe(true);
+    }
+    twin.ws.send(JSON.stringify(envelope('agent.update', { agentId: 'location-test', role: 'rent_a_car_ubt', location: 'invalid' })));
+    await expect.poll(() => twin.messages.some(m => m.type === 'error' && m.data.message === 'Invalid agent update')).toBe(true);
+    await mf.unsafeEvictDurableObject('clarion-test', 'Tower', { name: 'tower', webSockets: 'hibernate' });
+    const state = await request('/api/state').then(r => r.json()) as any;
+    expect(state.presence.rent_a_car_ubt).toEqual({ home: 0, road: 0, terminal: 0, kerb: 1, unknown: 0 });
+  });
   it('connects, broadcasts detection and confirms suspension over HTTP', async () => {
     const viewer = await connect('viewer');
     expect(viewer.messages[0].data.phase).toBe('normal');
@@ -87,6 +167,7 @@ describe('Worker + SQLite Tower in workerd', () => {
     expect((await request('/webhooks/whatsapp', {})).status).toBe(403);
   });
   it('forwards signed WhatsApp inbound events into the shared handler and deduplicates retries', async () => {
+    const viewer = await connect('viewer');
     const body = { entry: [{ changes: [{ value: { messages: [{ id: 'wamid.1', from: '40700000000', text: { body: 'START TAXI' }, timestamp: String(Math.floor(Date.now()/1000)) }] } }] }] };
     const signature = 'sha256=' + createHmac('sha256', 'meta-secret').update(JSON.stringify(body)).digest('hex');
     expect((await request('/webhooks/whatsapp', body, { 'X-Hub-Signature-256': signature })).status).toBe(200);
@@ -98,6 +179,13 @@ describe('Worker + SQLite Tower in workerd', () => {
     expect(state.counters.taxi.subscribers).toBe(1);
     expect(state.counters.taxi.sent).toBe(1);
     expect(state.presence.taxi.road).toBe(1);
+    await expect.poll(() => viewer.messages.some(m => m.type === 'state' && m.data.presence.taxi.road === 1)).toBe(true);
+    for (const [index, text, location] of [[3, 'Sunt în terminal', 'terminal'], [4, 'Nu am plecat încă', 'home'], [5, 'Plec acum', 'road']] as const) {
+      const update = { entry: [{ changes: [{ value: { messages: [{ id: `wamid.${index}`, from: '40700000000', interactive: { button_reply: { title: text, id: text } } }] } }] }] };
+      const signature = 'sha256=' + createHmac('sha256', 'meta-secret').update(JSON.stringify(update)).digest('hex');
+      expect((await request('/webhooks/whatsapp', update, { 'X-Hub-Signature-256': signature })).status).toBe(200);
+      expect((await request('/api/state').then(r => r.json()) as any).presence.taxi[location]).toBe(1);
+    }
   });
   it('authenticates Telegram, binds private Start and deduplicates update IDs', async () => {
     const update = { update_id: 100, message: { text: '/start passenger_home__', chat: { id: 123, type: 'private' } } };
@@ -110,6 +198,8 @@ describe('Worker + SQLite Tower in workerd', () => {
     await request('/webhooks/telegram', group, headers);
     expect((await request('/api/state').then(r => r.json()) as any).counters.staff.subscribers).toBe(0);
     expect(await request('/api/telegram').then(r => r.json())).toEqual({ enabled: false, botUsername: null, deepLinkExample: null });
+    await request('/webhooks/telegram', { update_id: 102, callback_query: { id: 'presence-test', data: 'presence:Sunt pe drum', message: { chat: { id: 123 } } } }, headers);
+    expect((await request('/api/state').then(r => r.json()) as any).presence.passenger_home.road).toBe(1);
   });
   it('uses alarms to advance seeded twin reads without incoming traffic', async () => {
     const twin = await detect();

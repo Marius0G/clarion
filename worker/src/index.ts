@@ -5,7 +5,7 @@ import { Telegram } from '../../backend/src/channels/telegram.js';
 import { createWhatsApp, verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
 import { webpush } from '../../backend/src/channels/webpush.js';
 import { wazeFeed } from '../../backend/src/channels/waze.js';
-import { aircraftNearLrcv } from '../../backend/src/data/flights.js';
+import { aircraftNearLrcv, FidsAdapter } from '../../backend/src/data/flights.js';
 import { createStoredEngine } from './storage.js';
 import { createSms, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
 
@@ -73,6 +73,9 @@ export class Tower extends DurableObject<Env> {
   private telegram: Telegram;
   private queue: Promise<unknown> = Promise.resolve();
   private seenWhatsApp: string[] = [];
+  // Invoke Workers' global fetch with its own receiver, not as an adapter method.
+  private fids = new FidsAdapter((input, init) => fetch(input, init));
+  private nextFidsRefresh = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -102,10 +105,26 @@ export class Tower extends DurableObject<Env> {
         waveCount: numeric(env.WAVE_COUNT, 3, 1, 20, true),
         waveMinutes: numeric(env.WAVE_MINUTES, 10, 0.01), taxiGroup: env.TELEGRAM_TAXI_GROUP_ID,
       });
+      await this.refreshFlights();
       this.engine.persist();
       // Never replace an existing alarm while waking for it.
       if (await ctx.storage.getAlarm() === null) await this.schedule();
     });
+  }
+  private async refreshFlights() {
+    const now = Date.now();
+    const result = await this.fids.get(now);
+    this.engine.updateFlights(result.flights, result.dataSource);
+    this.nextFidsRefresh = now + 300000;
+  }
+  private async handle(event: Envelope, client: Client) {
+    await this.engine.handle(event, client);
+    // Reset rebuilds the fixture in the core. Restore the adapter's current
+    // schedule immediately, without postponing the next polling deadline.
+    if (event.type === 'console.reset') {
+      const result = await this.fids.get();
+      this.engine.updateFlights(result.flights, result.dataSource);
+    }
   }
   private broadcast(type: string, data: unknown) {
     const value = packet(type, data);
@@ -115,8 +134,8 @@ export class Tower extends DurableObject<Env> {
     }
   }
   private async schedule() {
-    // One alarm multiplexes seeded reads, subsequent actions and consent expiry.
-    const due: number[] = this.engine.subscriptions.map(s => Date.parse(s.expiresAt));
+    // One alarm multiplexes FIDS, seeded reads/actions and consent expiry.
+    const due: number[] = [this.nextFidsRefresh, ...this.engine.subscriptions.map(s => Date.parse(s.expiresAt))];
     for (const r of this.engine.receipts) {
       if (!r.simulated) continue;
       if (!r.read && r.readAt) due.push(r.readAt);
@@ -138,7 +157,10 @@ export class Tower extends DurableObject<Env> {
     return result;
   }
   async alarm() {
-    await this.ordered(() => { this.engine.tick(); this.engine.expire(); });
+    await this.ordered(async () => {
+      this.engine.tick(); this.engine.expire();
+      if (Date.now() >= this.nextFidsRefresh) await this.refreshFlights();
+    });
   }
   private async telegramIdentity() {
     if (!this.telegram.enabled || this.telegram.botUsername) return;
@@ -163,7 +185,7 @@ export class Tower extends DurableObject<Env> {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         if (request.method === 'GET') {
-          if (path === '/health') return json({ ok: true, service: 'control-tower', telegram: this.telegram.enabled ? 'live' : 'dry-run' });
+          if (path === '/health') return json({ ok: true, service: 'clarion', telegram: this.telegram.enabled ? 'live' : 'dry-run' });
           if (path === '/api/state') return json(this.engine.snapshot());
           if (path === '/api/telegram') { await this.telegramIdentity(); return json(this.telegram.status()); }
           if (path === '/api/aircraft') return json({ aircraft: await aircraftNearLrcv(), source: 'OpenSky (empty on timeout/unavailable)' });
@@ -185,8 +207,11 @@ export class Tower extends DurableObject<Env> {
             if (message?.chat?.type === 'private' && typeof message.text === 'string' && message.text.startsWith('/start '))
               await this.engine.telegramStart(String(message.chat.id), message.text.slice(7).trim());
             const query = update.callback_query;
-            if (typeof query?.data === 'string' && query.data.startsWith('read:') && query.message?.chat?.id !== undefined) {
-              this.engine.markRead(query.data.slice(5), String(query.message.chat.id));
+            if (typeof query?.data === 'string' && query.message?.chat?.id !== undefined &&
+                (query.data.startsWith('read:') || query.data.startsWith('presence:'))) {
+              if (query.data.startsWith('presence:'))
+                this.engine.updatePresence('telegram', String(query.message.chat.id), query.data.slice(9));
+              else this.engine.markRead(query.data.slice(5), String(query.message.chat.id));
               if (this.telegram.enabled) {
                 try { await this.telegram.call('answerCallbackQuery', { callback_query_id: query.id, text: 'Am înregistrat / Recorded' }); }
                 catch { console.warn('Telegram callback acknowledgement failed'); }
@@ -227,7 +252,7 @@ export class Tower extends DurableObject<Env> {
           if (path === '/api/action') {
             const event = JSON.parse(await bodyText(request)) as Envelope;
             if (!event?.type?.startsWith('console.')) throw new Error('Console action required');
-            await this.engine.handle(event, 'console');
+            await this.handle(event, 'console');
             return json(this.engine.snapshot());
           }
         }
@@ -243,7 +268,7 @@ export class Tower extends DurableObject<Env> {
         if (typeof message !== 'string' || new TextEncoder().encode(message).length > 1048576) throw new Error('Invalid WebSocket payload');
         const client = ws.deserializeAttachment()?.client as Client | undefined;
         if (!client) throw new Error('Missing client attachment');
-        await this.engine.handle(JSON.parse(message), client);
+        await this.handle(JSON.parse(message), client);
       } catch (error) {
         ws.send(packet('error', { message: error instanceof Error ? error.message : 'Invalid event' }));
       }
