@@ -122,7 +122,12 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
 
 /** D22: one situation description shared by tools, WhatsApp and simulated passengers. */
 export function situationText(plan: ReturnType<typeof arrivalPlan>) {
-  const queues = plan.queues.map(q => `${q.label}: ${q.nowMin === null ? 'timp necunoscut acum' : `${Math.round(q.nowMin)} min acum`}, ~${q.forecastMin} min la ${q.forecastAt} (${q.source}).`).join(' ');
+  const queues = plan.queues.map(q => {
+    const now = q.nowMin === null ? null : `${Math.round(q.nowMin)} min acum`;
+    // Only a real forecast adds a second number; "acum" or a standard estimate would just repeat or guess.
+    const later = q.source === 'prognoză' ? `~${q.forecastMin} min la ${q.forecastAt}` : q.nowMin === null ? `~${q.forecastMin} min (estimare)` : null;
+    return `${q.label}: ${[now, later].filter(Boolean).join(', ')}.`;
+  }).join(' ');
   return `${queues} Poarta ${plan.gate} se închide la ${plan.gateCloseAt}. Cu situația de acum, de la intrare la poartă ~${plan.totalMin} min, inclusiv ${MARGIN_MIN} min marjă (${plan.clock}).`;
 }
 
