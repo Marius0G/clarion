@@ -1,3 +1,5 @@
+import SignIn from "./SignIn";
+import { authHeaders } from "../backend/auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DemoBoardingPass from "./DemoBoardingPass";
 import WalletButton from "./WalletButton";
@@ -126,7 +128,7 @@ export default function Join() {
     try {
       {
         const response = await fetch(`${backend}/api/join`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
           body: JSON.stringify({ flight: flight.trim().toUpperCase(), lang: en ? "en" : "ro" }),
           signal: AbortSignal.timeout(12000),
         });
@@ -195,6 +197,7 @@ export default function Join() {
             {en ? "Română / English ✓" : "Română ✓ / English"}
           </button>
         </header>
+        <SignIn onFlight={setFlight} />
         {window.location.pathname.replace(/\/$/, "") === "/join/qr" ? (
           <Qr en={en} />
         ) : success ? (
@@ -370,8 +373,8 @@ export default function Join() {
               </button>
               <p className="join-footer">
                 {t(
-                  "Fără cont. Doar informația care contează.",
-                  "No account. Just the information that matters.",
+                  "Informații pentru zborul tău.",
+                  "Information for your flight.",
                 )}
               </p>
             </form>

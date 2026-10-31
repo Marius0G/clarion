@@ -328,3 +328,11 @@
 .join-demo p { font-size: 14px; }
 .join-demo canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 .join-demo .join-primary { margin-top: 10px; }
+
+.join-auth { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid #d6e1eb; border-radius: 12px; background: #fff; }
+.join-auth form { display: grid; gap: .6rem; margin-top: 1rem; }
+.join-auth input { min-width: 0; padding: .75rem; border: 1px solid #bdcbd7; border-radius: 6px; font: inherit; }
+.join-auth button { cursor: pointer; padding: .7rem 1rem; border-radius: 6px; font: inherit; }
+.join-auth button:disabled { opacity: .6; cursor: wait; }
+.join-auth p { margin: .6rem 0; }
+.join-auth a { display: inline-block; margin: .4rem 1rem .4rem 0; }
