@@ -1,3 +1,4 @@
+import { clearPrefix } from '../reset-store.js';
 import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
@@ -17,6 +18,7 @@ export { WINDOW_MS } from './messaging.js';
 /** Demo default for STAFF <code> when the STAFF_CODE secret is not set. */
 export const DEFAULT_STAFF_CODE = 'CRAIOVA2026';
 export interface WaStore {
+  list?<T>(options: { prefix: string; startAfter?: string; limit?: number }): Promise<Map<string, T>>;
   get<T>(key: string): Promise<T | undefined>;
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
@@ -50,6 +52,18 @@ export class WhatsAppAgent {
     this.wa = new WhatsAppClient(env, this.fetcher, opts.pause);
     this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
     this.reports = new Reports(store);
+  }
+
+  async reset() {
+    await Promise.allSettled([...this.chains.values()]);
+    this.chains.clear();
+    return {
+      ...await this.messaging.reset(),
+      ...await this.reports.reset(),
+      profiles: await clearPrefix(this.store, 'wa:profile:'),
+      histories: await clearPrefix(this.store, 'wa:ctx:'),
+      inboundWindows: await clearPrefix(this.store, 'wa:last:'),
+    };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { mkdtempSync,rmSync } from "node:fs";
+import { mkdtempSync,rmSync,readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,4 +111,30 @@ describe("WhatsApp webhook HTTP routes", () => {
     expect(state.presence.passenger_home.terminal).toBe(1);
     expect((await post("Opresc alertele")).status).toBe(200);
   });
+});
+
+it('resets the Node demo with operator auth, clears persisted passengers and tells Unity', async () => {
+  vi.stubEnv('DEMO_TOKEN', 'reset-op');
+  const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?client=twin&token=reset-op`);
+  const messages: any[] = [];
+  ws.on('message', raw => messages.push(JSON.parse(raw.toString())));
+  await vi.waitFor(() => expect(messages.some(m => m.type === 'state')).toBe(true));
+  const post = (path: string, body = {}, token = 'reset-op') => fetch(`${base}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) }, body: JSON.stringify(body),
+  });
+  try {
+    expect((await post('/api/subscribe', { role: 'passenger_terminal', channel: 'whatsapp', lang: 'ro', consent: true })).status).toBe(201);
+    expect((await post('/api/ops/command', { type: 'staff', zone: 'security', delta: 3 })).status).toBe(202);
+    expect((await post('/api/ops/command', { type: 'evacuate', zones: ['security'] })).status).toBe(202);
+    for (const token of ['', 'wrong']) expect((await post('/api/demo/reset', {}, token)).status).toBe(401);
+    const response = await post('/api/demo/reset');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, cleared: { commands: 2, blockedZones: 1 } });
+    await vi.waitFor(() => expect(messages).toContainEqual(expect.objectContaining({ type: 'sim.command', data: { reset: true } })));
+    expect(await (await fetch(`${base}/api/sim`)).json()).toMatchObject({ lanes: { security: 2 }, ops: [], blocked: [], flow: {}, truth: null, positions: null, flights: [] });
+    const saved = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'));
+    expect(saved.subscriptions).toEqual([]);
+    expect(saved.agents).toEqual([]);
+    expect(saved.receipts).toEqual([]);
+  } finally { ws.close(); vi.stubEnv('DEMO_TOKEN', ''); }
 });

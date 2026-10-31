@@ -135,6 +135,19 @@ export class SimStore {
   private visionPeopleMs = -Infinity;
   private ops: OpsRecord[] = [];
   private blockedZones = new Set<string>();
+  reset() {
+    const cleared = { simAgents: this.rows.size, flowZones: this.flowRows.size,
+      truthZones: Object.keys(this.truthRows?.zones ?? {}).length, positions: this.people?.people.length ?? 0,
+      flights: this.flightRows.length, commands: this.ops.length, blockedZones: this.blockedZones.size };
+    this.rows.clear(); this.run = null; this.simTime = this.speed = null; this.lastSeen = null;
+    this.flowRows.clear(); this.flowHistory.clear(); this.visionFlowMs = -Infinity;
+    this.laneRows = new Map(Object.entries(initialLanes));
+    this.truthRows = null; this.truthMs = -Infinity;
+    this.flightRows = []; this.flightsAt = null;
+    this.people = null; this.peopleMs = this.visionPeopleMs = -Infinity;
+    this.ops = []; this.blockedZones.clear();
+    return cleared;
+  }
   status(d: any) {
     if (!object(d)) throw new Error('Invalid sim status');
     runFields(d, true);

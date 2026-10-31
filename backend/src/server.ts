@@ -117,11 +117,16 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
-      if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
+      if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route", "/api/demo/reset"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
       const open = (client: Client) => [...clients].filter(([ws, kind]) => kind === client && ws.readyState === WebSocket.OPEN);
       const twins = () => open("twin");
+      if (req.method === 'POST' && url.pathname === '/api/demo/reset') {
+        const cleared = await ordered(async () => ({ ...await wallet.reset(), ...engine.reset() }));
+        for (const [ws] of twins()) ws.send(JSON.stringify({ type: 'sim.command', ts: new Date().toISOString(), data: { reset: true } }));
+        res.end(JSON.stringify({ ok: true, cleared })); return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/wallet/pass') {
         const body = await jsonBody(req);
         res.end(JSON.stringify(await ordered(() => wallet.pass(engine, body?.subscriptionId)))); return;

@@ -171,6 +171,17 @@ export class Engine {
       dataSourceDetail: fixtureSource,
     };
   }
+  reset() {
+    const cleared = { subscriptions: this.subscriptions.length, agents: this.agents.length,
+      receipts: this.receipts.length, engineWhatsappIds: this.whatsappInboundIds.size, ...this.sim.reset() };
+    this.generation++;
+    this.state = this.fresh();
+    this.subscriptions = []; this.agents = []; this.receipts = [];
+    this.whatsappInboundIds.clear(); this.firstNotified.clear(); this.readRecipientKeys.clear();
+    this.carAgents.clear(); this.carMetricReported = false;
+    this.changed();
+    return cleared;
+  }
   persist() {
     if (this.batchDepth) { this.persistPending = true; return; }
     if (!this.options.file) return;

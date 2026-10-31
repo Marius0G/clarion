@@ -59,6 +59,12 @@ const KEEP = 200;
 /** Reports in Durable Object storage, newest last. */
 export class Reports {
   constructor(private store: WaStore) {}
+  async reset() {
+    const reports = (await this.list()).length;
+    // IDs are derived from the stored list, so deleting it also resets the counter.
+    await this.store.delete(KEY);
+    return { reports };
+  }
   async list(): Promise<Report[]> { return ((await this.store.get<Report[]>(KEY)) ?? []).map(r => ({ ...r, etaMin: r.etaMin ?? null })); }
   async add(input: { kind: IssueKind; node: string | null; text: string; etaMin?: number | null }, now = Date.now()): Promise<Report> {
     const all = await this.list();

@@ -43,6 +43,12 @@ export class Wallet {
     this.counts = { ...options.saved?.counts };
     this.now = options.now ?? Date.now;
   }
+  async reset() {
+    const cleared = { walletPasses: this.passes.size, walletRateLimits: Object.keys(this.counts).length };
+    this.passes.clear(); this.counts = {};
+    await this.persist();
+    return cleared;
+  }
   get enabled() {
     return !!(this.env.GOOGLE_WALLET_ISSUER_ID && this.env.GOOGLE_WALLET_SA_EMAIL && this.env.GOOGLE_WALLET_SA_KEY);
   }

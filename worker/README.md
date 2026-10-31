@@ -52,9 +52,8 @@ The smoke script needs Node 22+ and no WhatsApp or Anthropic secrets. It mutates
 telemetry, creates a pending join token and records staff commands, so use an isolated
 backend with no other twin/vision connected. It refuses an already connected simulator.
 It restores security lanes and the previous flights, plus the previous security flow
-and simulation clock when available. There is no API to delete the pending join token,
-command history or newly introduced telemetry; fresh flow/clock values can remain until
-replaced or the Tower hibernates. Reset local storage for a pristine run.
+and simulation clock when available. Use `npm run demo:reset` below to clear pending join tokens, command history and
+telemetry for a pristine run.
 
 Run locally in two terminals from `worker/`:
 
@@ -68,3 +67,19 @@ For an intentional deployed smoke run, set `CLARION_URL` and `DEMO_TOKEN` to tha
 backend's URL and operator token. With no URL override the script targets
 `https://clarion-backend.bogdan-c-2206.workers.dev`. Each step prints PASS/FAIL;
 any failed step (including cleanup) exits nonzero. It never calls the WhatsApp webhook.
+
+## Reset demo (D24)
+
+From `worker/`, run `DEMO_TOKEN=<operator-token> npm run demo:reset`. Optional
+`CLARION_URL` overrides `https://clarion-backend.bogdan-c-2206.workers.dev`.
+The script prints the response and exits nonzero on an HTTP/network failure or missing token.
+
+`POST /api/demo/reset` uses the same Bearer authentication as `/api/ops/command`
+and returns `{ ok: true, cleared: { ...counts } }`. Counts describe removed records
+(alert counts are passenger history keys). It drains pending messaging, cancels evacuation
+timers, and clears WhatsApp/sim subscribers, profiles, page/join tokens, histories,
+24h windows, deduplication, Wallet passes/daily rate limits, reports (IDs restart at R1),
+evacuation, command history, agents, receipts, metrics and all sim telemetry. Lanes return
+to the provisional plan; clearing Unity flights restores the provisional passenger schedule.
+Connected Unity receives `sim.command { reset: true }`. Connections stay open.
+There is no dashboard button. The Node backend mirrors reset for the state it owns.

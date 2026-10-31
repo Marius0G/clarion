@@ -1,3 +1,4 @@
+import { clearPrefix } from '../reset-store.js';
 // Outbound passenger messages (SPEC-v2 D10, D14, D15, D17): one fan-out for real phones (WhatsApp) and simulated
 // subscribers (Unity agents with a virtual phone, agent.message over the twin WebSocket).
 // Storage: wa:subs -> phones with a flight or the staff role   sim:subs -> { [agentId]: SimSubscriber }
@@ -89,6 +90,30 @@ export interface MessagingDeps {
 export class Messaging {
   private chain: Promise<unknown> = Promise.resolve();
   private planned = new Set<string>();
+  private epoch = 0;
+  private timers = new Map<ReturnType<typeof setTimeout>, () => void>();
+  cancelPending() {
+    this.epoch++;
+    const timers = this.timers.size;
+    for (const [timer, resolve] of this.timers) { clearTimeout(timer); resolve(); }
+    this.timers.clear();
+    return timers;
+  }
+  async reset() {
+    this.cancelPending();
+    await this.chain;
+    await this.pageChain;
+    this.planned.clear();
+    const whatsappSubscribers = (await this.deps.store.get<string[]>('wa:subs') ?? []).length;
+    const simSubscribers = Object.keys(await this.sims()).length;
+    const evacuation = Number(Boolean(await this.deps.store.get('msg:evacuation')));
+    const pageTokens = await clearPrefix(this.deps.store, 'page:');
+    const alerts = await clearPrefix(this.deps.store, 'msg:alerts:');
+    await this.deps.store.delete('wa:subs');
+    await this.deps.store.delete('sim:subs');
+    await clearPrefix(this.deps.store, 'msg:');
+    return { whatsappSubscribers, simSubscribers, pageTokens, alerts, evacuation };
+  }
   constructor(private deps: MessagingDeps) {}
 
   private pageChain: Promise<unknown> = Promise.resolve();
@@ -321,9 +346,15 @@ export class Messaging {
    * D10, D18 beat 4: an evacuate ops.command. Waits up to evacWaitMs for vision's evac.plan (routes per node);
    * without it, everyone gets the generic message. Returns what went out.
    */
-  async evacuate(zones: string[], id: string): Promise<'planned' | 'generic'> {
+  async evacuate(zones: string[], id: string): Promise<'planned' | 'generic' | 'cancelled'> {
+    const epoch = this.epoch;
     await this.deps.store.put('msg:evacuation', { active: true, zones });
-    await new Promise(r => setTimeout(r, this.deps.evacWaitMs ?? EVAC_WAIT_MS));
+    if (epoch !== this.epoch) return 'cancelled';
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(() => { this.timers.delete(timer); resolve(); }, this.deps.evacWaitMs ?? EVAC_WAIT_MS);
+      this.timers.set(timer, resolve);
+    });
+    if (epoch !== this.epoch) return 'cancelled';
     if (this.planned.has(id)) return 'planned';
     await this.serial(async () => {
       for (const s of await this.subscribers()) await this.notify(s.sub, { kind: 'evacuate', text: this.evacuateText(zones) });

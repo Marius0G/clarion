@@ -135,3 +135,20 @@ it('uses generic on explicit opt-out or a flight signing failure', async () => {
     expect(payload.flightClasses).toBeUndefined();
   }
 });
+
+it('demo reset clears persisted Wallet registrations and replenishes the daily attempt budget', async () => {
+  let saved: WalletStore | undefined;
+  const { engine, sub } = fixture();
+  const wallet = new Wallet({}, { persist: store => { saved = store; } });
+  await wallet.pass(engine, sub.id);
+  for (let i = 0; i < 3; i++) await wallet.send(message);
+  expect(await wallet.send(message)).toMatchObject({ delivered: false });
+  expect(await wallet.reset()).toEqual({ walletPasses: 1, walletRateLimits: 1 });
+  expect(saved).toEqual({ passes: [], counts: {} });
+  await wallet.send(message);
+  expect(Object.values(saved!.counts)).toEqual([1]);
+  await wallet.reset();
+  let restarted: WalletStore | undefined;
+  await new Wallet({}, { saved, persist: store => { restarted = store; } }).send(message);
+  expect(Object.values(restarted!.counts)).toEqual([1]);
+});

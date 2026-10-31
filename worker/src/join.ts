@@ -1,3 +1,4 @@
+import { clearPrefix } from './reset-store.js';
 import type { WaStore } from './wa/index.js';
 import { flightKey } from './wa/flights.js';
 
@@ -20,4 +21,9 @@ export async function consumeJoin(store: WaStore, token: unknown, flight: string
   const pending = await pendingJoin(store, token);
   if (!pending || flightKey(pending.flight) !== flightKey(flight)) return;
   return await store.delete(joinKey(token as string)) ? pending : undefined;
+}
+
+export class JoinTokens {
+  constructor(private store: WaStore) {}
+  async reset() { return { joinTokens: await clearPrefix(this.store, 'join:') }; }
 }

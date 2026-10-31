@@ -9,7 +9,7 @@ import type { Wallet,WalletStore } from '../../backend/src/wallet.js';
 import { createWallet,equalSecret,validWhatsAppSignature,type Secrets } from './channels.js';
 import { createStoredEngine } from './storage.js';
 import { WhatsAppAgent, type WaEnv } from './wa/index.js';
-import { JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin } from './join.js';
+import { JoinTokens, JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin } from './join.js';
 import { findFlight } from './wa/flights.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
 import { airportView } from './wa/tower.js';
@@ -78,6 +78,7 @@ export class Tower extends DurableObject<Env> {
   private engine!: Engine;
   private wallet!: Wallet;
   private queue: Promise<unknown> = Promise.resolve();
+  private pending = new Set<Promise<unknown>>();
   private seenWhatsApp: string[] = [];
   private whatsapp: WhatsAppAgent;
   // Invoke Workers' global fetch with its own receiver, not as an adapter method.
@@ -116,6 +117,20 @@ export class Tower extends DurableObject<Env> {
       if (await ctx.storage.getAlarm() === null) await this.schedule();
     });
   }
+  private background(work: Promise<unknown>) {
+    this.pending.add(work);
+    this.ctx.waitUntil(work.finally(() => this.pending.delete(work)));
+  }
+  private async reset() {
+    const evacTimers = this.whatsapp.messaging.cancelPending();
+    await Promise.allSettled([...this.pending]);
+    const cleared = { ...await this.whatsapp.reset(), ...await new JoinTokens(this.ctx.storage).reset(),
+      ...await this.wallet.reset(), ...this.engine.reset(), whatsappIds: this.seenWhatsApp.length, evacTimers };
+    this.seenWhatsApp = [];
+    await this.ctx.storage.delete('whatsappIds');
+    this.toTwins('sim.command', { reset: true });
+    return { ok: true, cleared };
+  }
   private async refreshFlights() {
     const now = Date.now();
     const result = await this.fids.get(now);
@@ -125,16 +140,16 @@ export class Tower extends DurableObject<Env> {
   private async handle(event: Envelope, client: Client) {
     // Passenger messaging (SPEC-v2 D14, D17, A10) hooks in before and after the engine; see wa/messaging.ts.
     const msg = this.whatsapp.messaging;
-    if (event?.type === 'evac.plan' && client !== 'viewer') { this.ctx.waitUntil(msg.plan(evacPlan(event.data))); return; }
+    if (event?.type === 'evac.plan' && client !== 'viewer') { this.background(msg.plan(evacPlan(event.data))); return; }
     if (event?.type === 'agent.register' && client === 'twin') {
       const { sims, rest } = splitRegister(event.data);
-      if (sims.length) this.ctx.waitUntil(msg.registerSims(sims));
+      if (sims.length) this.background(msg.registerSims(sims));
       if (!rest) return;
       event = { ...event, data: rest };
     }
     await this.wallet.handle(this.engine, event, client);
-    if (event.type === 'flow.report' && (client === 'vision' || client === 'twin')) this.ctx.waitUntil(msg.flowChanged());
-    if (event.type === 'flight.update') this.ctx.waitUntil(msg.flightsChanged());
+    if (event.type === 'flow.report' && (client === 'vision' || client === 'twin')) this.background(msg.flowChanged());
+    if (event.type === 'flight.update') this.background(msg.flightsChanged());
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
     if (event.type === 'console.reset') {
@@ -198,7 +213,7 @@ export class Tower extends DurableObject<Env> {
       const path = url.pathname;
       try {
         if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
-        if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
           if (!['twin', 'vision', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
@@ -229,6 +244,7 @@ export class Tower extends DurableObject<Env> {
           }
         }
         if (request.method === 'POST') {
+          if (path === '/api/demo/reset') return json(await this.reset());
           if (path === '/api/join' || path === '/api/join/demo') {
             const demo = path === '/api/join/demo';
             const input = JSON.parse(await bodyText(request, 1024));
@@ -275,7 +291,7 @@ export class Tower extends DurableObject<Env> {
               }
             await this.engine.whatsappWebhook(body);
             // Clarion's agent answers after the 200, outside the request queue (SPEC-v2 D2).
-            this.ctx.waitUntil(this.whatsapp.inbound(body));
+            this.background(this.whatsapp.inbound(body));
             for (const entry of body?.entry ?? []) for (const change of entry.changes ?? [])
               for (const m of change.value?.messages ?? []) if (typeof m.id === 'string') this.seenWhatsApp.push(m.id);
             this.seenWhatsApp = this.seenWhatsApp.slice(-2000);
@@ -308,8 +324,8 @@ export class Tower extends DurableObject<Env> {
             // Vision gets every command too, to know the open lanes and blocked zones (contract v2).
             for (const ws of this.visions()) ws.send(packet('ops.command', opsWire(record)));
             // D10: passengers hear about it; vision's evac.plan brings the routes, else a generic message after 3 s.
-            if (record.type === 'evacuate') this.ctx.waitUntil(this.whatsapp.messaging.evacuate(record.zones, record.id));
-            else this.ctx.waitUntil(this.whatsapp.messaging.adminChanged(record));
+            if (record.type === 'evacuate') this.background(this.whatsapp.messaging.evacuate(record.zones, record.id));
+            else this.background(this.whatsapp.messaging.adminChanged(record));
             return json({ connected: true, command: record }, 202);
           }
           if (path === '/api/agent/route') {
