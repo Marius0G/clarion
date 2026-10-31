@@ -6,13 +6,18 @@ import "./join.css";
 import { backend as backendConfig } from "../backend/config";
 const backend = backendConfig.http;
 const publicBase = import.meta.env.VITE_PUBLIC_URL || window.location.origin;
+// Lucide icons (ISC), inlined: plane, plane-landing, car-taxi-front, id-card, siren.
+const PLANE = "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z";
 const roles = [
-  ["passenger_home", "Pasager", "Passenger", "✈"],
-  ["relative_arrivals", "Rudă la sosiri", "Meeting someone", "↘"],
-  ["taxi", "Taxi", "Taxi", "T"],
-  ["staff", "Personal aeroport", "Airport staff", "▦"],
-  ["isu_smurd", "ISU/SMURD", "ISU/SMURD", "+"],
+  ["passenger_home", "Pasager", "Passenger", PLANE],
+  ["relative_arrivals", "Rudă la sosiri", "Meeting someone", "M2 22h20 M3.77 10.77 2 9l2-4.5 1.1.55c.55.28.9.84.9 1.45s.35 1.17.9 1.45L8 8.5l3-6 1.05.53a2 2 0 0 1 1.09 1.52l.72 5.4a2 2 0 0 0 1.09 1.52l4.4 2.2c.42.22.78.55 1.01.96l.6 1.03c.49.88-.06 1.98-1.06 2.1l-1.18.15c-.47.06-.95-.02-1.37-.24L4.29 11.15a2 2 0 0 1-.52-.38Z"],
+  ["taxi", "Taxi", "Taxi", "M10 2h4 M21 8l-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8 M7 14h.01 M17 14h.01 M5 10h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z M5 18v2 M19 18v2"],
+  ["staff", "Personal aeroport", "Airport staff", "M16 10h2 M16 14h2 M6.17 15a3 3 0 0 1 5.66 0 M11 11a2 2 0 1 1-4 0 2 2 0 0 1 4 0z M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"],
+  ["isu_smurd", "ISU/SMURD", "ISU/SMURD", "M7 18v-6a5 5 0 1 1 10 0v6 M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z M21 12h1 M18.5 4.5 18 5 M2 12h1 M12 2v1 M4.929 4.929l.707.707 M12 12v6"],
 ] as const;
+function Icon({ d, size = 20 }: { d: string; size?: number }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
+}
 interface Flight {
   flight: string;
   city?: string;
@@ -201,7 +206,7 @@ export default function Join() {
       <div className="join-page">
         <header className="join-header">
           <a href="/join" className="join-brand">
-            <span aria-hidden="true">⌁</span> Clarion
+            Clarion
             <small>Craiova · LRCV</small>
           </a>
           <button
@@ -270,7 +275,7 @@ export default function Join() {
           <>
             <section className="join-intro">
               <div className="join-airport">
-                <span aria-hidden="true">✈</span>{" "}
+                <Icon d={PLANE} size={14} />{" "}
                 {t(
                   "Aeroportul Internațional Craiova",
                   "Craiova International Airport",
@@ -301,7 +306,7 @@ export default function Join() {
                       aria-pressed={role === value}
                       onClick={() => setRole(value)}
                     >
-                      <span aria-hidden="true">{icon}</span>
+                      <span aria-hidden="true"><Icon d={icon} /></span>
                       {en ? english : ro}
                       <span className="join-check" aria-hidden="true">
                         {role === value ? "✓" : ""}

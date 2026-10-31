@@ -1,10 +1,11 @@
 .join-shell {
   min-height: 100dvh;
-  background: #e9f0f6;
-  color: #153453;
+  background: #f1f5f9;
+  color: #0f172a;
   color-scheme: light;
-  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
-  font-size: 15px;
+  font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
   line-height: 1.4;
 }
 .join-page {
@@ -18,52 +19,45 @@
 .join-shell input,
 .join-shell textarea {
   font: inherit;
-  color: #153453;
-  border-color: #b8c8d7;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 .join-shell button {
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 .join-shell button:hover:not(:disabled) {
-  background: #eaf4fa;
-  border-color: #246490;
+  background: #f1f5f9;
+  border-color: #1f2937;
 }
 .join-shell button:disabled {
   cursor: not-allowed;
 }
 .join-shell :focus-visible {
-  outline: 3px solid #146caa;
+  outline: 3px solid #1f2937;
   outline-offset: 3px;
 }
 .join-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #dce5ed;
+  border-bottom: 1px solid #e2e8f0;
   padding-bottom: 16px;
 }
 .join-brand {
   display: block;
   text-decoration: none;
-  color: #153453;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-}
-.join-brand > span {
-  font-size: 25px;
-  vertical-align: middle;
-  margin-right: 6px;
-  color: #087f85;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
 }
 .join-brand small {
   display: block;
-  margin-left: 29px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
-  color: #536b80;
+  color: #475569;
 }
 .join-header button {
   background: white;
@@ -76,22 +70,26 @@
 }
 .join-airport {
   font-size: 12px;
-  color: #536b80;
-  margin-bottom: 9px;
+  color: #475569;
+  margin-bottom: 8px;
 }
-.join-airport span {
-  color: #087f85;
-  margin-right: 4px;
+.join-airport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.join-airport svg {
+  color: #1f2937;
 }
 .join-shell h1 {
   font-size: 30px;
   line-height: 1.12;
-  letter-spacing: -0.045em;
-  margin: 0 0 10px;
-  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  font-weight: 600;
 }
 .join-intro p {
-  color: #536b80;
+  color: #475569;
   font-size: 14px;
   margin: 0;
   max-width: 34ch;
@@ -104,7 +102,7 @@
 }
 .join-shell legend,
 .join-flight > label {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   padding: 0;
   margin-bottom: 8px;
@@ -115,36 +113,37 @@
   gap: 7px;
 }
 .join-roles button {
-  background: #f4f7fa;
-  border: 1px solid #d5e0e9;
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
   min-height: 49px;
   padding: 9px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
 }
 .join-roles button:first-child {
   grid-column: span 2;
 }
 .join-roles button > span:first-child {
+  display: inline-flex;
   font-size: 18px;
-  color: #52758e;
+  color: #475569;
   width: 20px;
   text-align: center;
   flex-shrink: 0;
 }
 .join-roles .join-check {
   margin-left: auto;
-  color: #087f85;
+  color: #1f2937;
 }
 .join-shell button[aria-pressed="true"] {
-  background: #e6f5f3;
-  border: 2px solid #087f85;
+  background: #f1f5f9;
+  border: 2px solid #1f2937;
   padding: 8px 9px;
-  color: #075e63;
+  color: #0f172a;
 }
 .join-flight {
   margin-bottom: 16px;
@@ -154,7 +153,7 @@
 }
 .join-flight small {
   font-weight: 400;
-  color: #536b80;
+  color: #475569;
   margin-left: 5px;
 }
 .join-flight > input {
@@ -164,10 +163,10 @@
   min-height: 44px;
   padding: 10px 12px;
   font-size: 16px;
-  border-radius: 6px;
+  border-radius: 10px;
 }
 .join-flight input::placeholder {
-  color: #677e91;
+  color: #64748b;
 }
 .join-channels > div {
   display: flex;
@@ -178,12 +177,12 @@
   min-height: 48px;
   background: white;
   padding: 8px 6px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .join-channels button:disabled {
-  background: #f5f7f9;
-  color: #617184;
-  border-color: #dce5ed;
+  background: #fafbfc;
+  color: #475569;
+  border-color: #e2e8f0;
 }
 .join-channels small {
   display: block;
@@ -204,10 +203,10 @@
   height: 22px;
   margin: 0;
   flex-shrink: 0;
-  accent-color: #087f85;
+  accent-color: #1f2937;
 }
 .join-consent > span > span {
-  color: #536b80;
+  color: #475569;
 }
 .join-shell .join-primary {
   display: flex;
@@ -215,34 +214,34 @@
   justify-content: center;
   width: 100%;
   min-height: 50px;
-  background: #155889;
+  background: #1f2937;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   color: white;
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 600;
+  font-size: 16px;
   text-decoration: none;
   padding: 12px;
 }
 .join-shell .join-primary:hover:not(:disabled) {
-  background: #10456c;
+  background: #0f172a;
   color: white;
 }
 .join-shell .join-primary:disabled {
-  background: #dce5ed;
-  color: #536b80;
+  background: #e2e8f0;
+  color: #475569;
 }
 .join-footer {
   text-align: center;
-  color: #536b80;
-  font-size: 11px;
+  color: #475569;
+  font-size: 12px;
   margin: 10px 0 0;
 }
 .join-note,
 .join-scanner p {
   font-size: 12px;
   margin: 8px 0;
-  color: #536b80;
+  color: #475569;
 }
 .join-shell .join-scan {
   width: 100%;
@@ -253,13 +252,13 @@
 .join-scanner video {
   width: 100%;
   max-height: 200px;
-  background: #153453;
-  border-radius: 6px;
+  background: #0f172a;
+  border-radius: 10px;
   margin-top: 8px;
 }
 .join-upload {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 8px;
 }
 .join-upload input {
@@ -267,27 +266,27 @@
   margin-top: 6px;
 }
 .join-error {
-  color: #a12626;
-  font-size: 13px;
+  color: #dc2626;
+  font-size: 14px;
 }
 .join-success {
   padding: 55px 0;
 }
 .join-success-mark {
   font-size: 48px;
-  color: #087f85;
+  color: #1f2937;
   margin-bottom: 22px;
 }
 .join-success p {
-  color: #536b80;
+  color: #475569;
 }
 .join-shell .join-share {
   width: 100%;
   min-height: 54px;
   margin-top: 18px;
   background: white;
-  border: 1px solid #087f85;
-  color: #075e63;
+  border: 1px solid #1f2937;
+  color: #0f172a;
   font-weight: 650;
 }
 .join-success textarea {
@@ -306,12 +305,12 @@
   margin: 20px auto;
 }
 .join-qr a {
-  color: #155889;
+  color: #1f2937;
   overflow-wrap: anywhere;
 }
 .join-qr p {
   margin-top: 20px;
-  color: #536b80;
+  color: #475569;
 }
 .join-page:has(.join-qr) {
   max-width: 760px;
