@@ -99,3 +99,12 @@ Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTim
 - La ce folosește extensia de browser (D3).
 - Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
 - Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
+
+### D13. Un singur ceas: ora simulării
+Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTime` din `sim.status`. Dashboard-ul, pagina web și WhatsApp afișează ora simulării, etichetată „ora simulării”. Toate zborurile, prognozele și orele trimise pasagerilor („fii la intrare la 14:20”, „poarta se închide la 15:05”) sunt în ora simulării. Ceasul real nu se folosește nicăieri în demo.
+
+## De stabilit în continuare
+- Orarul de zboruri: forma mesajului din Unity (zbor, companie, poartă, ghișee, ora de închidere a porții, status, întârziere).
+- La ce folosește extensia de browser (D3).
+- Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
+- Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
