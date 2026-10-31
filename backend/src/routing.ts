@@ -1,7 +1,9 @@
+import { mapNodeId } from './mapIds.js';
 /** Pure D7/A8 routing. Edges are bidirectional; the denser endpoint zone determines their speed. */
 export interface RoutingGraph {
-  nodes: readonly { id: string; x: number; y: number; zone?: string }[];
-  edges: readonly { from: string; to: string; lengthM?: number; walkSec?: number }[];
+  realMap?: boolean;
+  nodes: readonly { id: string; x: number; y: number; zone?: string; kind?: string }[];
+  edges: readonly { from: string; to: string; lengthM?: number; walkSec?: number; oneWay?: boolean; evacuationOnly?: boolean }[];
 }
 export interface Route { nodes: string[]; totalSec: number; segments: { from: string; to: string; sec: number }[] }
 export const FREE_SPEED = 1.34;
@@ -13,21 +15,34 @@ export function walkingSpeed(density: number | null | undefined): number {
 }
 export function route(graph: RoutingGraph, from: string, to: string,
   density: Readonly<Record<string, number | null | undefined>> = {}, blocked: readonly string[] = []): Route | null {
+  const requestedFrom = from, requestedTo = to;
+  if (graph.realMap) {
+    from = mapNodeId(from); to = mapNodeId(to);
+    blocked = blocked.map(mapNodeId);
+    const canonical: Record<string, number | null | undefined> = {};
+    for (const [id, value] of Object.entries(density)) canonical[mapNodeId(id)] = Math.max(canonical[mapNodeId(id)] ?? 0, value ?? 0);
+    canonical.U_SECURITY = Math.max(canonical.U_SECURITY ?? 0, canonical.U_SECURITY_QUEUE ?? 0);
+    density = canonical;
+  }
   const nodes = new Map(graph.nodes.map(n => [n.id, n]));
   const closed = new Set(blocked);
+  const evacuation = nodes.get(to)?.kind === 'exit';
+  const nodeDensity = (n: { id: string; zone?: string }) => Math.max(density[n.id] ?? 0, density[n.zone ?? n.id] ?? 0);
   const passable = (id: string) => {
     const n = nodes.get(id);
-    return n && !closed.has(id) && !(n.zone && closed.has(n.zone)) && walkingSpeed(density[n.zone ?? id]) > 0;
+    if (graph.realMap && !evacuation && id === 'U_SECURITY' && (closed.has('U_SECURITY_QUEUE') || walkingSpeed(density.U_SECURITY_QUEUE) === 0)) return false;
+    return n && !closed.has(id) && !(n.zone && closed.has(n.zone)) && walkingSpeed(nodeDensity(n)) > 0;
   };
   if (!passable(from) || !passable(to)) return null;
   const adjacency = new Map<string, { to: string; sec: number }[]>();
   for (const e of graph.edges) {
+    if (e.evacuationOnly && !evacuation) continue;
     if (!passable(e.from) || !passable(e.to)) continue;
     const a = nodes.get(e.from)!, b = nodes.get(e.to)!;
-    const speed = Math.min(walkingSpeed(density[a.zone ?? a.id]), walkingSpeed(density[b.zone ?? b.id]));
+    const speed = Math.min(walkingSpeed(nodeDensity(a)), walkingSpeed(nodeDensity(b)));
     const sec = e.lengthM !== undefined ? e.lengthM / speed : e.walkSec !== undefined ? e.walkSec * FREE_SPEED / speed : Math.hypot(a.x - b.x, a.y - b.y) / speed;
     if (!Number.isFinite(sec) || sec < 0) continue;
-    for (const [start, end] of [[e.from, e.to], [e.to, e.from]] as const) {
+    for (const [start, end] of (e.oneWay ? [[e.from, e.to] as const] : [[e.from, e.to] as const, [e.to, e.from] as const])) {
       const list = adjacency.get(start) ?? [];
       list.push({ to: end, sec }); adjacency.set(start, list);
     }
@@ -53,7 +68,10 @@ export function route(graph: RoutingGraph, from: string, to: string,
     segments.push({ from: p.from, to: id, sec: p.sec }); id = p.from;
   }
   segments.reverse();
-  return { nodes: [from, ...segments.map(s => s.to)], totalSec: dist.get(to)!, segments };
+  const ids = [from, ...segments.map(s => s.to)];
+  ids[0] = requestedFrom; ids[ids.length - 1] = requestedTo;
+  if (segments.length) { segments[0]!.from = requestedFrom; segments[segments.length - 1]!.to = requestedTo; }
+  return { nodes: ids, totalSec: dist.get(to)!, segments };
 }
 
 /** Density from camera telemetry, then waiting/zone area. Stale rows are unknown. */

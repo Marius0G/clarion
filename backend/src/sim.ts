@@ -1,3 +1,4 @@
+import { isNodeId } from './mapIds.js';
 import { isRole, type Role } from './types.js';
 import { initialLanes } from './terminal.js';
 export const locations = ['home', 'road', 'terminal', 'kerb'] as const;
@@ -40,7 +41,7 @@ export interface FlowRow {
 /** Truth from Unity (D0): only for the accuracy panel and A/B, never for decisions. */
 export interface TruthRow { waiting: number; waitMin: number | null }
 /** Node / zone id from terminal.json, e.g. `security`, `gate_1`, `check_in:2`. */
-const nodeId = (v: any) => typeof v === 'string' && /^[a-z][a-z0-9_]{0,39}(:[A-Za-z0-9_-]{1,16})?$/.test(v);
+const nodeId = isNodeId;
 /** Per-airline ids carry the IATA code in upper case (D8). */
 const upperSuffix = (v: any) => typeof v === 'string' ? v.replace(/:([A-Za-z0-9]{2})$/, (_, c: string) => `:${c.toUpperCase()}`) : v;
 /** Any zone id from terminal.json (D7, D8): `security`, `gate_3`, `check_in:2`, `bag_drop:2`. Not a fixed list. */
@@ -68,7 +69,7 @@ export interface TerminalFlight {
   gateCloseAt: number | string | null; status: typeof flightStatuses[number]; delayMin: number; pax: number | null;
 }
 /** Feet point of a detected person, terminal metres. Vision sends only x, y; legacy Unity also sent kind. */
-export interface Person { x: number; y: number; kind?: 'pax' | 'staff' }
+export interface Person { x: number; y: number; z?: number; level?: 'G' | 'U' | 'X'; kind?: 'pax' | 'staff' }
 export const opsTypes = ['staff', 'redirect', 'evacuate', 'close', 'open'] as const;
 export type OpsCommand =
   | { type: 'staff'; zone: string; delta: number }
@@ -250,8 +251,9 @@ export class SimStore {
     if (!object(d) || !Array.isArray(d.people) || d.people.length > PEOPLE_MAX) throw new Error(`people[] required (max ${PEOPLE_MAX})`);
     const people: Person[] = d.people.map((raw: any) => {
       const p = withoutNulls(raw);
-      if (!object(p) || !finite(p.x, -1e5, 1e5) || !finite(p.y, -1e5, 1e5) || (p.kind !== undefined && !['pax', 'staff'].includes(p.kind))) throw new Error('Invalid person');
-      return p.kind === undefined ? { x: p.x, y: p.y } : { x: p.x, y: p.y, kind: p.kind };
+      const world = p?.z !== undefined;
+      if (!object(p) || !finite(p.x, -1e5, 1e5) || !(world ? finite(p.z, -1e5, 1e5) && ['G', 'U', 'X'].includes(p.level) : finite(p.y, -1e5, 1e5)) || (p.kind !== undefined && !['pax', 'staff'].includes(p.kind))) throw new Error('Invalid person');
+      return { x: p.x, y: world ? p.z : p.y, ...(world && { z: p.z, level: p.level }), ...(p.kind !== undefined && { kind: p.kind }) };
     });
     // Same rule as flow: the cameras win over a legacy Unity build.
     if (source === 'vision') this.visionPeopleMs = now;

@@ -34,8 +34,8 @@ async function jsonBody(req: IncomingMessage): Promise<any> {
 export function loadBackendEnv(
   file = fileURLToPath(new URL("../.env", import.meta.url)),
 ) {
-  // The compiled entry point lives under dist/src, so resolve the package root too.
-  const actual = file.replace("/dist/.env", "/.env");
+  // The compiled entry point lives under dist/backend/src, so resolve the package root too.
+  const actual = file.replace("/dist/backend/.env", "/.env").replace("/dist/.env", "/.env");
   if (existsSync(actual)) loadEnvFile(actual);
   // Team WhatsApp account lives in repo-root .env; backend/exported values win.
   const teamEnv = resolve(dirname(actual), "../.env");
