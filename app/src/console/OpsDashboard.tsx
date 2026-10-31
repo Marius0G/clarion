@@ -8,8 +8,10 @@ import { desksForGroup, mapNodeId } from '../../../backend/src/mapIds'
 import type { SimSnapshot } from '../backend/sim'
 import { TerminalMap, type MapLayers, type ZoneView } from '../map/t2/TerminalMap'
 import { backend } from '../backend/config'
-import { levelNames, levels, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
+import { levelNames, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
 import { breach, bulletScale, executor, flightTime, noActionWait, orderZones, taskState, topMetrics, waitTarget, type TaskEvidence, type ZoneOrder } from './screen'
+import { AlertList } from './AlertList'
+import { alertMapZone, alertNumbers, alertPresentation, alertSymbols, sendAlertCommand, type Alert, type AlertCommand } from './alerts'
 import './ops.css'
 
 /** D16: the admin's single screen. Terminal map, people seen by the cameras, load per zone and the D12 decisions. */
@@ -66,6 +68,14 @@ export function OpsDashboard() {
   const saveView = (next: View) => { setViewSettings(next); try { window.localStorage.setItem(VIEW_KEY, JSON.stringify(next)) } catch { /* private mode */ } }
   const sim = useSim(viewSettings.refreshMs)
   const reports = useReports()
+  const latestSim = useRef(sim)
+  useEffect(() => { latestSim.current = sim }, [sim])
+  const [alertResult, setAlertResult] = useState<{ source: SimSnapshot | null; alerts: Alert[] } | null>(null)
+  const alerts = alertResult && alertResult.source === sim ? alertResult.alerts : (sim as (SimSnapshot & { alerts?: Alert[] }) | null)?.alerts ?? []
+  async function commandAlert(command: AlertCommand) {
+    const rows = await sendAlertCommand(command)
+    setAlertResult({ source: latestSim.current, alerts: rows })
+  }
   const [selected, setSelected] = useState<string[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [target, setTarget] = useState('')
@@ -74,8 +84,8 @@ export function OpsDashboard() {
     if (active && window.matchMedia('(max-width: 1100px)').matches) panel.current?.scrollIntoView({ block: 'start' })
   }, [active])
   const [local, setLocal] = useState<Sent[]>([])
-  const order = useRef<ZoneOrder>()
-  const completed = useRef(new Set<string>())
+  const [order, setOrder] = useState<{ source: SimSnapshot | null | undefined; value?: ZoneOrder }>({ source: undefined })
+  const [completed, setCompleted] = useState<Set<string>>(() => new Set())
   const [hovered, setHovered] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState<string[]>([])
   const [rejections, setRejections] = useState<{ key: string; at: number; label: string }[]>([])
@@ -85,7 +95,7 @@ export function OpsDashboard() {
   const stats = zoneStats(plan, sim)
   const byId = new Map(stats.map(s => [s.id, s]))
   const zone = active ? byId.get(active) : undefined
-  const openZone = (id: string) => { setSettings(false); setActive(id); setTarget(''); setFloor(levelOf(id)) }
+  const openZone = (id: string) => { setSettings(false); setActive(id); setTarget(''); setFloor(levelOf(id) === 'X' ? 'G' : levelOf(id)) }
   const unity = sim?.connected ?? false
   const cameras = sim?.vision ?? false
   const people = liveDots(sim)
@@ -103,8 +113,9 @@ export function OpsDashboard() {
   const shown = stats.filter(s => s.kind !== 'exit' && (GROUP.test(s.id) || CORE.includes(s.id) || s.staffed && s.lanes != null || s.state != null || s.people != null || s.closed || s.id === active))
   const targets = zone ? redirectTargets(shown, zone) : []
   const destination = targets.some(z => z.id === target) ? target : targets[0]?.id ?? ''
-  order.current = orderZones(shown, sim, Date.now(), order.current)
-  const ordered = order.current.ids.flatMap(id => { const z = byId.get(id); return z ? [z] : [] })
+  const currentOrder = order.source === sim && order.value ? order.value : orderZones(shown, sim, Date.parse(sim?.lastSeen ?? '') || (sim?.simTime ?? 0) * 1000, order.value)
+  if (order.source !== sim) setOrder({ source: sim, value: currentOrder })
+  const ordered = currentOrder.ids.flatMap(id => { const z = byId.get(id); return z ? [z] : [] })
   const metrics = topMetrics(stats, sim)
   const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind }] : [])
   const perFloor = (l: Level) => pins.filter(p => p.level === l).length
@@ -127,9 +138,13 @@ export function OpsDashboard() {
   const server = (sim?.ops ?? []).map(o => ({ evidence: local.find(l => l.key === o.id)?.evidence, command: o, key: o.id, label: commandLabel(o, plan), status: o.status as CommandStatus, at: Date.parse(o.sentAt) }))
   const known = new Set(server.map(s => s.key))
   const history = [...server, ...local.filter(l => !known.has(l.key))].sort((a, b) => b.at - a.at)
-  const recommendation = ordered.find(z => z.line.action && !dismissed.includes(`${z.id}:${z.line.action.label}`) && !history.some(c => (c.status === 'sent' || c.status === 'acked') && !completed.current.has(c.key) && commandTouchesZone(c.command, z.id)))
+  const newlyCompleted = history.filter(c => !completed.has(c.key) && taskState(c.command, c.status, sim, c.evidence) === 'done')
+  const done = newlyCompleted.length ? new Set([...completed, ...newlyCompleted.map(c => c.key)]) : completed
+  if (newlyCompleted.length) setCompleted(done)
+  const recommendation = ordered.find(z => z.line.action && !dismissed.includes(`${z.id}:${z.line.action.label}`) && !history.some(c => (c.status === 'sent' || c.status === 'acked') && !done.has(c.key) && commandTouchesZone(c.command, z.id)))
 
-  const floorShort: Record<Level, string> = { G: 'P', U: '1', X: 'Ext' }
+  const floors = ['G', 'U'] as const
+  const floorShort = { G: 'P', U: '1' }
 
   const flightsN = sim?.flights?.length ?? 0
   /** Desk groups that share the selected hall (D8): one button each, so a single group can be acted on. */
@@ -159,7 +174,7 @@ export function OpsDashboard() {
     <header className="ops-metrics" aria-label="Indicatori" data-testid="top-band">
       {[
         ['Așteptare maximă', minutes(metrics.worst)], ['Prima depășire', simClock(metrics.first).slice(0, 5)],
-        ['Sub țintă azi', '—', 'Istoric indisponibil'], ['Zboruri în pericol', '—', 'Poziție per zbor indisponibilă'],
+        ['Sub țintă azi', '—'], ['Zboruri în pericol', String(new Set(alerts.filter(a => a.kind === 'flight-risk' && a.active).map(a => a.flight)).size)],
         ['Densitate maximă', metrics.density == null ? '—' : `${metrics.density.toFixed(1)} /m²`],
       ].map(([label, value, note]) => <div key={label}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>)}
     </header>
@@ -186,7 +201,7 @@ export function OpsDashboard() {
             <button onClick={() => { setDismissed(d => [...d, `${recommendation.id}:${recommendation.line.action!.label}`]); setRejections(r => [...r, { key: `rejected-${Date.now()}`, at: Date.now(), label: `${recommendation.name} · ${recommendation.line.action!.label}` }]) }}>Respinge</button>
           </> : <p>Fără recomandări</p>}
         </section>
-        <section aria-label="Alerte" data-testid="alerts-slot"><h2>Alerte</h2><p>Integrare D32</p>{/* TODO(D32): consume docs/contract/alerts.md when published; no assumed data shape. */}</section>
+        <AlertList alerts={alerts} simTime={sim?.simTime ?? null} onZone={id => openZone(byId.has(id) ? id : alertMapZone(id))} onCommand={commandAlert} />
         <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
           {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
             const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
@@ -210,19 +225,20 @@ export function OpsDashboard() {
           {(sim?.flights ?? []).map(f => <tr key={f.flight}><td>{flightTime(f.std)}</td><td>{f.flight}</td><td>{f.destination}</td><td>{f.gate ?? '—'}</td><td className={f.status === 'delayed' || f.status === 'cancelled' ? 'p2' : ''}>{f.status === 'delayed' || f.status === 'cancelled' ? '▲ P2 ' : ''}{{ scheduled: 'Programat', boarding: 'Îmbarcare', delayed: 'Întârziat', cancelled: 'Anulat', departed: 'Plecat' }[f.status]}</td></tr>)}
         </tbody></table></section>
         <section aria-label="Jurnal" data-testid="journal"><h2>Jurnal</h2>
-          {[...rejections.map(r => ({ ...r, content: <><b>{r.label}</b><p>Respins · Recomandare</p></>, pending: false })), ...reports.map(r => ({ key: r.id, at: Date.parse(r.at), content: <><b>{r.text}</b><p>{r.node} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}</p></>, pending: r.status !== 'acked' })), ...history.map(c => {
-            const state = taskState(c.command, c.status, sim, c.evidence, completed.current.has(c.key) ? 'done' : undefined)
-            if (state === 'done') completed.current.add(c.key)
+          {[...alerts.map(a => ({ key: `alert:${a.id}`, at: a.updatedAt, pending: alertPresentation(a, sim?.simTime ?? null).needsAck, content: <><b className={a.priority.toLowerCase()}>{alertSymbols[a.priority]} {a.priority} · {a.text}</b><p>{simClock(a.updatedAt)} · {alertPresentation(a, sim?.simTime ?? null).label}</p><p>{a.zoneId ?? a.flight} · {alertNumbers(a)}</p>{a.state === 'shelved' && <p>{a.shelveReason} · {simClock(a.shelvedUntil)}</p>}</> })), ...rejections.map(r => ({ ...r, content: <><b>{r.label}</b><p>Respins · Recomandare</p></>, pending: false })), ...reports.map(r => ({ key: r.id, at: Date.parse(r.at), content: <><b>{r.text}</b><p>{r.node} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}</p></>, pending: r.status !== 'acked' })), ...history.map(c => {
+            const state = taskState(c.command, c.status, sim, c.evidence, done.has(c.key) ? 'done' : undefined)
             const id = c.command.type === 'evacuate' ? c.command.zones[0] : c.command.type === 'redirect' ? c.command.from : c.command.zone
             return { key: c.key, at: c.at, pending: state === 'sent', content: <><b>{c.label}</b><p>{state === 'done' ? 'Făcut' : commandStatusLabels[state as CommandStatus]} · {executor(c.command)}</p><p>Camere: {minutes(liveRow(sim, id)?.waitMin ?? null)} · Fără acțiune: {minutes(noActionWait(c.evidence, sim?.simTime))}</p>{c.command.type === 'evacuate' && <fieldset><legend>Pași operaționali</legend>{['Alarmă', 'Anunț', 'Verificare', 'Numărătoare la adunare'].map(step => <label key={step}><input type="checkbox" />{step}</label>)}</fieldset>}</> }
-          })].sort((a, b) => b.at - a.at).map(item => <article key={item.key} className={item.pending ? 'unacknowledged' : ''}>{item.content}</article>)}
-          {!reports.length && !history.length && !rejections.length && <p>Nicio înregistrare</p>}
-          <div data-testid="alerts-log-slot">Alerte D32{/* TODO(D32): insert alert lifecycle entries from the agreed contract. */}</div>
+          })].sort((a, b) => {
+            const time = (item: { key: string; at: number }) => item.key.startsWith('alert:') ? item.at : sim?.simTime != null && sim.lastSeen ? sim.simTime + (item.at - Date.parse(sim.lastSeen)) / 1000 : 0
+            return time(b) - time(a)
+          }).map(item => <article key={item.key} className={item.pending ? 'unacknowledged' : ''}>{item.content}</article>)}
+          {!alerts.length && !reports.length && !history.length && !rejections.length && <p>Nicio înregistrare</p>}
         </section>
       </aside>
       <div className="ops-corner">
         <nav className="ops-floors" aria-label="Etaj">
-          {levels.map(l => <button key={l} aria-pressed={floor === l} aria-label={levelNames[l].ro} title={levelNames[l].ro} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
+          {floors.map(l => <button key={l} aria-pressed={floor === l} aria-label={levelNames[l].ro} title={levelNames[l].ro} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
             <span>{floorShort[l]}</span>{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
           </button>)}
         </nav>
@@ -250,7 +266,7 @@ export function OpsDashboard() {
         <section>
           <h3>Integrări</h3>
           <dl className="ops-integrations">
-            <div><dt>Ora simulării</dt><dd data-testid="sim-clock">{unity ? simClock(sim?.simTime) : '—'}</dd></div>
+            <div><dt>Ora terminalului</dt><dd data-testid="sim-clock">{unity ? simClock(sim?.simTime) : '—'}</dd></div>
             <div><dt>Backend</dt><dd><span className={`ops-link ${sim == null ? 'down' : 'up'}`}><i />{sim == null ? 'Offline' : backend.host}</span></dd></div>
             <div><dt>Unity</dt><dd><span className={`ops-link ${sim == null ? 'down' : unity ? 'up' : 'off'}`} role="status" data-testid="unity-status"><i />{sim == null ? 'Backend offline' : unity ? 'Unity conectat' : 'Unity offline'}</span></dd></div>
             <div><dt>Camere</dt><dd><span className={`ops-link ${sim == null ? 'down' : cameras ? 'up' : 'off'}`} role="status" data-testid="vision-status"><i />{cameras ? 'Camere' : 'Camere offline'}</span></dd></div>
@@ -272,7 +288,7 @@ export function OpsDashboard() {
               <td>{minutes(a.camWait)} / {minutes(a.trueWait)}</td>
             </tr>)}</tbody>
           </table>
-          <p className="ops-note">Camere / simulare</p>
+          <p className="ops-note">Camere / Unity</p>
         </section>}
       </aside>}
 
