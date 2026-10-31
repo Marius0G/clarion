@@ -8,6 +8,7 @@ Twin-ul Unity compară scenarii cu și fără alerte; consola coordonează reven
 
 ## Documente
 
+- [`docs/clarion-sinteza-si-plan-control-tower.pdf`](docs/clarion-sinteza-si-plan-control-tower.pdf): sinteza și planul Clarion, ultima versiune. `app/PM/control-tower-plan.pdf` este versiunea dinainte de alegerea numelui; secțiunile încep la aceleași pagini, iar linkurile „Plan, p. N” duc acolo.
 - `docs/ROLURI.md`: cine ce face până duminică la 15:00
 - `app/PM/SPEC.md`: specul v3 (Clarion), `app/PM/CONTRACT.md`: contractul Unity / consolă / backend
 - `docs/research/`: rapoartele de cercetare (impact, anti-dronă, canale de notificare, date de simulare)
