@@ -35,7 +35,7 @@
 .ops-link.up i { background: var(--o-normal-line); }
 .ops-link.down i { background: var(--o-full-line); }
 
-.ops-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 560px; }
+.ops-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 500px; }
 .ops-map { min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 20px; }
 .ops-map svg { width: 100%; flex: 1; min-height: 0; max-height: calc(100dvh - 140px); display: block; }
 .ops-floor { fill: var(--o-surface); stroke: var(--o-border); stroke-width: .2; }
@@ -137,4 +137,4 @@
 .ops .ops-floors button { display: inline-flex; align-items: center; gap: 6px; }
 .ops .ops-floors button.on { background: var(--o-text); color: var(--o-bg); border-color: var(--o-text); }
 .ops-floor-pins { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--o-full-line); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
-.ops-map .t2map { border-radius: 10px; }
+.ops-map .t2map { border-radius: 14px; box-shadow: inset 0 0 0 1px var(--o-border); }

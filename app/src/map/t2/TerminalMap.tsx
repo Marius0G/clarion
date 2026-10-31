@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { frames, points, worldToPx, zones, type Level, type MapPoint, type MapZone, type Pt } from './data'
 import { fmt, frameOf, inRing, ringPath } from './geometry'
 import { zoneDetail } from './details'
+import { placeName, zoneLabel } from './labels'
 import './t2map.css'
 
 /**
@@ -31,9 +32,6 @@ interface Props {
   testIdPrefix?: string
 }
 
-const shortName = (z: MapZone, lang: 'ro' | 'en') =>
-  (lang === 'en' ? z.name_en : z.name_ro).replace(/\s*\*$/, '').replace(/\s*\(.*\)\s*$/, '')
-
 /** Content box of a floor (zones + points), padded, so the drawing fills the panel instead of the Unity frame. */
 const boundsCache = new Map<Level, [number, number, number, number]>()
 function contentBox(level: Level): [number, number, number, number] {
@@ -44,7 +42,7 @@ function contentBox(level: Level): [number, number, number, number] {
   for (const z of zones) if (z.level === level) for (const r of z.polygons_px) for (const [x, y] of r.outer) { xs.push(x); ys.push(y) }
   const pad = fr.width * 0.025
   let x0 = Math.max(0, Math.min(...xs) - pad), x1 = Math.min(fr.width, Math.max(...xs) + pad)
-  let y0 = Math.max(0, Math.min(...ys) - pad), y1 = Math.min(fr.height, Math.max(...ys) + pad)
+  const y0 = Math.max(0, Math.min(...ys) - pad), y1 = Math.min(fr.height, Math.max(...ys) + pad)
   // Never narrower than 2.2:1 so the floor tabs keep a steady height.
   const minW = (y1 - y0) * 2.2
   if (x1 - x0 < minW) { const c = (x0 + x1) / 2; x0 = Math.max(0, c - minW / 2); x1 = Math.min(fr.width, x0 + minW) }
@@ -52,6 +50,16 @@ function contentBox(level: Level): [number, number, number, number] {
   boundsCache.set(level, box)
   return box
 }
+
+/** T2 ground floor drawn into the exterior frame, so the outside map shows the building it surrounds. */
+type WorldRing = { outer: [number, number][] }
+const terminalFootprint = zones.filter(z => z.level === 'G' && !z.id.startsWith('G_GATE_DOOR'))
+  .flatMap(z => ((z as unknown as { polygons_world: WorldRing[] }).polygons_world ?? []).map(r =>
+    `M${r.outer.map(([x, y]) => worldToPx(x, y, 'X').map(fmt).join(',')).join('L')}Z`))
+const footLabel = (() => {
+  const c = zones.find(z => z.id === 'G_CENTER')!.centre
+  return worldToPx(c[0], c[1] + 4, 'X').map(fmt) as [number, number]
+})()
 
 const pointsIn = (z: MapZone) => points.filter(p => p.level === z.level && z.polygons_px.some(r => inRing(p.px, r)))
 const detailCache = new Map<string, { frame: ReturnType<typeof frameOf>; pts: MapPoint[] }>()
@@ -80,7 +88,8 @@ function PointIcon({ p, s, cameras }: { p: MapPoint; s: number; cameras: boolean
       <path className="fill" d={`M0,${-s * 0.32}l${s * 0.18},${s * 0.22}h${-s * 0.36}ZM0,${s * 0.32}l${s * 0.18},${-s * 0.22}h${-s * 0.36}Z`} /></g>
     case 'information': return <g transform={t} className="i-info"><title>Informații</title><circle r={s * 0.6} />
       <text y={s * 0.24} fontSize={s * 0.75}>i</text></g>
-    case 'atm': case 'wc': case 'vending': return <g transform={t} className="i-tag"><title>{p.type === 'atm' ? `ATM ${p.name}` : p.type === 'wc' ? 'Toalete' : 'Automat'}</title>
+    case 'vending': return null
+    case 'atm': case 'wc': return <g transform={t} className="i-tag"><title>{p.type === 'atm' ? `ATM ${p.name}` : p.type === 'wc' ? 'Toalete' : 'Automat'}</title>
       <rect x={-s * 0.6} y={-s * 0.38} width={s * 1.2} height={s * 0.76} rx={s * 0.15} />
       <text y={s * 0.17} fontSize={s * 0.42}>{p.type === 'atm' ? 'ATM' : p.type === 'wc' ? 'WC' : '▪'}</text></g>
     case 'shop': case 'cafe': case 'office': if (p.type === 'cafe' || !/^[A-ZĂÂÎȘȚ]/.test(label ?? '') || p.level !== 'G') return <g transform={t} className="i-pill"><title>{p.name}</title><circle r={s * 0.22} /></g>
@@ -88,7 +97,8 @@ function PointIcon({ p, s, cameras }: { p: MapPoint; s: number; cameras: boolean
       <circle r={s * 0.22} /><text x={s * 0.4} y={s * 0.15} fontSize={s * 0.45}>{label}</text></g>
     case 'self_checkin': return <g transform={t} className="i-kiosk"><title>Self check-in</title>
       <rect x={-s * 0.22} y={-s * 0.3} width={s * 0.44} height={s * 0.6} rx={s * 0.08} /></g>
-    case 'flight_screen': return <g transform={t} className="i-fids"><title>Ecran zboruri</title>
+    case 'flight_screen': return null
+    case 'flight_screen_unused': return <g transform={t} className="i-fids"><title>Ecran zboruri</title>
       <rect x={-s * 0.35} y={-s * 0.1} width={s * 0.7} height={s * 0.2} rx={s * 0.05} /></g>
     case 'passport_booth': return <g transform={t} className="i-booth"><title>Control pașapoarte</title>
       <rect x={-s * 0.5} y={-s * 0.35} width={s} height={s * 0.7} rx={s * 0.1} /></g>
@@ -104,7 +114,7 @@ function PointIcon({ p, s, cameras }: { p: MapPoint; s: number; cameras: boolean
   }
 }
 
-export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = true, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-' }: Props) {
+export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = false, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-' }: Props) {
   const fr = frames[level]
   const m = fr.ppm
   const fs = contentBox(level)[2] / 95
@@ -167,10 +177,10 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     const d = z.polygons_px.map(ringPath).join('')
     const cls = ['t2-zone', `k-${z.kind}`, state ? `s-${state}` : 's-none', z.approx ? 'approx' : '', selected === z.id ? 'sel' : '', lit.has(z.id) ? 'lit' : '', v?.closed ? 'closed' : '', onZone ? 'click' : ''].filter(Boolean).join(' ')
     zoneEls.push(<g key={z.id} className={cls} data-zone={z.id} data-testid={`${testIdPrefix}${z.id}`} aria-pressed={onZone ? selected === z.id : undefined}
-      role={onZone ? 'button' : undefined} tabIndex={onZone ? 0 : undefined} aria-label={`${z.code} ${shortName(z, lang)}`}
+      role={onZone ? 'button' : undefined} tabIndex={onZone ? 0 : undefined} aria-label={placeName(z, lang)}
       onClick={onZone ? () => click(z.id) : undefined}
       onKeyDown={onZone ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); click(z.id) } } : undefined}>
-      <title>{`${z.code} · ${shortName(z, lang)}${z.approx ? (lang === 'en' ? ' (approximate)' : ' (aproximativ)') : ''}`}</title>
+      <title>{`${placeName(z, lang)}${z.approx ? (lang === 'en' ? ' (approximate)' : ' (aproximativ)') : ''}`}</title>
       <path className="fill" d={d} fillRule="evenodd" />
       <g clipPath={`url(#t2c-${z.id})`} className="detail">
         <g transform={`translate(${fmt(f.cx)} ${fmt(f.cy)}) rotate(${fmt(f.angle)})`}>{zoneDetail({ zone: z, f, m, pts, base })}</g>
@@ -180,17 +190,26 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     </g>)
 
     const [lx, ly] = worldToPx(z.centre[0], z.centre[1], level)
-    const tiny = z.area_m2 < (level === 'X' ? 140 : 60)
-    const count = v?.people != null ? `${v.people}` : null
+    const label = zoneLabel(z, lang)
+    const count = v?.people != null ? `${v.people} pers.` : null
     const wait = v?.waitMin != null ? `${Math.round(v.waitMin)} min` : null
-    const name = tiny ? '' : shortName(z, lang)
-    const bw = fs * (0.62 * z.code.length + 0.9)
-    labels.push(<g key={z.id} className={`t2-label ${state ? `s-${state}` : 's-none'}`} transform={`translate(${fmt(lx)} ${fmt(ly)})`} pointerEvents="none">
-      <rect x={-bw / 2} y={-fs * 0.95} width={bw} height={fs * 1.3} rx={fs * 0.3} className="badge" />
-      <text y={fs * 0.05} fontSize={fs} className="code">{z.code}</text>
-      {name && <text y={fs * 1.25} fontSize={fs * 0.62} className="name">{name}</text>}
-      {(count || wait) && <text y={fs * (name ? 2.15 : 1.4)} fontSize={fs * 0.7} className="nums">{[count && `${count} pers.`, wait].filter(Boolean).join(' · ')}</text>}
-    </g>)
+    const nums = [count, wait].filter(Boolean).join(' · ')
+    const sc = state ? `s-${state}` : 's-none'
+    if (label.kind === 'gate') {
+      const r = fs * (label.small ? 0.55 : 0.85)
+      labels.push(<g key={z.id} className={`t2-label gate ${sc}${label.small ? ' small' : ''}`} transform={`translate(${fmt(lx)} ${fmt(ly)})`} pointerEvents="none">
+        <rect x={-r * (label.number.length > 1 ? 1.35 : 1)} y={-r} width={r * (label.number.length > 1 ? 2.7 : 2)} height={r * 2} rx={r * 0.45} className="badge" />
+        <text y={r * 0.36} fontSize={r * 1.05} className="num">{label.number}</text>
+        {nums && <text y={r + fs * 0.75} fontSize={fs * 0.55} className="nums">{nums}</text>}
+      </g>)
+    } else if (label.text && z.kind !== 'wc') {
+      const small = z.area_m2 < (level === 'X' ? 140 : 60)
+      const size = fs * (small ? 0.5 : z.area_m2 > 450 ? 0.78 : 0.64)
+      labels.push(<g key={z.id} className={`t2-label text ${sc}`} transform={`translate(${fmt(lx)} ${fmt(ly)})`} pointerEvents="none">
+        <text y={size * 0.35} fontSize={size} className="name">{label.text}</text>
+        {nums && <text y={size * 0.35 + fs * 0.62} fontSize={fs * 0.5} className="nums">{nums}</text>}
+      </g>)
+    }
   }
 
   const routeD = route && route.length > 1 ? `M${route.map(p => `${fmt(p[0])},${fmt(p[1])}`).join('L')}` : null
@@ -236,8 +255,15 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     {interior && <g className="t2-shell" aria-hidden="true">
       {here.map(z => <path key={z.id} d={z.polygons_px.map(ringPath).join('')} fillRule="evenodd" strokeWidth={0.9 * m} />)}
     </g>}
-    {interior && <g className="t2-tiles" aria-hidden="true">
-      {here.map(z => <path key={z.id} d={z.polygons_px.map(ringPath).join('')} fillRule="evenodd" fill={`url(#t2-tiles-${m})`} />)}
+    {level === 'U' && <g className="t2-ghost" aria-hidden="true">
+      {/* Outline first, then fill on top: only the outer edge of the ground floor shows. */}
+      {zones.filter(z => z.level === 'G').map(z => <path key={`o${z.id}`} className="out" d={z.polygons_px.map(ringPath).join('')} fillRule="evenodd" />)}
+      {zones.filter(z => z.level === 'G').map(z => <path key={z.id} className="in" d={z.polygons_px.map(ringPath).join('')} fillRule="evenodd" />)}
+    </g>}
+    {level === 'X' && <g className="t2-building" aria-hidden="true">
+      {terminalFootprint.map((d, i) => <path key={`o${i}`} className="out" d={d} />)}
+      {terminalFootprint.map((d, i) => <path key={i} className="in" d={d} />)}
+      <text x={footLabel[0]} y={footLabel[1]} fontSize={fs * 0.9}>Terminal T2</text>
     </g>}
     <g className="t2-zones">{zoneEls}</g>
     <g className="t2-points" aria-hidden="true">
@@ -249,7 +275,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       {end && <circle cx={end[0]} cy={end[1]} r={1.1 * m} className="end" />}
     </g>}
     <g className="t2-dots" aria-hidden="true">
-      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(Math.max(0.35 * m, 2.2))} /> })}
+      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(Math.max(0.6 * m, 2.6))} /> })}
     </g>
     <g className="t2-labels">{labels}</g>
     <g className="t2-pins">

@@ -1,131 +1,155 @@
-/* Detailed T2 map. Dark plan look so the Unity render underneath reads as a floor plan. */
+/*
+ * T2 map in the app's own look: flat, light, like an indoor map (Apple Maps / Mappedin style).
+ * White floor, grey walls, pastel areas by type, crowd state as a stronger tint on top.
+ */
 .t2map {
-  --t2-ground: #1b1f27; --t2-wall: #0b0d12; --t2-floor: rgba(226, 232, 240, .16);
-  --t2-ink: rgba(241, 245, 249, .78); --t2-ink-soft: rgba(241, 245, 249, .38); --t2-ink-faint: rgba(241, 245, 249, .16);
-  --t2-normal: rgba(34, 197, 94, .26); --t2-normal-line: #22c55e;
-  --t2-near: rgba(245, 158, 11, .36); --t2-near-line: #f59e0b;
-  --t2-full: rgba(239, 68, 68, .44); --t2-full-line: #ef4444;
-  --t2-none: rgba(148, 163, 184, .10); --t2-none-line: rgba(203, 213, 225, .55);
-  --t2-accent: #60a5fa;
+  --t2-ground: #eef0f3; --t2-floor: #ffffff; --t2-wall: #b8bec8; --t2-wall-in: #e3e6eb;
+  --t2-ink: #1f2937; --t2-halo: #ffffff;
+  --t2-normal: #d9f2e1; --t2-normal-line: #3f9d63;
+  --t2-near: #fde9b8; --t2-near-line: #d48806;
+  --t2-full: #fdd3d3; --t2-full-line: #d64545;
+  --t2-accent: #2563eb;
   display: block; width: 100%; height: auto; background: var(--t2-ground);
   font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; user-select: none;
 }
+.t2map.exterior { --t2-ground: #e9eee6; }
 .t2-ground { fill: var(--t2-ground); }
-.t2-base { opacity: .62; }
-.t2-shell path { fill: none; stroke: var(--t2-wall); stroke-linejoin: round; }
-.t2-tiles path { opacity: .5; }
-.p-tile { fill: none; stroke: rgba(255, 255, 255, .07); stroke-width: 1; }
-.p-step { stroke: var(--t2-ink-soft); stroke-width: 1.4; }
-.p-seat { fill: rgba(148, 163, 184, .55); stroke: rgba(15, 23, 42, .6); stroke-width: .8; }
-.p-stall { fill: none; stroke: rgba(241, 245, 249, .42); stroke-width: 1; }
-.p-hatch { stroke: rgba(255, 255, 255, .06); stroke-width: 3; }
+.t2-base { opacity: .35; mix-blend-mode: multiply; filter: grayscale(1); }
 
-/* Zones */
-.t2-zone .fill { fill: var(--t2-none); transition: fill .25s; }
-.t2-zone .edge { fill: none; stroke: var(--t2-none-line); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-.t2-zone.s-normal .fill { fill: var(--t2-normal); } .t2-zone.s-normal .edge { stroke: var(--t2-normal-line); }
+/* Building shell and context */
+.t2-shell path { fill: var(--t2-floor); stroke: var(--t2-wall); stroke-linejoin: round; filter: drop-shadow(0 6px 10px rgba(15, 23, 42, .10)); }
+.t2-ghost .out { fill: none; stroke: #e1e4e8; stroke-width: 4; stroke-linejoin: round; }
+.t2-ghost .in { fill: #e9ecef; stroke: #e9ecef; stroke-width: 2; }
+.t2-building .out { fill: none; stroke: #aeb5bf; stroke-width: 5; stroke-linejoin: round; }
+.t2-building .in { fill: #ffffff; stroke: #ffffff; stroke-width: 1.5; }
+.t2-building text { fill: #9aa1ac; font-weight: 700; text-anchor: middle; letter-spacing: .04em; }
+
+/* Zones: pastel by type when no data */
+.t2-zone .fill { fill: transparent; transition: fill .25s; }
+.t2-zone .edge { fill: none; stroke: var(--t2-wall-in); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.k-gate .fill { fill: #eaf1fd; }
+.k-queue .fill { fill: #f7f3ec; }
+.k-service .fill { fill: #f1edfb; }
+.k-shops .fill { fill: #fcebf3; }
+.k-wc .fill { fill: #e6f4f3; }
+.k-stairs .fill { fill: #efeafc; }
+.k-reclaim .fill { fill: #fbf6e2; }
+.k-waiting .fill { fill: #eef1fb; }
+.exterior .k-kerb .fill, .exterior .k-circulation .fill, .exterior .k-queue .fill { fill: #d7dbe1; }
+.exterior .k-parking .fill { fill: #dde1e6; }
+.exterior .k-waiting .fill { fill: #e4e7ec; }
+.k-assembly .fill { fill: #d6f3df; } .k-assembly .edge { stroke: #3f9d63; stroke-dasharray: 8 6; }
+
+/* Crowd state wins over type */
+.t2-zone.s-normal .fill { fill: var(--t2-normal); } .t2-zone.s-normal .edge { stroke: var(--t2-normal-line); stroke-width: 2.5; }
 .t2-zone.s-near .fill { fill: var(--t2-near); } .t2-zone.s-near .edge { stroke: var(--t2-near-line); stroke-width: 3; }
 .t2-zone.s-full .fill { fill: var(--t2-full); } .t2-zone.s-full .edge { stroke: var(--t2-full-line); stroke-width: 3.5; }
-.t2-zone.s-full .fill { animation: t2-pulse 1.6s ease-in-out infinite; }
-@keyframes t2-pulse { 50% { fill: rgba(239, 68, 68, .62); } }
-.t2-zone.approx .edge { stroke-dasharray: 9 6; }
+.t2-zone.s-full .fill { animation: t2-pulse 1.8s ease-in-out infinite; }
+@keyframes t2-pulse { 50% { fill: #fbb4b4; } }
+.t2-zone.approx .edge { stroke-dasharray: 7 6; }
 .t2-zone.click { cursor: pointer; }
-.t2-zone.click:hover .fill { filter: brightness(1.5); }
+.t2-zone.click:hover .fill { filter: brightness(.96); }
 .t2-zone.click:focus { outline: none; }
-.t2-zone.click:focus-visible .edge, .t2-zone.sel .edge { stroke: #fff; stroke-width: 5; stroke-dasharray: none; }
-.t2-zone.lit .edge { stroke: var(--t2-accent); stroke-width: 5; stroke-dasharray: none; }
-.t2-zone.lit .fill { fill: rgba(96, 165, 250, .28); }
-.t2-zone.closed .cross { fill: rgba(15, 23, 42, .55); stroke: none; }
-.t2-zone.closed .edge { stroke: #94a3b8; stroke-dasharray: 3 6; }
-.k-assembly .fill { fill: rgba(16, 185, 129, .16); }
-.k-assembly .edge { stroke: #10b981; }
+.t2-zone.click:focus-visible .edge, .t2-zone.sel .edge { stroke: var(--t2-accent); stroke-width: 4; stroke-dasharray: none; }
+.t2-zone.lit .edge { stroke: var(--t2-accent); stroke-width: 4; stroke-dasharray: none; }
+.t2-zone.lit .fill { fill: #dbe8fe; }
+.t2-zone.closed .cross { fill: rgba(100, 116, 139, .28); stroke: none; }
+.t2-zone.closed .edge { stroke: #64748b; stroke-dasharray: 3 6; }
 
-/* Furniture */
+/* Furniture: quiet greys so names and states stay readable */
 .detail { pointer-events: none; }
-.d-belt { stroke: rgba(250, 204, 21, .75); stroke-width: 2; stroke-linecap: round; }
-.d-post { fill: rgba(250, 250, 250, .85); }
-.d-counter { fill: #cbd5e1; stroke: #0f172a; stroke-width: 1.5; }
-.d-belt-box { fill: #334155; stroke: #0f172a; stroke-width: 1; }
-.d-desk-no { fill: #0f172a; font-weight: 700; text-anchor: middle; }
-.d-wallband { fill: rgba(15, 23, 42, .55); }
-.d-table { fill: rgba(203, 213, 225, .7); stroke: rgba(15, 23, 42, .7); stroke-width: 1; }
-.d-chair { fill: rgba(148, 163, 184, .7); }
-.d-xray { fill: #475569; stroke: #0f172a; stroke-width: 1.5; }
-.d-arch { fill: none; stroke: #e2e8f0; stroke-width: 4; stroke-linecap: round; }
-.d-carousel { fill: #1e293b; stroke: #0f172a; stroke-width: 3; }
-.d-carousel-in { fill: rgba(203, 213, 225, .55); stroke: rgba(250, 204, 21, .5); stroke-width: 2; stroke-dasharray: 6 5; }
-.d-trolley { fill: none; stroke: var(--t2-ink-soft); stroke-width: 1.5; }
-.d-gate-door { stroke: #38bdf8; stroke-width: 6; stroke-linecap: round; }
-.d-watermark { fill: rgba(255, 255, 255, .08); font-weight: 800; text-anchor: middle; }
-.d-rail { stroke: var(--t2-ink); stroke-width: 2; }
-.d-escalator { fill: rgba(15, 23, 42, .65); stroke: var(--t2-ink-soft); stroke-width: 1.5; }
-.d-arrow { fill: none; stroke: #f8fafc; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.d-shelf { fill: rgba(167, 139, 250, .45); stroke: rgba(15, 23, 42, .6); stroke-width: 1; }
-.d-partition { stroke: var(--t2-ink-soft); stroke-width: 1.5; }
-.d-shelter { fill: rgba(148, 163, 184, .45); stroke: var(--t2-ink-soft); stroke-width: 1.5; }
-.d-vehicle { fill: rgba(203, 213, 225, .55); stroke: rgba(15, 23, 42, .8); stroke-width: 1; }
-.d-taxi { fill: rgba(250, 204, 21, .75); stroke: rgba(15, 23, 42, .8); stroke-width: 1; }
-.d-kerb { stroke: #e2e8f0; stroke-width: 3; }
-.d-lane { stroke: rgba(241, 245, 249, .55); stroke-width: 2; stroke-dasharray: 14 12; }
-.d-assembly { fill: rgba(16, 185, 129, .22); stroke: #10b981; stroke-width: 3; }
-.d-assembly-a { fill: none; stroke: #ecfdf5; stroke-linecap: round; stroke-linejoin: round; }
+.d-belt { stroke: #c9ced6; stroke-width: 1.6; stroke-linecap: round; }
+.d-post { fill: #aab1bb; }
+.d-counter { fill: #dfe3e8; stroke: #9aa2ad; stroke-width: 1.2; }
+.d-belt-box { fill: #c3c9d1; stroke: none; }
+.d-desk-no { fill: #4b5563; font-weight: 700; text-anchor: middle; }
+.d-wallband { fill: #eef0f3; }
+.d-table { fill: #e5e8ec; stroke: #a8afb9; stroke-width: 1; }
+.d-chair { fill: #c5cbd3; }
+.d-xray { fill: #b9c0c9; stroke: #8b939e; stroke-width: 1.2; }
+.d-arch { fill: none; stroke: #8b939e; stroke-width: 3; stroke-linecap: round; }
+.d-carousel { fill: #c3c9d1; stroke: #9aa2ad; stroke-width: 2; }
+.d-carousel-in { fill: #ffffff; stroke: #d7dbe1; stroke-width: 1.5; }
+.d-trolley { fill: none; stroke: #c3c9d1; stroke-width: 1.2; }
+.d-gate-door { stroke: var(--t2-accent); stroke-width: 5; stroke-linecap: round; opacity: .7; }
+.d-watermark { display: none; }
+.d-rail { stroke: #a8afb9; stroke-width: 1.6; }
+.d-escalator { fill: #d7dbe1; stroke: #a8afb9; stroke-width: 1.2; }
+.d-arrow { fill: none; stroke: #7c8592; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.d-shelf { fill: #f1d6e3; stroke: #d5a9be; stroke-width: 1; }
+.d-partition { stroke: #b6d5d2; stroke-width: 1.4; }
+.d-shelter { fill: #d1d6dd; stroke: #a8afb9; stroke-width: 1.2; }
+.d-vehicle { fill: #ffffff; stroke: #a8afb9; stroke-width: 1; }
+.d-taxi { fill: #fde68a; stroke: #c9a227; stroke-width: 1; }
+.d-kerb { stroke: #ffffff; stroke-width: 3; }
+.d-lane { stroke: #ffffff; stroke-width: 2; stroke-dasharray: 12 10; }
+.d-assembly { fill: rgba(63, 157, 99, .12); stroke: #3f9d63; stroke-width: 2.5; }
+.d-assembly-a { fill: none; stroke: #3f9d63; stroke-linecap: round; stroke-linejoin: round; }
+.p-tile { fill: none; stroke: none; }
+.p-step { stroke: #c9ced6; stroke-width: 1.2; }
+.p-seat { fill: #d3d8de; stroke: #ffffff; stroke-width: .8; }
+.p-stall { fill: none; stroke: #ffffff; stroke-width: 1.4; }
+.p-hatch { stroke: transparent; }
 
-/* Point icons */
+/* Point icons: white discs with a coloured glyph, like indoor map POIs */
 .t2-points text { text-anchor: middle; font-weight: 700; }
-.i-door rect { fill: #f8fafc; stroke: #0f172a; stroke-width: 1.5; }
-.i-door path { fill: none; stroke: #0f172a; stroke-width: 2; stroke-linecap: round; }
-.i-exit rect { fill: #16a34a; stroke: #052e16; stroke-width: 1.5; }
-.i-exit path { fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.i-vert circle { fill: #a855f7; stroke: #1e1b4b; stroke-width: 1.5; }
-.i-vert path { fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.i-vert path.fill { fill: #fff; stroke: none; }
-.i-info circle { fill: #2563eb; stroke: #0b1220; stroke-width: 1.5; } .i-info text { fill: #fff; font-family: Georgia, serif; }
-.i-tag rect { fill: #f1f5f9; stroke: #0f172a; stroke-width: 1.2; } .i-tag text { fill: #0f172a; }
-.i-pill circle { fill: #f8fafc; } .i-pill text { fill: var(--t2-ink); text-anchor: start; font-weight: 600; paint-order: stroke; stroke: rgba(11, 13, 18, .85); stroke-width: 3px; }
-.i-kiosk rect { fill: #38bdf8; stroke: #0c4a6e; stroke-width: 1.2; }
-.i-fids rect { fill: #0f172a; stroke: #38bdf8; stroke-width: 1; }
-.i-booth rect { fill: #475569; stroke: #e2e8f0; stroke-width: 1.2; }
-.i-gate circle { fill: #0d9488; stroke: #f0fdfa; stroke-width: 2; } .i-gate text { fill: #fff; }
-.i-cam circle { fill: #facc15; } .i-cam .cone { fill: rgba(250, 204, 21, .14); stroke: rgba(250, 204, 21, .5); stroke-width: 1; }
+.t2-points g { filter: drop-shadow(0 1px 1.5px rgba(15, 23, 42, .22)); }
+.i-door rect { fill: #ffffff; stroke: #9aa2ad; stroke-width: 1.2; }
+.i-door path { fill: none; stroke: #4b5563; stroke-width: 1.8; stroke-linecap: round; }
+.i-exit rect { fill: #16a34a; stroke: #ffffff; stroke-width: 1.5; }
+.i-exit path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.i-vert circle { fill: #ffffff; stroke: #8b5cf6; stroke-width: 1.6; }
+.i-vert path { fill: none; stroke: #7c3aed; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.i-vert path.fill { fill: #7c3aed; stroke: none; }
+.i-info circle { fill: #2563eb; stroke: #ffffff; stroke-width: 1.5; } .i-info text { fill: #fff; font-family: Georgia, serif; }
+.i-tag rect { fill: #ffffff; stroke: #9aa2ad; stroke-width: 1; } .i-tag text { fill: #374151; }
+.i-pill circle { fill: #db2777; stroke: #fff; stroke-width: 1; }
+.i-pill text { fill: #6b7280; text-anchor: start; font-weight: 600; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.i-kiosk rect { fill: #ffffff; stroke: #60a5fa; stroke-width: 1.2; }
+.i-booth rect { fill: #e5e7eb; stroke: #9aa2ad; stroke-width: 1; }
+.i-cam circle { fill: #f59e0b; } .i-cam .cone { fill: rgba(245, 158, 11, .12); stroke: rgba(245, 158, 11, .45); stroke-width: 1; }
 
 /* Labels */
-.t2-labels text { text-anchor: middle; paint-order: stroke; stroke: rgba(11, 13, 18, .9); stroke-linejoin: round; }
-.t2-label .badge { fill: rgba(11, 13, 18, .88); stroke: var(--t2-none-line); stroke-width: 1.5; }
-.t2-label.s-normal .badge { stroke: var(--t2-normal-line); }
-.t2-label.s-near .badge { stroke: var(--t2-near-line); fill: #78350f; }
-.t2-label.s-full .badge { stroke: var(--t2-full-line); fill: #7f1d1d; }
-.t2-label .code { fill: #fff; font-weight: 800; stroke-width: 0; }
-.t2-label .name { fill: #f1f5f9; font-weight: 600; stroke-width: 4px; }
-.t2-label .nums { fill: #fde68a; font-weight: 700; stroke-width: 4px; }
+.t2-labels text { text-anchor: middle; paint-order: stroke; stroke: var(--t2-halo); stroke-linejoin: round; }
+.t2-label .name { fill: var(--t2-ink); font-weight: 650; stroke-width: 4px; letter-spacing: .01em; }
+.t2-label .nums { fill: #374151; font-weight: 600; stroke-width: 3.5px; }
+.t2-label.s-near .nums { fill: #92400e; } .t2-label.s-full .nums { fill: #991b1b; }
+.t2-label.gate .badge { fill: var(--t2-accent); stroke: #ffffff; stroke-width: 2; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .25)); }
+.t2-label.gate.small .badge { fill: #64748b; }
+.t2-label.gate.s-near .badge { fill: var(--t2-near-line); } .t2-label.gate.s-full .badge { fill: var(--t2-full-line); }
+.t2-label.gate .num { fill: #ffffff; font-weight: 800; stroke-width: 0; }
 
-/* Route, dots, chrome */
-.t2-route .halo { fill: none; stroke: rgba(96, 165, 250, .3); stroke-linecap: round; stroke-linejoin: round; }
-.t2-route .line { fill: none; stroke: #60a5fa; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2 14; animation: t2-march 1s linear infinite; }
+/* Route, dots, pins, chrome */
+.t2-route .halo { fill: none; stroke: rgba(37, 99, 235, .18); stroke-linecap: round; stroke-linejoin: round; }
+.t2-route .line { fill: none; stroke: var(--t2-accent); stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2 14; animation: t2-march 1s linear infinite; }
 @keyframes t2-march { to { stroke-dashoffset: -16; } }
-.t2-route .end { fill: #60a5fa; stroke: #fff; stroke-width: 3; }
-.t2-dots circle { fill: #fbbf24; stroke: rgba(11, 13, 18, .8); stroke-width: 1; }
-.t2-north path { fill: #f8fafc; } .t2-north text { fill: #f8fafc; text-anchor: middle; font-weight: 700; }
-.t2-scale path { stroke: #f8fafc; stroke-width: 3; fill: none; } .t2-scale text { fill: #f8fafc; font-weight: 600; }
+.t2-route .end { fill: var(--t2-accent); stroke: #fff; stroke-width: 3; }
+.t2-dots circle { fill: #2563eb; fill-opacity: .75; stroke: #ffffff; stroke-width: .8; }
+.t2-pin path { fill: #dc2626; stroke: #fff; stroke-width: 2; } .t2-pin circle { fill: #fff; }
+.t2-pin { animation: t2-drop .4s ease-out; } @keyframes t2-drop { from { opacity: 0; } }
+.t2-north path { fill: #4b5563; } .t2-north text { fill: #4b5563; text-anchor: middle; font-weight: 700; }
+.t2-scale path { stroke: #6b7280; stroke-width: 2.5; fill: none; } .t2-scale text { fill: #6b7280; font-weight: 600; }
+.t2-dots, .t2-route, .t2-shell, .t2-ghost, .t2-building, .t2-base { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .t2-zone.s-full .fill, .t2-route .line { animation: none; } }
+
+/* Zoom controls and legend, app style */
 .t2-wrap { position: relative; }
 .t2map.zoomed { cursor: grab; touch-action: none; }
 .t2map.zoomed:active { cursor: grabbing; }
-.t2-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
-.t2-zoom button { width: 32px; height: 32px; padding: 0; border-radius: 8px; border: 1px solid rgba(148, 163, 184, .4); background: rgba(15, 23, 42, .85); color: #f8fafc; font: 600 16px/1 system-ui; cursor: pointer; }
-.t2-zoom button:disabled { opacity: .35; cursor: default; }
-.t2-zoom button:hover:not(:disabled) { background: #1e293b; }
+.t2-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(15, 23, 42, .18); }
+.t2-zoom button { width: 32px; height: 32px; padding: 0; border: 0; border-bottom: 1px solid #e5e7eb; background: #ffffff; color: #111827; font: 600 16px/1 system-ui; cursor: pointer; border-radius: 0; }
+.t2-zoom button:last-child { border-bottom: 0; }
+.t2-zoom button:disabled { color: #c4c9d0; cursor: default; }
+.t2-zoom button:hover:not(:disabled) { background: #f3f4f6; }
 .t2-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; color: inherit; }
 .t2-legend li { display: flex; align-items: center; gap: 6px; }
-.t2-legend .sw { width: 14px; height: 14px; border-radius: 4px; border: 2px solid var(--t2-none-line, #cbd5e1); background: rgba(148, 163, 184, .15); }
-.t2-legend .sw.s-normal { border-color: #22c55e; background: rgba(34, 197, 94, .3); }
-.t2-legend .sw.s-near { border-color: #f59e0b; background: rgba(245, 158, 11, .4); }
-.t2-legend .sw.s-full { border-color: #ef4444; background: rgba(239, 68, 68, .45); }
+.t2-legend .sw { width: 14px; height: 14px; border-radius: 4px; border: 2px solid #c7ccd4; background: #ffffff; }
+.t2-legend .sw.s-normal { border-color: #3f9d63; background: #d9f2e1; }
+.t2-legend .sw.s-near { border-color: #d48806; background: #fde9b8; }
+.t2-legend .sw.s-full { border-color: #d64545; background: #fdd3d3; }
 .t2-legend .sw.approx { border-style: dashed; background: transparent; }
 .t2-legend .ic { width: 12px; height: 12px; border-radius: 3px; }
-.t2-legend .ic.i-door { background: #f8fafc; border: 1px solid #0f172a; }
+.t2-legend .ic.i-door { background: #fff; border: 1px solid #9aa2ad; }
 .t2-legend .ic.i-exit { background: #16a34a; }
-.t2-legend .ic.i-vert { background: #a855f7; border-radius: 50%; }
+.t2-legend .ic.i-vert { background: #fff; border: 2px solid #8b5cf6; border-radius: 50%; }
 .t2-legend .ic.i-info { background: #2563eb; border-radius: 50%; }
-.t2-pin path { fill: #ef4444; stroke: #fff; stroke-width: 2; } .t2-pin circle { fill: #fff; }
-.t2-pin { animation: t2-drop .4s ease-out; } @keyframes t2-drop { from { opacity: 0; } }
-.t2-dots, .t2-route, .t2-shell, .t2-tiles, .t2-base { pointer-events: none; }
