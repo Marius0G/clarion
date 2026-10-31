@@ -181,6 +181,19 @@ Lanțul: camere → oameni detectați → poziții pe podea → număr și flux 
 
 **A11. Antrenarea ML.** Unity rulează accelerat zeci de ferestre de vârf, de câte ~3 ore, cu seed-uri diferite: orar, grad de ocupare, linii, întârzieri și evacuări aleatorii, cu deciziile din reguli (`-lifeRules`) ca să meargă repede. Intrările modelelor vin din detectorul simulat, la scară, și din YOLO real pe o parte din rulări; etichetele, din adevărul din Unity. Seed-urile ținute deoparte dau cifrele de acuratețe din D19. În producție, modelele se recalibrează pe date reale, de exemplu ora la care se scanează boarding pass-ul la securitate.
 
+### D20. Starea zonei: Normal, Ocupat, Plin, fiecare cu un înțeles
+Eticheta rămâne, dar vine dintr-o regulă, nu dintr-un procent din capacitate. Ținta de așteptare (A7): securitate 10 min, check-in și bag drop 15 min.
+- **Cozi (check-in, bag drop, securitate):**
+  - **Normal:** așteptarea acum ≤ țintă și prognoza pe următoarele 60 min ≤ țintă.
+  - **Ocupat:** așteptarea acum > țintă, sau prognoza depășește ținta în următoarele 60 min.
+  - **Plin:** așteptarea acum ≥ 2 × țintă.
+- **Zone fără coadă (porți, sosiri, holuri):** după densitate (`density`, oameni/m²): Normal < 1, Ocupat 1–2, Plin > 2.
+- **Necunoscut:** nicio cameră nu vede zona.
+Sub etichetă, un singur rând cu cifre și acțiunea: „22 min · țintă 10 · Deschide 2 linii”, sau „6 min → 18 min la 14:30 · Deschide 1 linie până la 14:05” (din `forecast` și `advice`). Butonul din rând face acțiunea propusă; restul deciziilor sunt în panoul zonei (click pe zonă): +1/−1 linie, Mută, Închide/Deschide, Evacuează.
+
+### D21. Boarding pass demo în Google Wallet
+Pe `/join`, „Boarding pass demo” emite un boarding pass Clarion în Google Wallet (tipul de zbor, cu codul de bare BCBP real pentru zborul demo și link-ul de WhatsApp din D4). Scannerul de pe `/join` citește același cod. Dacă tipul de zbor nu e disponibil pe contul de Wallet, plan B: o pagină care desenează codul BCBP pe ecran, iar cardul generic din Wallet rămâne.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
