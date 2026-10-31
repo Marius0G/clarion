@@ -1,6 +1,6 @@
 # Clarion
 
-Clarion coordonează informarea când Aeroportul Craiova oprește zborurile. Dispecerul confirmă suspendarea și aprobă mesaje pentru pasageri, rude, taxiuri și personal. La revenire poate deschide accesul în valuri.
+Clarion coordonează informarea când Aeroportul Craiova oprește zborurile. Dispecerul confirmă suspendarea și aprobă mesaje pentru pasageri, rude, taxiuri și personal. La revenire poate deschide accesul în 3 valuri: întâi personalul, urgențele și transportul, apoi cei deja în zonă, apoi restul.
 
 Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Ținta este notificarea în primul minut de la confirmare. Citirea și reacția oamenilor se măsoară separat. Detecția rămâne internă. Pistă închisă nu înseamnă terminal închis. Statusul zborului aparține companiei aeriene.
 
@@ -125,6 +125,6 @@ Regula produsului este expirarea la 48 h după zbor. Backend-ul elimină abonăr
 
 ## Documente și termene
 
-[Spec de echipă](docs/SPEC.md), [spec de produs](app/PM/SPEC.md), [contract](app/PM/CONTRACT.md), [plan](docs/clarion-sinteza-si-plan-control-tower.pdf), [pitch](docs/pitch/pitch-final.md), [pre-pitch](docs/pitch/pre-pitch-90s.md), [slide-uri](docs/pitch/slides.md), [Q&A](docs/pitch/qa.md), [checklist](docs/pitch/checklist-sambata.md), [runbook](docs/pitch/runbook.md).
+[Spec de echipă](docs/SPEC.md), [spec de produs](app/PM/SPEC.md), [contract](app/PM/CONTRACT.md), [plan](docs/clarion-sinteza-si-plan-control-tower.pdf), [pitch](docs/pitch/pitch-final.md), [pre-pitch](docs/pitch/pre-pitch-90s.md), [slide-uri](docs/pitch/slides.md), [video](docs/pitch/video.md), [măsurători T2](docs/masuratori/README.md), [Q&A](docs/pitch/qa.md), [checklist](docs/pitch/checklist-sambata.md), [runbook](docs/pitch/runbook.md).
 
 Sâmbătă **31 octombrie, 22:00**: repo public înregistrat în UserHub. Duminică **1 noiembrie, 15:00**: cod final; **15:00-17:00** pre-pitch; **17:00-19:00** pitch. Ore locale, Craiova. Pilotul gratuit de 30 de zile este o propunere. Nu avem aici dovada unui client sau parteneriat semnat.
