@@ -1,3 +1,4 @@
+import { airportInfo } from './airport-info.js';
 import { factPatch } from './context.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
@@ -146,6 +147,7 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
     return { flight: f };
   };
   return {
+    async airportInfo(input: { topic?: string; query?: string }) { return airportInfo(input, profile().lang); },
     async rememberFact(input: { key?: unknown; value?: unknown }) {
       const patch = factPatch(input?.key, input?.value);
       if (!patch) return { error: 'invalid_fact' };

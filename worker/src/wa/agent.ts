@@ -1,3 +1,4 @@
+import { isAirportQuestion } from './airport-info.js';
 import { HISTORY_CAP, HISTORY_KEEP, SUMMARY_MAX, plainSummary, type PassengerContext } from './context.js';
 import { urgentText, staffIncident, urgentBubbles, urgentResult } from './urgency.js';
 import { say, type Lang } from './texts.js';
@@ -29,6 +30,8 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 - Excepție: evacuarea rămâne directă, cu zona, ruta și ieșirea.
 - Nu răspunzi la nimic din afara aeroportului și a zborului lui: spui scurt că te ocupi doar de asta.
 - Nu calculezi drumul până la aeroport (trafic, taxi, autobuz): el își planifică drumul, tu descrii situația și prognoza din terminal.
+- Pentru întrebări despre aeroport folosești airportInfo. Nu inventezi niciodată informații despre aeroport. Dacă found=false spui că nu știi. Citezi sursa; official=false este neconfirmat. Datele ghidului sunt istorice, nu starea live. Reformulezi regulile descriptiv, fără ordine.
+- Folosești rememberFact pentru nevoi și detalii pe care pasagerul le declară explicit, fără presupuneri.
 - Nu inventezi ore, porți, cozi sau statusuri. Orice cifră vine dintr-un tool din tura asta.
 - Nu promiți nimic în numele companiei aeriene (rebooking, compensații, bagaje pierdute): îl trimiți la companie.
 - Nu ceri și nu păstrezi date personale în plus (CNP, card, pașaport).
@@ -162,6 +165,7 @@ export function contextBlock(profile: Profile, clock: Clock, memory?: PassengerC
 const NONE = { type: 'object', properties: {} };
 const FLIGHT = { flight: { type: 'string', description: 'număr de zbor, ex. "W6 3751"; implicit zborul lui' } };
 export const TOOL_SPECS = [
+  { name: 'airportInfo', description: 'Sourced static airport information: parking, security rules, baggage, check-in, assistance, services, contacts, transport. Supply topic and/or a precise query. found=false means say you do not know. Label official=false as unconfirmed, cite source, translate to passenger language, describe rules without orders. Use live tools for current flight, gate, queues and routes.', input_schema: { type: 'object', properties: { topic: { type: 'string' }, query: { type: 'string' } } } },
   { name: 'rememberFact', description: 'Remember an explicit passenger self-report or correction only. Never infer needs. Keys: hasCheckedBag, groupSize, kids, reducedMobility, needs (short other need), lang (ro/en). Flight uses myFlight; gates and waits use live tools.', input_schema: { type: 'object', properties: { key: { type: 'string', enum: ['hasCheckedBag', 'groupSize', 'kids', 'reducedMobility', 'needs', 'lang'] }, value: { type: ['string', 'boolean', 'number'] } }, required: ['key', 'value'] } },
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
   {
@@ -341,6 +345,11 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     const r = await call('reportIssue', { text });
     if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? say(lang, 'fallback')];
     return [say(lang, 'staffReport', r.id, r.kind, r.place, r.note)];
+  }
+  if (isAirportQuestion(text)) {
+    const r = await call('airportInfo', { query: text });
+    if (!r.found) return [r.note];
+    return r.facts.slice(0, 3).map((f: any) => `${f.official ? '' : `${f.label}: `}${f.text}\n${f.source}`);
   }
   const noFlight = (r: any) => r?.error === 'no_flight' || r?.error === 'unknown_flight';
   const askFlight = say(lang, 'askFlight');

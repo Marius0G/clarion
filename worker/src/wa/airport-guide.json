@@ -6,418 +6,503 @@
       {
         "fact": "Noul terminal de pasageri a fost inaugurat pe 18 decembrie 2025.",
         "source": "https://adevarul.ro/economie/aeroportul-craiova-are-un-nou-terminal-ce-flux-de-2495416.html",
-        "official": false
+        "official": false,
+        "en": "The new passenger terminal opened on 18 December 2025."
       },
       {
         "fact": "Din 20 decembrie 2025 toate zborurile operează exclusiv din noul terminal.",
         "source": "https://www.gandul.ro/actualitate/p-noul-terminal-al-aeroportului-international-craiova-devine-complet-operational-20748805",
-        "official": false
+        "official": false,
+        "en": "Since 20 December 2025, all flights operate exclusively from the new terminal."
       },
       {
         "fact": "Noul terminal are peste 32.000 mp, 3 niveluri și o capacitate de circa 2 milioane de pasageri pe an.",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "The new terminal has over 32,000 square metres, 3 levels and capacity for around 2 million passengers a year."
       },
       {
         "fact": "Noul terminal poartă numele George Gogu Constantinescu.",
         "source": "https://www.gandul.ro/actualitate/p-noul-terminal-al-aeroportului-international-craiova-devine-complet-operational-20748805",
-        "official": false
+        "official": false,
+        "en": "The new terminal is named George Gogu Constantinescu."
       },
       {
         "fact": "Terminalul are ghișee de check-in și chioșcuri de self check-in, plus fluxuri separate Schengen și non-Schengen.",
         "source": "https://stiricraiova.ro/2025/12/17/noul-terminal-de-pasageri-al-aeroportului-international-craiova-va-fi-inaugurat-pe-18-decembrie/",
-        "official": false
+        "official": false,
+        "en": "The terminal has check-in desks and self check-in kiosks, with separate Schengen and non-Schengen flows."
       },
       {
         "fact": "Platforma de îmbarcare are 8 poziții de parcare pentru aeronave plus 2 alternative (standurile 1-8, 7A, 8A).",
         "source": "https://aeroportcraiova.ro/date-tehnice/",
-        "official": true
+        "official": true,
+        "en": "The apron has 8 aircraft parking positions plus 2 alternatives (stands 1–8, 7A, 8A)."
       },
       {
         "fact": "Pista are 2500 m x 45 m.",
         "source": "https://aeroportcraiova.ro/date-tehnice/",
-        "official": true
+        "official": true,
+        "en": "The runway measures 2500 m by 45 m."
       },
       {
         "fact": "Plata parcării se face și la punctul de plată din zona Terminalului Sosiri (P1).",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Parking payment is also available at the payment point in the Arrivals Terminal area (P1)."
       }
     ],
     "hours": [
       {
         "fact": "Aeroportul are program de operare H24, 7 zile din 7.",
         "source": "https://aeroportcraiova.ro/date-tehnice/",
-        "official": true
+        "official": true,
+        "en": "The airport operates H24, seven days a week. This is the operating schedule, not confirmed public terminal access hours.",
+        "description": "Aeroportul are program de operare H24, 7 zile din 7. Acesta nu confirmă orele de acces public în terminal."
       },
       {
         "fact": "Parcarea cu plată funcționează luni-duminică, 00:00-23:59.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Paid parking operates Monday–Sunday, 00:00–23:59."
       }
     ],
     "airlines_destinations": [
       {
         "fact": "Wizz Air are bază la Craiova din 2014.",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "Wizz Air has had a base in Craiova since 2014."
       },
       {
         "fact": "Zborurile regulate sunt operate de Wizz Air și Animawings (broșura aeroportului, iunie 2026).",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "Scheduled flights are operated by Wizz Air and Animawings (airport brochure, June 2026)."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Londra Luton (LTN), ora 06:00, marți, joi, sâmbătă.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: London Luton (LTN), 06:00, Tuesday, Thursday, Saturday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Birmingham (BHX), ora 16:40, miercuri și duminică.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Birmingham (BHX), 16:40, Wednesday and Sunday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Milano Bergamo (BGY), 14:30 luni și vineri, 20:40 marți, 20:55 joi și sâmbătă, 19:00 miercuri și duminică.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Milan Bergamo (BGY), 14:30 Monday and Friday, 20:40 Tuesday, 20:55 Thursday and Saturday, 19:00 Wednesday and Sunday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Bruxelles Charleroi (CRL), ora 14:10, marți, joi, sâmbătă.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Brussels Charleroi (CRL), 14:10, Tuesday, Thursday, Saturday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Dortmund (DTM), 06:00 miercuri și 05:30 duminică.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Dortmund (DTM), 06:00 Wednesday and 05:30 Sunday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Madrid (MAD), ora 05:30, luni și vineri.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Madrid (MAD), 05:30, Monday and Friday."
       },
       {
         "fact": "Iarna 2026, Wizz Air: Bari (BRI), 12:15 miercuri și 11:55 duminică.",
         "source": "https://aeroportcraiova.ro/zboruri-regulate/",
-        "official": true
+        "official": true,
+        "en": "Winter 2026, Wizz Air: Bari (BRI), 12:15 Wednesday and 11:55 Sunday."
       },
       {
         "fact": "Wizz Air a mutat una din cele două aeronave de la Craiova; Paris, Barcelona, Roma, Bologna și Veneția se opresc între 21 și 24 octombrie 2026.",
         "source": "https://www.wall-street.ro/articol/turism/cinci-rute-wizz-air-dispar-din-craiova-din-octombrie",
-        "official": false
+        "official": false,
+        "en": "Wizz Air moved one of its two aircraft from Craiova; Paris, Barcelona, Rome, Bologna and Venice routes stop between 21 and 24 October 2026."
       },
       {
         "fact": "Animawings a lansat Craiova-Istanbul pe 3 octombrie 2025, cu 2 zboruri pe săptămână.",
         "source": "https://www.animawings.com/en/news/animawings-launches-flights-to-istanbul-from-five-airports-in-romania",
-        "official": true
+        "official": true,
+        "en": "Animawings launched Craiova–Istanbul on 3 October 2025, with 2 flights a week."
       }
     ],
     "wizz_checkin": [
       {
         "fact": "Check-in online Wizz Air: de la 30 de zile înainte dacă ai cumpărat loc, altfel de la 24 de ore; se închide cu 3 ore înainte de plecare.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-and-baggage-drop-off-times",
-        "official": true
+        "official": true,
+        "en": "Wizz Air online check-in opens 30 days before departure with a purchased seat, otherwise 24 hours before; it closes 3 hours before departure."
       },
       {
         "fact": "Check-in-ul și predarea bagajelor la aeroport se deschid cu 2 ore înainte și se închid cu 40 de minute înainte de plecare (Craiova nu e pe lista de excepții).",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-and-baggage-drop-off-times",
-        "official": true
+        "official": true,
+        "en": "Airport check-in and bag drop open 2 hours before departure and close 40 minutes before departure (Craiova is not on the exceptions list)."
       },
       {
         "fact": "Check-in-ul online este gratuit; check-in-ul la aeroport se plătește.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-process",
-        "official": true
+        "official": true,
+        "en": "Online check-in is free; airport check-in is paid."
       },
       {
         "fact": "Pasagerii cu documente de călătorie non-UE trebuie să meargă la ghișeu pentru verificarea documentelor.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-process",
-        "official": true
+        "official": true,
+        "en": "For passengers with non-EU travel documents, document verification takes place at the desk.",
+        "description": "Verificarea documentelor de călătorie non-UE are loc la ghișeu."
       },
       {
         "fact": "Trebuie să fii la poarta de îmbarcare cel târziu cu 30 de minute înainte de plecare.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/boarding/boarding-process",
-        "official": true
+        "official": true,
+        "en": "Wizz Air states a boarding-gate deadline of 30 minutes before departure.",
+        "description": "Wizz Air indică un termen de prezentare la poartă de 30 de minute înainte de plecare."
       },
       {
         "fact": "Auto Check-in Wizz Air face check-in automat cu 50 de ore înainte de plecare (serviciu contra cost).",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-process",
-        "official": true
+        "official": true,
+        "en": "Wizz Air Auto Check-in checks passengers in 50 hours before departure (paid service)."
       },
       {
         "fact": "Copiii sub 14 ani trebuie însoțiți și înregistrați online de un pasager peste 16 ani.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-process",
-        "official": true
+        "official": true,
+        "en": "Children under 14 are accompanied and checked in online by a passenger over 16."
       },
       {
         "fact": "Pentru zborurile din Londra Luton, Wizz Air închide check-in-ul cu 60 de minute înainte; la Dortmund cu 50, la Bruxelles Charleroi cu 60.",
         "source": "https://www.wizzair.com/en-gb/help-centre/check-in-and-boarding/check-in/check-in-and-baggage-drop-off-times",
-        "official": true
+        "official": true,
+        "en": "For flights from London Luton, Wizz Air closes check-in 60 minutes before departure; at Dortmund 50 minutes, at Brussels Charleroi 60 minutes."
       }
     ],
     "security": [
       {
         "fact": "La Craiova nu poți trece prin control cu recipiente de lichide mai mari de 100 ml.",
         "source": "https://aeroportcraiova.ro/controlul-de-securitate/",
-        "official": true
+        "official": true,
+        "en": "At Craiova, liquid containers over 100 ml are not permitted through security."
       },
       {
         "fact": "Laptopurile și echipamentele electronice trebuie scoase din bagajul de mână la control.",
         "source": "https://aeroportcraiova.ro/controlul-de-securitate/",
-        "official": true
+        "official": true,
+        "en": "Security screening includes removing laptops and electronic equipment from hand luggage.",
+        "description": "Controlul de securitate include scoaterea laptopurilor și echipamentelor electronice din bagajul de mână."
       },
       {
         "fact": "Lichidele de max. 100 ml/recipient merg într-o singură pungă transparentă resigilabilă de max. 1 L (20x20 cm sau 15x25 cm), una per pasager.",
         "source": "https://aeroportcraiova.ro/restrictii-lichide/",
-        "official": true
+        "official": true,
+        "en": "Liquids in containers of up to 100 ml fit in one transparent resealable bag of up to 1 L (20x20 cm or 15x25 cm), one bag per passenger."
       },
       {
         "fact": "Medicamentele lichide și hrana lichidă pentru bebeluși sunt permise; scrisoarea medicală e utilă, nu obligatorie.",
         "source": "https://aeroportcraiova.ro/restrictii-lichide/",
-        "official": true
+        "official": true,
+        "en": "Liquid medicines and liquid baby food are permitted; a medical letter is useful but not mandatory."
       },
       {
         "fact": "Lichidele cumpărate în zona securizată, sigilate în pungă STEB cu bonul, sunt permise în cabină.",
         "source": "https://aeroportcraiova.ro/restrictii-lichide/",
-        "official": true
+        "official": true,
+        "en": "Liquids purchased airside, sealed in a STEB bag with the receipt, are permitted in the cabin."
       },
       {
         "fact": "În cabină sunt interzise cuțitele și foarfecele cu lama peste 6 cm, armele, uneltele și explozivii (Reg. UE 2015/1998).",
         "source": "https://aeroportcraiova.ro/articole-interzise/",
-        "official": true
+        "official": true,
+        "en": "Knives and scissors with blades over 6 cm, weapons, tools and explosives are prohibited in the cabin (EU Regulation 2015/1998)."
       },
       {
         "fact": "Nu înfoliați bagajul de mână și nu împachetați cadourile; pot fi deschise la control.",
         "source": "https://aeroportcraiova.ro/controlul-de-securitate/",
-        "official": true
+        "official": true,
+        "en": "Hand luggage and wrapped gifts may be opened during screening.",
+        "description": "Bagajul de mână și cadourile împachetate pot fi deschise la control."
       },
       {
         "fact": "Controlul manual se face de un operator de același sex și poate fi cerut într-o cabină privată.",
         "source": "https://aeroportcraiova.ro/controlul-de-securitate/",
-        "official": true
+        "official": true,
+        "en": "Manual screening is carried out by an operator of the same sex and can be requested in a private cabin."
       }
     ],
     "baggage": [
       {
         "fact": "Wizz Air: un bagaj mic gratuit de max. 40x30x20 cm și 10 kg, care încape sub scaun.",
         "source": "https://www.wizzair.com/en-gb/help-centre/booking-information-and-services/baggage/baggage-allowance",
-        "official": true
+        "official": true,
+        "en": "Wizz Air: one free small bag up to 40x30x20 cm and 10 kg, fitting under the seat."
       },
       {
         "fact": "Wizz Air: trolerul de cabină 55x40x23 cm, max. 10 kg, doar cu WIZZ Priority.",
         "source": "https://www.wizzair.com/en-gb/help-centre/booking-information-and-services/baggage/baggage-allowance",
-        "official": true
+        "official": true,
+        "en": "Wizz Air: a 55x40x23 cm cabin trolley, up to 10 kg, is included only with WIZZ Priority."
       },
       {
         "fact": "Wizz Air: bagajele de cală se cumpără la 10, 20, 26 sau 32 kg, max. 6 bagaje per pasager.",
         "source": "https://www.wizzair.com/en-gb/help-centre/booking-information-and-services/baggage/baggage-allowance",
-        "official": true
+        "official": true,
+        "en": "Wizz Air: checked bags are sold at 10, 20, 26 or 32 kg, up to 6 bags per passenger."
       },
       {
         "fact": "Bagajul cumpărat la aeroport are taxe suplimentare față de cel adăugat online.",
         "source": "https://www.wizzair.com/en-gb/help-centre/booking-information-and-services/baggage/baggage-allowance",
-        "official": true
+        "official": true,
+        "en": "Baggage purchased at the airport has additional fees compared with baggage added online."
       }
     ],
     "special_assistance": [
       {
         "fact": "Wizz Air cere anunțarea asistenței speciale cu cel puțin 48 de ore înainte de plecare.",
         "source": "https://www.wizzair.com/en-gb/information-and-services/travel-information/special-assistance",
-        "official": true
+        "official": true,
+        "en": "Wizz Air requests notice of special assistance at least 48 hours before departure."
       },
       {
         "fact": "Asistența se cere online în contul WIZZ, pe chat, la call center sau pe specialassistance@wizzair.com.",
         "source": "https://www.wizzair.com/en-gb/information-and-services/travel-information/special-assistance",
-        "official": true
+        "official": true,
+        "en": "Assistance requests are available in the WIZZ account, through chat, the call centre or specialassistance@wizzair.com."
       },
       {
         "fact": "Pasagerii cu asistență trebuie să fie la check-in cu 2 ore înainte de plecare.",
         "source": "https://www.wizzair.com/en-gb/information-and-services/travel-information/special-assistance",
-        "official": true
+        "official": true,
+        "en": "The check-in time stated for passengers using assistance is 2 hours before departure.",
+        "description": "Ora de check-in indicată pentru pasagerii cu asistență este cu 2 ore înainte de plecare."
       },
       {
         "fact": "Aeroportul recomandă solicitarea asistenței PMR încă de la rezervarea biletului.",
         "source": "https://aeroportcraiova.ro/pasageri-cu-mobilitate-redusa/",
-        "official": true
+        "official": true,
+        "en": "The airport recommends requesting reduced-mobility assistance when booking the ticket."
       },
       {
         "fact": "Site-ul aeroportului are un formular de plângere PMR (Reg. CE 1107/2006).",
         "source": "https://aeroportcraiova.ro/pasageri-cu-mobilitate-redusa/",
-        "official": true
+        "official": true,
+        "en": "The airport website has a reduced-mobility assistance complaint form (EC Regulation 1107/2006)."
       }
     ],
     "parking": [
       {
         "fact": "Parcări: P1 în fața Terminalului Nou, P2 între Terminalul Nou și cel Vechi, P3 la Terminalul Vechi.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Parking: P1 in front of the New Terminal, P2 between the New and Old Terminals, P3 at the Old Terminal."
       },
       {
         "fact": "Primele 10 minute de parcare sunt gratuite.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "The first 10 minutes of parking are free."
       },
       {
         "fact": "Parcare 0-5 ore: 3 lei/oră (TVA inclus).",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Parking for 0–5 hours: 3 lei per hour (VAT included)."
       },
       {
         "fact": "Parcare 5-8 ore: 20 lei; 8-12 ore: 30 lei; 12-24 ore: 40 lei.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Parking for 5–8 hours: 20 lei; 8–12 hours: 30 lei; 12–24 hours: 40 lei."
       },
       {
         "fact": "Parcare 7 zile: 150 lei; o lună: 350 lei.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Parking for 7 days: 150 lei; one month: 350 lei."
       },
       {
         "fact": "Tichetul de parcare pierdut costă 100 lei.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "A lost parking ticket costs 100 lei."
       },
       {
         "fact": "Plata se face la automate sau la punctul de plată din zona Terminalului Sosiri (P1); după plată ai 10 minute să ieși.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Payment is available at machines or the payment point in the Arrivals Terminal area (P1); the exit window after payment is 10 minutes.",
+        "description": "Plata este disponibilă la automate sau la punctul din zona Terminalului Sosiri (P1); intervalul de ieșire după plată este de 10 minute."
       },
       {
         "fact": "Înălțimea maximă în parcare este 2,1 m, viteza maximă 10 km/h.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Maximum parking height is 2.1 m; maximum speed is 10 km/h."
       },
       {
         "fact": "Posesorii cardului-legitimație pentru persoane cu handicap parchează gratuit pe locurile marcate, după prezentarea cardului.",
         "source": "https://aeroportcraiova.ro/tarife-parcare/",
-        "official": true
+        "official": true,
+        "en": "Disability card holders park free in marked spaces after presenting the card."
       }
     ],
     "ground_transport": [
       {
         "fact": "Linia 8 RAT Craiova circulă non-stop, din oră în oră, Gară-Centru-Aeroport și retur (din 3 noiembrie 2025).",
         "source": "https://aeroportcraiova.ro/transport-in-comun/",
-        "official": true
+        "official": true,
+        "en": "RAT Craiova bus 8 operates around the clock, hourly, Railway Station–Centre–Airport and back (since 3 November 2025)."
       },
       {
         "fact": "Linia 9 RAT Craiova: Craiovița Nouă-Teatrul Național-Institut-Aeroport-Metro, prima plecare 05:30 (lucrătoare) / 06:20 (nelucrătoare), ultima 20:50.",
         "source": "https://aeroportcraiova.ro/transport-in-comun/",
-        "official": true
+        "official": true,
+        "en": "RAT Craiova bus 9: Craiovita Noua–National Theatre–Institut–Airport–Metro, first departure 05:30 on working days / 06:20 on non-working days, last departure 20:50."
       },
       {
         "fact": "Stația de autobuz se numește AEROPORT, pe Calea București.",
         "source": "https://aeroportcraiova.ro/transport-in-comun/",
-        "official": true
+        "official": true,
+        "en": "The bus stop is named AEROPORT, on Calea Bucuresti."
       },
       {
         "fact": "Transfer privat Union Business & Travel: www.ubt.ro, +40 766 552 552.",
         "source": "https://aeroportcraiova.ro/transfer-aeroport/ubt/",
-        "official": true
+        "official": true,
+        "en": "Private transfer Union Business & Travel: www.ubt.ro, +40 766 552 552."
       },
       {
         "fact": "Rent-a-car în aeroport: Enterprise (0724 200 908), WLC (+40 762 135 800); alte firme: Sixt (021 9400), Autonom (+40 758 258 611), Price Carz (+40 751 934 934).",
         "source": "https://aeroportcraiova.ro/rent-a-car/",
-        "official": true
+        "official": true,
+        "en": "Airport car rental: Enterprise (0724 200 908), WLC (+40 762 135 800); other companies: Sixt (021 9400), Autonom (+40 758 258 611), Price Carz (+40 751 934 934)."
       }
     ],
     "contacts": [
       {
         "fact": "Email aeroport: office@aeroportcraiova.ro.",
         "source": "https://aeroportcraiova.ro/contact/",
-        "official": true
+        "official": true,
+        "en": "Airport email: office@aeroportcraiova.ro."
       },
       {
         "fact": "Secretariat: 0251 416 860; fax: 0251 411 112.",
         "source": "https://aeroportcraiova.ro/contact/",
-        "official": true
+        "official": true,
+        "en": "Secretariat: 0251 416 860; fax: 0251 411 112."
       },
       {
         "fact": "Securitate aeroportuară: 0754 022 508.",
         "source": "https://aeroportcraiova.ro/contact/",
-        "official": true
+        "official": true,
+        "en": "Airport security: 0754 022 508."
       },
       {
         "fact": "Poliția de Frontieră: 021 9590.",
         "source": "https://aeroportcraiova.ro/contact/",
-        "official": true
+        "official": true,
+        "en": "Border Police: 021 9590."
       },
       {
         "fact": "Call center Wizz Air: 0900 310 020 (1,19 EUR/min).",
         "source": "https://aeroportcraiova.ro/contact/",
-        "official": true
+        "official": true,
+        "en": "Wizz Air call centre: 0900 310 020 (1.19 EUR/min)."
       },
       {
         "fact": "Pentru bagaj întârziat sau pierdut se completează imediat un PIR (Property Irregularity Report) la serviciul specializat din aeroport.",
         "source": "https://aeroportcraiova.ro/dreptul-pasagerilor/",
-        "official": true
+        "official": true,
+        "en": "For delayed or lost baggage, a PIR (Property Irregularity Report) is filed immediately with the specialist airport service."
       }
     ],
     "services": [
       {
         "fact": "Noul terminal are cafenele, magazine duty-free, food court, rent-a-car și birouri de turism.",
         "source": "https://stiricraiova.ro/2025/12/17/noul-terminal-de-pasageri-al-aeroportului-international-craiova-va-fi-inaugurat-pe-18-decembrie/",
-        "official": false
+        "official": false,
+        "en": "The new terminal has cafes, duty-free shops, a food court, car rental and tourism offices."
       }
     ],
     "accessibility": [
       {
         "fact": "Terminalul are lift cu panou de comandă la înălțime adecvată pentru acces la etaj în scaun cu rotile.",
         "source": "https://aeroportcraiova.ro/pasageri-cu-mobilitate-redusa/",
-        "official": true
+        "official": true,
+        "en": "The terminal has a lift with controls at a suitable height for wheelchair access to the upper floor."
       },
       {
         "fact": "Există toalete amenajate pentru persoanele în scaun cu rotile.",
         "source": "https://aeroportcraiova.ro/pasageri-cu-mobilitate-redusa/",
-        "official": true
+        "official": true,
+        "en": "Wheelchair-accessible toilets are available."
       },
       {
         "fact": "Parcările publice au locuri rezervate persoanelor cu mobilitate redusă.",
         "source": "https://aeroportcraiova.ro/pasageri-cu-mobilitate-redusa/",
-        "official": true
+        "official": true,
+        "en": "Public car parks have reserved spaces for passengers with reduced mobility."
       },
       {
         "fact": "Pasagerii cu stimulator cardiac pot cere control manual în loc de poarta detectoare de metale.",
         "source": "https://aeroportcraiova.ro/informatii-utile/",
-        "official": true
+        "official": true,
+        "en": "Passengers with pacemakers can request manual screening instead of the metal detector gate."
       }
     ],
     "location": [
       {
         "fact": "Adresa: Calea București nr. 325, Craiova.",
         "source": "https://aeroportcraiova.ro/rent-a-car/",
-        "official": true
+        "official": true,
+        "en": "Address: Calea Bucuresti 325, Craiova."
       },
       {
         "fact": "Aeroportul este la 7 km de centrul Craiovei, pe direcția Craiova-București.",
         "source": "https://aeroportcraiova.ro/vama/",
-        "official": true
+        "official": true,
+        "en": "The airport is 7 km from central Craiova, towards Bucharest."
       },
       {
         "fact": "Coordonate (ARP): 44°19'05\" N, 23°53'19\" E.",
         "source": "https://aeroportcraiova.ro/date-tehnice/",
-        "official": true
+        "official": true,
+        "en": "Coordinates (ARP): 44°19'05\" N, 23°53'19\" E."
       },
       {
         "fact": "Coduri: IATA CRA, ICAO LRCV.",
         "source": "https://aeroportcraiova.ro/date-tehnice/",
-        "official": true
+        "official": true,
+        "en": "Codes: IATA CRA, ICAO LRCV."
       }
     ],
     "passenger_numbers": [
       {
         "fact": "În 2025 aeroportul a avut 578.701 pasageri, față de circa 425.000 în 2024.",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "In 2025 the airport handled 578,701 passengers, compared with around 425,000 in 2024."
       },
       {
         "fact": "Aeroportul estimează peste 800.000 de pasageri în 2026.",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "The airport forecasts over 800,000 passengers in 2026."
       },
       {
         "fact": "În 2025 au fost 7.604 mișcări de aeronave.",
         "source": "https://aeroportcraiova.ro/prezentare-aeroport/",
-        "official": true
+        "official": true,
+        "en": "There were 7,604 aircraft movements in 2025."
       }
     ]
   },
