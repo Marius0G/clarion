@@ -8,7 +8,7 @@ test('app shell, map canvas and layer toggles render', async ({ page }) => {
   await page.getByText('Meniu', { exact: true }).click()
   await page.getByRole('button', { name: 'Exerciții', exact: true }).click()
 
-  await expect(page.getByText('LRCV', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Clarion · LRCV', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('dialog').getByTestId('status-pill')).toBeVisible()
   await expect(page.getByTestId('scenario-rail')).toBeVisible()
   await expect(page.getByRole('tab')).toHaveCount(4)

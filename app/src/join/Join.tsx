@@ -3,9 +3,8 @@ import QRCode from "qrcode";
 import Scanner from "./Scanner";
 import type { BoardingFlight } from "./bcbp";
 import "./join.css";
-const backend = (
-  import.meta.env.VITE_BACKEND_HTTP || "http://localhost:8787"
-).replace(/\/$/, "");
+import { backend as backendConfig } from "../backend/config";
+const backend = backendConfig.http;
 const publicBase = import.meta.env.VITE_PUBLIC_URL || window.location.origin;
 const roles = [
   ["passenger_home", "Pasager", "Passenger", "✈"],
@@ -21,7 +20,9 @@ interface Flight {
 }
 type Channel = "telegram" | "sms" | "whatsapp";
 function publicJoin() {
-  return new URL("/join", publicBase);
+  const url = new URL("/join", publicBase);
+  if (backendConfig.override) url.searchParams.set("backend", backendConfig.override);
+  return url;
 }
 function Qr({ en }: { en: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -61,8 +62,8 @@ function Qr({ en }: { en: boolean }) {
       <a href={target}>{target}</a>
       <p>
         {en
-          ? "Airport alerts, straight to Telegram."
-          : "Alerte de la aeroport, direct pe Telegram."}
+          ? "Airport alerts, straight to WhatsApp."
+          : "Alerte de la aeroport, direct pe WhatsApp."}
       </p>
     </section>
   );
@@ -75,14 +76,9 @@ export default function Join() {
   );
   const [flight, setFlight] = useState(query.get("flight") || "");
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [channel, setChannel] = useState<Channel>("telegram");
-  const [enabled, setEnabled] = useState<Record<Channel, boolean>>({
-    telegram: true,
-    sms: false,
-    whatsapp: false,
-  });
+  const [channel, setChannel] = useState<Channel>("whatsapp");
+  const enabled = { whatsapp: true, telegram: true, sms: false };
   const [consent, setConsent] = useState(false);
-  const [destination, setDestination] = useState("");
   const [scan, setScan] = useState<BoardingFlight | null>(null);
   const [loading, setLoading] = useState(false);
   const [stateError, setStateError] = useState(false);
@@ -99,7 +95,7 @@ export default function Join() {
   }, []);
   useEffect(() => {
     document.documentElement.lang = en ? "en" : "ro";
-    document.title = en ? "Join · CONTROL TOWER" : "Abonare · CONTROL TOWER";
+    document.title = "Clarion";
   }, [en]);
   useEffect(() => {
     const controller = new AbortController();
@@ -111,24 +107,23 @@ export default function Join() {
           setFlights(
             state.flights.filter((f: Flight) => typeof f.flight === "string"),
           );
-        // Explicit opt-in capability shape; absent flags always leave paid adapters off.
-        const flags = state.channels;
-        if (flags && typeof flags === "object" && !Array.isArray(flags))
-          setEnabled({
-            telegram: true,
-            sms: flags.sms === true || flags.sms?.enabled === true,
-            whatsapp:
-              flags.whatsapp === true || flags.whatsapp?.enabled === true,
-          });
       })
       .catch(() => {
         if (!controller.signal.aborted) setStateError(true);
       });
     return () => controller.abort();
   }, []);
+  const whatsappRole: Record<string, string> = { passenger_home: "PASAGER", relative_arrivals: "ASTEPTARE", taxi: "TAXI", staff: "PERSONAL", isu_smurd: "ISU_SMURD" };
+  const whatsappLink = `https://wa.me/40700000000?text=${encodeURIComponent(`CLARION ${whatsappRole[role] || role.toUpperCase()}${flight.trim() ? ` ${flight.trim().toUpperCase().replace(/\s+/g, "")}` : ""}`)}`;
   async function subscribe(event: React.FormEvent) {
     event.preventDefault();
     if (!role || !consent || submitting.current || !enabled[channel]) return;
+    if (channel === "whatsapp") {
+      const tab = window.open(whatsappLink, "_blank", "noopener,noreferrer");
+      if (tab) tab.opener = null;
+      setSuccess({});
+      return;
+    }
     submitting.current = true;
     setLoading(true);
     setError("");
@@ -144,7 +139,6 @@ export default function Join() {
           role,
           ...(flight.trim() ? { flight: flight.trim().toUpperCase() } : {}),
           ...(scan?.date ? { date: scan.date } : {}),
-          ...(channel !== "telegram" ? { destination } : {}),
           channel,
           lang: en ? "en" : "ro",
           consent: true,
@@ -186,7 +180,7 @@ export default function Join() {
     try {
       if (navigator.share) {
         try {
-          await navigator.share({ title: "CONTROL TOWER", text });
+          await navigator.share({ title: "Clarion", text });
           return;
         } catch (cause) {
           if (cause instanceof Error && cause.name === "AbortError") return;
@@ -207,8 +201,8 @@ export default function Join() {
       <div className="join-page">
         <header className="join-header">
           <a href="/join" className="join-brand">
-            <span aria-hidden="true">⌁</span> CONTROL TOWER
-            <small>Craiova · CRA</small>
+            <span aria-hidden="true">⌁</span> Clarion
+            <small>Craiova · LRCV</small>
           </a>
           <button
             type="button"
@@ -226,7 +220,7 @@ export default function Join() {
             <h1>
               {channel === "telegram"
                 ? t("Mai ai un pas.", "One more step.")
-                : t("Cerere înregistrată.", "Request registered.")}
+                : t("Trimite mesajul în WhatsApp.", "Send the message in WhatsApp.")}
             </h1>
             <p>
               {channel === "telegram"
@@ -235,10 +229,11 @@ export default function Join() {
                     "In Telegram, tap Start to activate alerts.",
                   )
                 : t(
-                    "Preferințele tale au fost înregistrate.",
-                    "Your preferences have been saved.",
+                    "Apasă Trimite în WhatsApp pentru a activa alertele. Ne scrii primul, apoi putem răspunde în următoarele 24 h.",
+                    "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.",
                   )}
             </p>
+            {channel === "whatsapp" && <a className="join-primary" href={whatsappLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>}
             {success.telegramLink ? (
               <a className="join-primary" href={success.telegramLink}>
                 {t("Deschide Telegram", "Open Telegram")}
@@ -377,7 +372,7 @@ export default function Join() {
                   )}
                 </legend>
                 <div>
-                  {(["telegram", "sms", "whatsapp"] as const).map((value) => (
+                  {(["whatsapp", "telegram", "sms"] as const).map((value) => (
                     <button
                       type="button"
                       key={value}
@@ -400,26 +395,6 @@ export default function Join() {
                   ))}
                 </div>
               </fieldset>
-              {channel !== "telegram" && (
-                <div className="join-flight">
-                  <label htmlFor="join-phone">
-                    {t(
-                      "Număr de telefon cu prefix",
-                      "Phone number with country code",
-                    )}
-                  </label>
-                  <input
-                    id="join-phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="+407xxxxxxxx"
-                    pattern="[+][1-9][0-9]{7,14}"
-                    required
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                  />
-                </div>
-              )}
               <label className="join-consent">
                 <input
                   type="checkbox"
@@ -459,7 +434,7 @@ export default function Join() {
                   ? t("Se conectează…", "Connecting…")
                   : channel === "telegram"
                     ? t("Continuă în Telegram", "Continue in Telegram")
-                    : t("Abonează-mă", "Subscribe")}
+                    : t("Continuă în WhatsApp", "Continue in WhatsApp")}
               </button>
               <p className="join-footer">
                 {t(

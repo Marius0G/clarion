@@ -35,9 +35,8 @@ test("jury role, consent, subscribe, Telegram and passenger share", async ({
     }),
   );
   await page.goto("/join?src=jury");
-  await expect(
-    page.getByRole("button", { name: "Continuă în Telegram" }),
-  ).toBeDisabled();
+  await page.getByRole("button", { name: "Telegram", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Continuă în Telegram" })).toBeDisabled();
   await page.getByRole("button", { name: "Pasager", exact: true }).click();
   await page.getByLabel("Număr zbor").fill("W6 3412");
   await expect(page.locator("#join-flights option")).toHaveAttribute(
@@ -45,12 +44,11 @@ test("jury role, consent, subscribe, Telegram and passenger share", async ({
     "W6 3412",
   );
   await expect(page.getByRole("button", { name: /SMS/ })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /WhatsApp/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Continuă în Telegram" }),
   ).toBeDisabled();
   await page.getByRole("checkbox").check();
-  await page.screenshot({ path: "PM/screens/w4-join.png" });
   const popup = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Continuă în Telegram" }).click();
   const telegram = await popup;
@@ -89,15 +87,14 @@ test("relative prefill, EN, consent reset and recoverable failure", async ({
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "SMS", exact: true }).click();
+  await page.getByRole("button", { name: "Telegram", exact: true }).click();
   await expect(page.getByRole("checkbox")).not.toBeChecked();
   await page.getByRole("button", { name: "Switch to English" }).click();
   await page.getByRole("checkbox").check();
-  await page.getByLabel("Phone number with country code").fill("+40722123456");
-  await page.getByRole("button", { name: "Subscribe", exact: true }).click();
+  await page.getByRole("button", { name: "Continue in Telegram", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Could not subscribe");
   await expect(
-    page.getByRole("button", { name: "Subscribe", exact: true }),
+    page.getByRole("button", { name: "Continue in Telegram", exact: true }),
   ).toBeEnabled();
 });
 test("QR and unsupported scanner", async ({ page }) => {
@@ -182,6 +179,7 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
     });
   await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
   await expect(page.getByLabel("Data zborului")).toBeVisible();
+  await page.getByRole("button", { name: "Telegram", exact: true }).click();
   await page.getByRole("checkbox").check();
   const request = page.waitForRequest("**/api/subscribe");
   await page.getByRole("button", { name: "Continuă în Telegram" }).click();
@@ -198,3 +196,31 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
   ]);
   expect(JSON.stringify(body)).not.toMatch(/PRIVATE|PASSENGER|SECRET7/);
 });
+
+test('WhatsApp first, consent required, W4/W6 codes and no premature subscription', async ({ page, context }) => {
+  await page.route('**/api/state', route => route.fulfill({ json: { flights: [{ flight: 'W4 3831', city: 'Bruxelles' }, { flight: 'W6 3412', city: 'Bergamo' }] } }))
+  let subscribed = false
+  await page.route('**/api/subscribe', route => { subscribed = true; return route.fulfill({ json: {} }) })
+  await context.route('https://wa.me/**', route => route.fulfill({ contentType: 'text/html', body: 'WhatsApp test' }))
+  for (const flight of ['W4 3831', 'W6 3412']) {
+    await page.goto('/join?src=jury')
+    await expect(page).toHaveTitle('Clarion')
+    await expect(page.locator('.join-channels button').first()).toHaveText('WhatsApp')
+    await expect(page.getByRole('button', { name: 'Continuă în WhatsApp' })).toBeDisabled()
+    await page.getByRole('button', { name: 'Pasager', exact: true }).click()
+    await page.getByLabel('Număr zbor').fill(flight)
+    expect(await page.locator('#join-flights option').evaluateAll(options => options.map(o => o.getAttribute('value')))).toEqual(['W4 3831', 'W6 3412'])
+    await page.getByRole('checkbox').check()
+    const popupPromise = page.waitForEvent('popup')
+    await page.getByRole('button', { name: 'Continuă în WhatsApp' }).click()
+    const popup = await popupPromise
+    await popup.waitForURL('https://wa.me/**')
+    const target = new URL(popup.url())
+    expect(target.pathname).toBe('/40700000000')
+    expect(target.searchParams.get('text')).toBe(`CLARION PASAGER ${flight.replace(/ /g, '')}`)
+    await popup.close()
+    await expect(page.getByRole('link', { name: 'Deschide WhatsApp' })).toHaveAttribute('href', target.href)
+    await expect(page.getByText('Trimite mesajul în WhatsApp.', { exact: true })).toBeVisible()
+    expect(subscribed).toBe(false)
+  }
+})
