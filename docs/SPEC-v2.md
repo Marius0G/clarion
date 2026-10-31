@@ -111,14 +111,23 @@ Agentul din Moni (D2) primește cinci tool-uri, toate citite din backend:
 
 Mesaje trimise automat: confirmarea după scanarea boarding pass-ului; „e timpul să pleci”, la ora de intrare minus timpul de drum pe care pasagerul îl setează o dată (implicit 40 min, opțional); schimbările de zbor; deciziile adminului care îl afectează (rută nouă, evacuare). Agentul răspunde doar despre aeroport și zborul lui.
 
+### D16. Dashboard-ul adminului: un singur ecran, foarte simplu
+Alb, cu puține accente, fără tab-uri. Pe ecran:
+- Harta terminalului cu oamenii (puncte din Unity), fiecare zonă colorată după aglomerare.
+- Pe fiecare zonă: câți oameni sunt, câți angajați lucrează acolo și timpul de așteptare.
+- Lângă zonă, decizia directă: „+1 angajat” / „−1”, plus „Evacuare” pe zonele selectate (D12).
+- Rapoartele angajaților apar ca pini pe hartă (D11).
+Fără previzualizarea efectului (`ops.preview`) și fără grafice în plus. Orice element nou trebuie să-și câștige locul.
+
 ## Pentru Marius: de completat de Claude-ul lui
 
 Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu formele exacte și exemple JSON reale exportate din Unity, apoi face push. Ce e scris mai sus e contractul minim, iar Marius îl poate extinde fără să-l rupă. Ce trebuie completat:
 
 1. **`terminal.json` (D7):** schema exactă și fișierul în `docs/contract/terminal.json`. Id-uri stabile pentru zone, noduri (intrări, ghișee pe companie, securitate, bag drop, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`. Coordonate în metri, văzut de sus, cu originea precizată.
-2. **`flow.report` (D8, D5b):** zonele pe companie (`check_in:<IATA>`, `bag_drop:<IATA>`), lista companiilor din orar și câmpul `forecast: [{ inMin, waitMin }]` cu orizonturile 30, 60, 90, 120. Cum e calculată prognoza, pe scurt.
+2. **`flow.report` (D8, D5b, D16):** câmpul `staff` (câți angajați lucrează acum în zonă), zonele pe companie (`check_in:<IATA>`, `bag_drop:<IATA>`), lista companiilor din orar și câmpul `forecast: [{ inMin, waitMin }]` cu orizonturile 30, 60, 90, 120. Cum e calculată prognoza, pe scurt.
 3. **`flight.update` (D14):** un exemplu complet cu orarul folosit în demo.
 4. **`ops.command` / `ops.ack` (D12):** ce efect are fiecare din cele patru comenzi în simulare. Pentru `staff`: câți pasageri/minut procesează un om, pe zonă. Pentru `redirect`: ce procent e mutat. Pentru `evacuate`: cum primesc agenții ruta din backend.
 5. **Agenții cu telefon (D9):** mesajul cu etapa (`public`, `airside`, `gate`) și nodul curent, legat de `agentId` și de telefonul din WhatsApp. Ritmul de trimitere.
 6. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` folosită în demo.
 7. **Rutele către Unity (D7):** forma mesajului prin care backend-ul îi trimite unui agent ruta (listă de noduri).
+8. **Pozițiile pentru hartă (D16):** punctele cu oamenii (x, y în metri, rol pasager sau angajat), cel mult o dată pe secundă. Un eșantion e suficient, dacă nu încap toți.
