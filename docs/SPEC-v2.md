@@ -94,8 +94,14 @@ Unity → backend: `ops.ack { id }` imediat, apoi efectul se vede în `flow.repo
 ### D13. Un singur ceas: ora simulării
 Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTime` din `sim.status`. Dashboard-ul, pagina web și WhatsApp afișează ora simulării, etichetată „ora simulării”. Toate zborurile, prognozele și orele trimise pasagerilor („fii la intrare la 14:20”, „poarta se închide la 15:05”) sunt în ora simulării. Ceasul real nu se folosește nicăieri în demo.
 
+### D14. Contract: orarul de zboruri din Unity
+Unity → backend: `flight.update { flights: [...] }`, trimis la conectare și apoi la fiecare schimbare. Orarul îl face Marius. Fiecare zbor are:
+`{ flight: "W6 3751", airline: "W6", destination, std, gate, checkInDesks: [], gateCloseAt, status, delayMin, pax }`
+- `status`: `scheduled` | `boarding` | `delayed` | `cancelled` | `departed`.
+- `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). Orele sunt în ora simulării (D13).
+- La `delayed` sau `cancelled`, backend-ul trimite automat mesaj pe WhatsApp pasagerilor acelui zbor (D10).
+
 ## De stabilit în continuare
-- Orarul de zboruri: forma mesajului din Unity (zbor, companie, poartă, ghișee, ora de închidere a porții, status, întârziere).
 - La ce folosește extensia de browser (D3).
 - Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
 - Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
@@ -103,8 +109,14 @@ Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTim
 ### D13. Un singur ceas: ora simulării
 Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTime` din `sim.status`. Dashboard-ul, pagina web și WhatsApp afișează ora simulării, etichetată „ora simulării”. Toate zborurile, prognozele și orele trimise pasagerilor („fii la intrare la 14:20”, „poarta se închide la 15:05”) sunt în ora simulării. Ceasul real nu se folosește nicăieri în demo.
 
+### D14. Contract: orarul de zboruri din Unity
+Unity → backend: `flight.update { flights: [...] }`, trimis la conectare și apoi la fiecare schimbare. Orarul îl face Marius. Fiecare zbor are:
+`{ flight: "W6 3751", airline: "W6", destination, std, gate, checkInDesks: [], gateCloseAt, status, delayMin, pax }`
+- `status`: `scheduled` | `boarding` | `delayed` | `cancelled` | `departed`.
+- `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). Orele sunt în ora simulării (D13).
+- La `delayed` sau `cancelled`, backend-ul trimite automat mesaj pe WhatsApp pasagerilor acelui zbor (D10).
+
 ## De stabilit în continuare
-- Orarul de zboruri: forma mesajului din Unity (zbor, companie, poartă, ghișee, ora de închidere a porții, status, întârziere).
 - La ce folosește extensia de browser (D3).
 - Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
 - Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
