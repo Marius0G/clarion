@@ -39,7 +39,7 @@ describe('mechanical WhatsApp lab checks', () => {
     expect(matchesLanguage('https://example.test/airport', 'ro')).toBe(true);
   });
   it('rejects malformed inputs and prototype script names', () => {
-    for (const input of [null, [], { script: '__proto__' }, { script: 'constructor' }, { texts: [] }, { texts: [2] }, { texts: [''] }, { texts: Array(21).fill('hi') }, { keep: 'yes' }, { script: 'gate', texts: ['hi'] }]) expect(() => validateInput(input)).toThrow();
+    for (const input of [null, [], { script: '__proto__' }, { script: 'constructor' }, { texts: [] }, { texts: [2] }, { texts: [''] }, { texts: Array(21).fill('hi') }, { keep: 'yes' }, { phone: '+40712345678', keep: true, texts: ['English'] }, { phone: 'lab-e2e-' + '-'.repeat(36), keep: true, texts: ['English'] }, { phone: 'lab-e2e-11111111-1111-4111-8111-111111111111', texts: ['English'] }, { script: 'gate', texts: ['hi'] }]) expect(() => validateInput(input)).toThrow();
   });
 });
 describe('isolated lab mechanism', () => {

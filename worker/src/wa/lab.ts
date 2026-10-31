@@ -1,7 +1,8 @@
-import { WhatsAppAgent, DEFAULT_STAFF_CODE, type WaStore } from './index.js';
+import { WhatsAppAgent, DEFAULT_STAFF_CODE, parseStart, type WaStore } from './index.js';
 import type { AirportView } from './tools.js';
 import { type Fetch, type WaEnv, isReaction } from './transport.js';
 import { type WaEvent } from './events.js';
+import { consumeJoin } from '../join.js';
 import { urgentText } from './urgency.js';
 
 interface Step { text: string; tool?: string; unknown?: boolean; evacuate?: boolean; urgent?: boolean }
@@ -67,26 +68,29 @@ class LabStore implements WaStore {
   async delete(key: string) { return this.data.delete(key); }
   async list<T>({ prefix }: { prefix: string }) { return new Map([...this.data].filter(([k]) => k.startsWith(prefix))) as Map<string, T>; }
 }
-export interface LabInput { script?: string; texts?: string[]; keep?: boolean }
+export const labPhone = (phone: unknown): phone is string => typeof phone === 'string' && /^lab-e2e-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(phone);
+export interface LabInput { script?: string; texts?: string[]; keep?: boolean; phone?: string }
 export function validateInput(value: unknown): asserts value is LabInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a JSON object');
   const v = value as LabInput;
   if (v.script !== undefined && (typeof v.script !== 'string' || !Object.hasOwn(SCRIPTS, v.script))) throw new Error('Unknown script');
   if (v.keep !== undefined && typeof v.keep !== 'boolean') throw new Error('keep must be boolean');
   if (v.texts !== undefined && (!Array.isArray(v.texts) || !v.texts.length || v.texts.length > 20 || v.texts.some(t => typeof t !== 'string' || !t.trim() || t.length > 2000))) throw new Error('texts must contain 1–20 non-empty strings, at most 2000 characters each');
+  if (v.phone !== undefined && (!labPhone(v.phone) || !v.keep || !v.texts)) throw new Error('phone requires lab-e2e-UUID, keep and texts');
   if (v.script !== undefined && v.texts !== undefined) throw new Error('Use script or texts');
 }
 export async function runLab(env: WaEnv, view: AirportView, input: LabInput, persistent: WaStore, fetcher: Fetch = (url, init) => fetch(url, init)) {
   validateInput(input);
   const results: Record<string, Awaited<ReturnType<typeof runScript>>> = {};
   for (const name of input.texts ? ['custom'] : input.script ? [input.script] : Object.keys(SCRIPTS)) {
-    results[name] = await runScript(env, view, input.texts?.map(text => ({ text })) ?? SCRIPTS[name]!, Boolean(input.keep), persistent, fetcher);
+    results[name] = await runScript(env, view, input.texts?.map(text => ({ text })) ?? SCRIPTS[name]!, Boolean(input.keep), persistent, fetcher, input.phone);
   }
   const failed = Object.keys(results).filter(n => results[n]!.violations.length);
   return { pass: !failed.length, failed, results };
 }
-async function runScript(env: WaEnv, view: AirportView, steps: Step[], keep: boolean, persistent: WaStore, fetcher: Fetch) {
-  const phone = `lab-${crypto.randomUUID()}`;
+async function runScript(env: WaEnv, view: AirportView, steps: Step[], keep: boolean, persistent: WaStore, fetcher: Fetch, selectedPhone?: string) {
+  const phone = selectedPhone ?? `lab-${crypto.randomUUID()}`;
+  if (selectedPhone && await persistent.get(`wa:profile:${phone}`)) throw new Error('Lab phone already exists; clean it up first');
   const store = new LabStore();
   let sends: any[] = [], events: WaEvent[] = [];
   // Force the transport into its live code path, but intercept ALL Graph requests before any network call.
@@ -111,9 +115,14 @@ async function runScript(env: WaEnv, view: AirportView, steps: Step[], keep: boo
       const text = step.text.replace('STAFF <code>', `STAFF ${env.STAFF_CODE || DEFAULT_STAFF_CODE}`);
       // Exercise a verified START with the same single-use join record as /api/join.
       let inbound = text;
-      if (/^START /.test(text)) {
+      const start = parseStart(text);
+      if (start?.token) {
+        const join = await consumeJoin(persistent, start.token, start.flight);
+        if (!join) throw new Error('START requires an active issued join token');
+        await store.put(`join:${start.token}`, join);
+      } else if (start) {
         const token = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-        await store.put(`join:${token}`, { flight: 'W6 3751', lang: (await agent.profile(phone))?.lang ?? 'ro', expiresAt: at + 60000 });
+        await store.put(`join:${token}`, { flight: start.flight, lang: (await agent.profile(phone))?.lang ?? 'ro', expiresAt: at + 60000 });
         inbound += ` ${token}`;
       }
       if (step.evacuate) await agent.messaging.evacuate(['security'], `lab-${crypto.randomUUID()}`);
@@ -124,6 +133,14 @@ async function runScript(env: WaEnv, view: AirportView, steps: Step[], keep: boo
         errors: events.filter(e => e.kind === 'agent-error').map(e => e.text ?? 'Agent error') });
     }
     const stored = { profile: await agent.profile(phone) };
+    if (selectedPhone) {
+      // Publish only this fake passenger, never the isolated reports or global messaging state.
+      for (const [key, value] of store.data) {
+        if (key.endsWith(`:${phone}`) || (key.startsWith('page:') && (value as { phone?: string }).phone === phone)) await persistent.put(key, value);
+      }
+      const subs = await persistent.get<string[]>('wa:subs') ?? [];
+      if (!subs.includes(phone) && stored.profile?.flight) await persistent.put('wa:subs', [...subs, phone]);
+    }
     if (keep) await persistent.put(`lab:kept:${phone}`, { at: new Date().toISOString(), state: Object.fromEntries(store.data) });
     return { phone, transcript, violations: check(transcript), stored, kept: keep };
   } finally {

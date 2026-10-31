@@ -140,6 +140,11 @@ export class WhatsAppClient {
   private get token() { return this.env.WHATSAPP_TOKEN ?? this.env.WA_TOKEN; }
 
   async graph(body: Record<string, unknown>): Promise<{ ok: boolean; dryRun?: boolean; status?: number; code?: unknown }> {
+    // Lab identities can never reach Graph, including automatic passenger fan-out.
+    if (typeof body.to === 'string' && body.to.startsWith('lab-') && this.token !== 'lab-capture') {
+      await this.observe?.({ kind: 'lab-out', phone: body.to, type: String(body.type), text: String((body.text as any)?.body ?? (body.interactive as any)?.body?.text ?? ''), ok: true });
+      return { ok: true };
+    }
     const result = await this.deliver(body);
     await this.observe?.({ kind: result.ok ? 'outbound' : 'send-failure', phone: body.to ? String(body.to) : undefined,
       type: String(body.type ?? body.status), ...result, ...(!result.ok && { explanation: metaExplanation(result.code) }) });

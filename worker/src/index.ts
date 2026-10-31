@@ -1,4 +1,4 @@
-import { runLab, validateInput } from './wa/lab.js';
+import { runLab, validateInput, labPhone } from './wa/lab.js';
 import { labPage } from './wa/labpage.js';
 import { WaEvents } from './wa/events.js';
 import { boardingFromSchedule } from './demo.js';
@@ -218,6 +218,23 @@ export class Tower extends DurableObject<Env> {
       if (request.method === 'GET' && path === '/lab') return new Response(labPage(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
       if (path.startsWith('/lab/')) {
         if (!this.env.DEMO_TOKEN || !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (request.method === 'GET' && path === '/lab/capabilities') return json({ e2e: 1, safeToMutate: !this.twins().length && !this.visions().length && !(await this.whatsapp.messaging.subscribers()).some(s => s.sub.channel !== 'whatsapp' || !labPhone(s.sub.phone)) && !this.engine.subscriptions.length });
+        if (request.method === 'POST' && path === '/lab/alert-ready') {
+          const { phone } = JSON.parse(await bodyText(request, 1024));
+          if (!labPhone(phone) || !await this.whatsapp.profile(phone)) return json({ error: 'Expected a kept lab passenger' }, 400);
+          // D22's 15-minute cooldown remains unchanged for real passengers.
+          await this.ctx.storage.delete(`msg:last:wa:${phone}`);
+          return json({ ok: true });
+        }
+        if (request.method === 'POST' && path === '/lab/cleanup') {
+          const { phone } = JSON.parse(await bodyText(request, 1024));
+          if (!labPhone(phone)) return json({ error: 'Expected lab-e2e-UUID' }, 400);
+          const profile = await this.whatsapp.profile(phone);
+          if (profile?.pageToken) await this.ctx.storage.delete(`page:${profile.pageToken}`);
+          await this.whatsapp.messaging.removePhone(phone);
+          for (const key of [`wa:profile:${phone}`, `wa:ctx:${phone}`, `wa:last:${phone}`, `lab:kept:${phone}`]) await this.ctx.storage.delete(key);
+          return json({ ok: true });
+        }
         if (request.method === 'GET' && path === '/lab/events') return json({ events: await this.waEvents.list() });
         if (request.method === 'POST' && path === '/lab/run') {
           if (Number(request.headers.get('content-length')) > 50000) return json({ error: 'Lab payload too large' }, 413);

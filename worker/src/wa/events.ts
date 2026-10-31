@@ -1,7 +1,7 @@
 import type { WaStore } from './index.js';
 
 export interface WaEvent {
-  at?: string; kind: 'inbound' | 'turn' | 'outbound' | 'send-failure' | 'agent-error';
+  at?: string; kind: 'inbound' | 'turn' | 'outbound' | 'send-failure' | 'agent-error' | 'lab-out';
   phone?: string; type?: string; text?: string; tools?: string[]; bubbles?: number; ms?: number;
   ok?: boolean; dryRun?: boolean; status?: number; code?: unknown; explanation?: string;
 }
@@ -23,7 +23,7 @@ export class WaEvents {
   record: Observe = event => {
     const next = this.chain.then(async () => {
       this.ring ??= await this.store.get<WaEvent[]>('lab:events') ?? [];
-      const row = { ...event, at: new Date().toISOString(), ...(event.phone && { phone: '•••' + event.phone.replace(/\D/g, '').slice(-3) }),
+      const row = { ...event, at: new Date().toISOString(), ...(event.phone && { phone: event.phone.startsWith('lab-') ? event.phone : '•••' + event.phone.replace(/\D/g, '').slice(-3) }),
         ...(event.text !== undefined && { text: safeText(event.text) }) };
       this.ring = [...this.ring, row].slice(-200);
       await this.store.put('lab:events', this.ring);

@@ -51,3 +51,41 @@ it('refuses lab APIs when DEMO_TOKEN is unset', async () => {
   try { expect((await empty.dispatchFetch('https://worker.example/lab/events', { headers: auth })).status).toBe(401); }
   finally { await empty.dispose(); }
 });
+it('keeps an issued-token passenger visible to the real page and ops fan-out, captures sends, then cleans up', async () => {
+  const phone = 'lab-e2e-11111111-1111-4111-8111-111111111111';
+  const api = (path: string, body?: unknown) => mf.dispatchFetch(`https://worker.example${path}`, { method: body === undefined ? 'GET' : 'POST', headers: auth, body: body === undefined ? undefined : JSON.stringify(body) });
+  const original: any = await api('/api/sim').then(r => r.json());
+  const graphBefore = graph.length;
+  const joined: any = await api('/api/join', { flight: 'W6 3751', lang: 'ro' }).then(r => r.json());
+  const report: any = await run({ phone, keep: true, texts: [new URL(joined.waLink).searchParams.get('text'), 'English', 'What is my gate?'] }).then(r => r.json());
+  expect(report.pass, JSON.stringify(report)).toBe(true);
+  expect(report.results.custom.stored.profile).toMatchObject({ verified: true, flight: 'W6 3751', lang: 'en' });
+  expect(graph).toHaveLength(graphBefore);
+  const pageToken = report.results.custom.stored.profile.pageToken;
+  const passenger = async (): Promise<any> => api(`/api/me?token=${pageToken}`).then(r => r.json());
+  expect(await passenger()).toMatchObject({ flight: { flight: 'W6 3751' }, lang: 'en', queues: expect.any(Array) });
+  // Issued joins are single-use, including when claimed through the isolated lab.
+  expect((await run({ texts: [new URL(joined.waLink).searchParams.get('text')] })).status).toBe(500);
+  const socket = (await mf.dispatchFetch('https://worker.example/ws?client=twin&token=operator', { headers: { Upgrade: 'websocket' } })).webSocket!;
+  socket.accept();
+  try {
+    const gate = (await passenger()).flight.gate;
+    expect((await api('/lab/alert-ready', { phone: '+40712345678' })).status).toBe(400);
+    expect((await api('/lab/alert-ready', { phone })).status).toBe(200);
+    expect((await api('/api/ops/command', { type: 'close', zone: gate })).status).toBe(202);
+    await expect.poll(async () => (await passenger()).alerts.some((a: any) => a.kind === 'admin')).toBe(true);
+    const rows: any = await api('/lab/events').then(r => r.json());
+    expect(rows.events).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'lab-out', phone, type: 'text', ok: true })]));
+    expect(graph).toHaveLength(graphBefore);
+    const alert = (await passenger()).alerts.find((a: any) => a.kind === 'admin');
+    expect(alert.text).toMatch(/closed/i);
+    expect(alert.text).not.toMatch(/\p{Extended_Pictographic}|\p{Regional_Indicator}/u);
+    expect((await api('/api/ops/command', { type: 'open', zone: gate })).status).toBe(202);
+    // Do not permit deleting arbitrary real passenger identities.
+    expect((await api('/lab/cleanup', { phone: '+40712345678' })).status).toBe(400);
+    expect((await api('/lab/cleanup', { phone })).status).toBe(200);
+    expect((await api('/api/me?token=' + pageToken)).status).toBe(404);
+    expect((await api('/lab/cleanup', { phone })).status).toBe(200);
+    expect((await api('/api/sim').then(r => r.json()) as any).lanes).toEqual(original.lanes);
+  } finally { socket.close(); }
+});
