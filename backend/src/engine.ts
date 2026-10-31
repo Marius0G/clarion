@@ -1,4 +1,4 @@
-import { SimStore } from "./sim.js";
+import { SimStore, locations as simLocations, type LegacyLocation } from "./sim.js";
 import { wazeFeed } from "./channels/waze.js";
 import { engineRuntime } from "./runtime.js";
 const randomUUID = () => crypto.randomUUID();
@@ -610,14 +610,26 @@ export class Engine {
       case "flow.report":
         this.sim.flow(data);
         return;
+      // Contract v2 telemetry: in memory only, read through GET /api/sim.
+      case "flight.update":
+        this.sim.flights(data);
+        return;
+      case "crowd.positions":
+        this.sim.positions(data);
+        return;
+      case "ops.ack":
+        this.sim.ack(data);
+        return;
       case "agent.batch": {
         const updates = this.sim.batch(data);
         const registered = new Map(this.agents.map(a => [a.agentId, a]));
         let changed = false;
         for (const row of updates) {
           const agent = registered.get(row.agentId);
-          if (!agent || (agent.role === row.role && agent.location === row.location && agent.action === row.action)) continue;
-          agent.role = row.role; agent.location = row.location; agent.action = row.action; changed = true;
+          // Terminal node ids stay in the sim store; presence counts keep the legacy places.
+          const location = (simLocations as readonly string[]).includes(row.location) ? row.location as LegacyLocation : agent?.location;
+          if (!agent || (agent.role === row.role && agent.location === location && agent.action === row.action)) continue;
+          agent.role = row.role; agent.location = location; agent.action = row.action; changed = true;
         }
         if (changed) this.changed();
         return;
