@@ -69,6 +69,7 @@ Set deployment secrets only with `npx wrangler secret put NAME`, entered at its 
 | `ANTHROPIC_API_KEY` | Claude key for the WhatsApp agent (`src/wa/`). Absent: deterministic Romanian answers from the same tools. |
 | `WA_ALLOWLIST` | Optional E.164 numbers (comma/space separated) the agent answers; unset answers everyone. |
 | `CLAUDE_MODEL` | Optional override of the agent model (default `claude-sonnet-5-5`). |
+| `STAFF_CODE` | Code an employee sends on WhatsApp as `STAFF <code>` to get the `staff` role (D11, case-insensitive). Unset: the demo default `CRAIOVA2026`; set a secret before any real use. |
 | `SMSLINK_CONNECTION_ID` | SMSLink connection ID. |
 | `SMSLINK_PASSWORD` | SMSLink connection password. |
 | `GOOGLE_WALLET_ISSUER_ID` | Google Wallet demo issuer ID. |
@@ -145,6 +146,15 @@ Unity connects as `/ws?client=twin`; `/twin` is a 2D clone for testing and emerg
 `sim.status` and `agent.batch` populate an ephemeral telemetry store (500 rows/message, 5,000 stored agents). Registered rows also update presence, with one state broadcast. `GET /api/sim` and `GET /api/sim/agents?role=&location=&action=` are public. `POST /api/sim/command` sends only to live twin sockets: 202 when connected, 409 otherwise. Telemetry is empty after Worker hibernation; connectivity still reflects live sockets.
 
 Set optional `DEMO_TOKEN` in the Node environment or as a Cloudflare Worker secret (never `VITE_*`). Console/twin WS URLs use `?token=`, and `/api/action` and `/api/sim/command` use `Authorization: Bearer <token>`. Browser `?token=` is saved in localStorage; `?token=` with an empty value clears it. Viewer sockets, subscriptions, state/sim reads and webhook authentication retain their existing public/provider behavior. `backendFetch` in the app's backend client adds Bearer authentication for operator HTTP calls. Demo scripts inherit `DEMO_TOKEN`, including `demo:pitch`.
+
+## Passenger messaging (SPEC-v2 D10, D11, D14, D17)
+
+`src/wa/messaging.ts` is the one fan-out: `notify(subscriber, { kind, text })` sends to a real phone on WhatsApp (only inside the 24h window; outside it the message is skipped and logged, there is no approved template for these yet) or to a simulated subscriber as `agent.message { agentId, text, kind }` on the twin socket.
+
+- `flight.update` replaces the provisional schedule in the agent (times in seconds or `HH:MM`, `checkIn: "check_in:<group>"` picks the desk-group queues). When a flight becomes `delayed` / `cancelled` or its `delayMin` changes, its subscribers get one `kind: "flight"` message per change; resending the same schedule sends nothing.
+- `agent.register { agentId, role, channel: "sim", flight }` (alone or inside `agents[]`) registers a simulated subscriber and sends it the `arrive` message. The legacy shape is unchanged.
+- `STAFF <code>` (see `STAFF_CODE`) gives the staff role; the agent's `reportIssue` stores reports. `GET /api/reports` → `[{ id, at, kind, node, text, status }]` and `POST /api/reports/:id/close`, both with `Authorization: Bearer <DEMO_TOKEN>`. `kind` ∈ `bagaj_abandonat | medical | securitate | aglomerare | altele`; `node` is the best-match provisional zone/node id or null.
+- An `evacuate` ops.command waits 3 s for `evac.plan` (vision, A10; accepted from any non-viewer client until `client=vision` exists). With the plan, each subscriber gets the route for the node its stage (estimated from the clock, D9) maps to, and sim agents also get `agent.route`; without it, everyone gets the generic evacuation message.
 
 ## Google Wallet (demo)
 
