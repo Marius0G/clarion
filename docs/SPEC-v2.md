@@ -244,13 +244,8 @@ Graful estimat este determinist: centre de zone și puncte de acces; poligoane l
 
 Limitări ale pachetului primit: fundalurile `base_*.png` lipsesc; unele zone sunt aproximative și deconectate la pragul de 2 m (punți geometrice de aproximativ 9–121 m, 26 de muchii `inferred` în total); punctul `gate_5` este în afara poligonului `U_GATE_5`, deci este ancorat explicit la zona porții. Fișierele livrate nu sunt corectate manual. Geometria nu precizează pereți/navmesh, politici de acces Schengen/non-Schengen sau starea lifturilor; aceste reguli necesită confirmare înainte de utilizare operațională.
 
-### D27. Harta: ambele etaje stivuite, legate prin conexiunile reale
-Research 1 nov (brief: (a private research brief)). Ca la Mappedin (multi-floor view): parterul și etajul 1 se desenează împreună, oblic, unul peste altul, cu etajul activ plin și celălalt la ~25% opacitate, gri, fără etichete. Alertele rămân la opacitate completă pe ambele etaje.
-- Proiecție SVG: `matrix(1, 0, 0.35, 0.42, 0, −i·G)` pe placa fiecărui etaj (i = 0 parter, 1 etaj), G ≥ 52 ca plăcile să nu se suprapună. Etichetele se calculează în JS cu aceeași matrice și se desenează nedeformate, deasupra.
-- Cele 15 perechi scări/escalator/lift din `points.json` au aceleași x,z pe ambele etaje, deci fiecare legătură e o linie verticală de lungime G: plină pentru scări și lift, cu săgeată pentru escalator (doar G→U).
-- Exteriorul (kerb, taxi) e marginea plăcii parterului, mai deschis. Butonul „Ext” dispare.
-- Două moduri: „Stivă” (implicit) și „Plan” (un etaj plat, pentru detaliu), cu trecere animată.
-- Densitatea se arată prin umplerea zonei, nu prin heatmap. Punctele cu oameni rămân strat opțional.
+### D27. Harta: ambele etaje plate, etajul 1 deasupra parterului
+Revizuit 1 nov (Bogdan): o singură vedere 2D, fără proiecție oblică și fără moduri. Etajul 1 se desenează deasupra parterului, în același cadru x,z, ambele etaje complet vizibile și etichetate. Între etaje nu se desenează nimic: fără legături, fără scări, escalatoare sau lifturi, fără ușile spre peron. Exteriorul (trotuare, taxi) e marginea mai deschisă a parterului. Pe hartă nu există butoane de etaj sau de setări; harta ocupă tot ecranul, rămâne doar zoom-ul. Densitatea se arată prin umplerea zonei, alertele cu formă și număr (D29).
 
 ### D28. Ecranul: hartă plus listă, prognoza în față
 Înlocuiește partea de layout din D16. Harta ocupă cea mai mare parte. O coloană îngustă în dreapta e legată de ea (hover și click în ambele sensuri).
