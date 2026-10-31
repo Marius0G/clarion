@@ -226,6 +226,10 @@ export class Tower extends DurableObject<Env> {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         if (request.method === 'GET') {
+          if (path === '/api/me') {
+            const data = await this.whatsapp.messaging.passenger(url.searchParams.get('token') ?? '');
+            return data ? json(data) : json({ error: 'Unknown passenger' }, 404);
+          }
           if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics, this.visions().length > 0));
           // D11: staff reports for the dashboard pins.
           if (path === '/api/reports') return json(await this.whatsapp.reports.list());

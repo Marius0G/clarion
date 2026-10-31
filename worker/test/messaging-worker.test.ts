@@ -41,6 +41,11 @@ const texts = () => graph.filter(b => b.type === 'text').map(b => b.text.body as
 const flight = (extra = {}) => ({ flight: 'W6 3751', airline: 'W6', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', checkIn: 'check_in:2', checkInDesks: [], gateCloseAt: '09:10', status: 'scheduled', delayMin: 0, pax: 180, ...extra });
 
 describe('passenger messaging in the Tower', () => {
+  it('rejects unknown or missing passenger tokens without operator auth', async () => {
+    for (const path of ['/api/me', '/api/me?token=unknown']) {
+      expect((await api(path, undefined, '')).status).toBe(404);
+    }
+  });
   it('sim subscribers, flight changes, staff reports and evacuation end to end', async () => {
     const u = await twin();
     u.ws.send(envelope('sim.status', { running: true, scenario: 'S1', arm: 'B', coverage: 1, seed: 1, speed: 60, simTime: 7 * 3600, agents: 1 }));
@@ -50,12 +55,37 @@ describe('passenger messaging in the Tower', () => {
     u.ws.send(envelope('agent.register', { agents: [{ agentId: 'u1', role: 'taxi', channel: 'telegram' }] }));
     await expect.poll(() => u.of('agent.message').length).toBe(1);
     expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Fii la intrarea în terminal la 08:') });
+    const simLink = /https:\/\/clarion-craiova.pages.dev\/m\/([a-f0-9-]+)/.exec(u.of('agent.message')[0].text)!;
+    const passengerPath = `/api/me?token=${simLink[1]}`;
+    const response = await mf.dispatchFetch(`https://worker.example${passengerPath}`, { headers: { Origin: 'https://clarion-craiova.pages.dev' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://clarion-craiova.pages.dev');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      simTime: 25200,
+      flight: { flight: 'W6 3751', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', gateCloseAt: '09:10', status: 'scheduled', delayMin: 0 },
+      arriveBy: '08:25',
+      steps: [
+        { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', waitMin: 12 },
+        { zone: 'security', label: 'Control de securitate', waitMin: 15 },
+        { zone: 'walk', label: 'Drum până la poarta 2', waitMin: 4 },
+      ],
+      alerts: [{ at: expect.any(String), kind: 'arrive', text: u.of('agent.message')[0].text }],
+      evacuation: { active: false, zones: [] },
+    });
     u.ws.send(envelope('agent.register', { agentId: 'a1', role: 'p', channel: 'sim' }));
     await expect.poll(() => u.of('error').length).toBe(1);
 
     // A phone subscribes, then Unity delays the flight: one message each, even when the schedule is resent.
     await whatsapp('START W6 3751');
     await expect.poll(() => texts().some(t => t.includes('Poarta 2 se închide la 09:10')), { timeout: 10000 }).toBe(true);
+    await expect.poll(() => texts().some(t => t.includes('/m/')), { timeout: 10000 }).toBe(true);
+    const phoneToken = /\/m\/([a-f0-9-]+)/.exec(texts().find(t => t.includes('/m/'))!)![1];
+    const phoneResponse = await api(`/api/me?token=${phoneToken}`, undefined, '');
+    expect(phoneResponse.status).toBe(200);
+    const phoneJson = await phoneResponse.text();
+    expect(phoneJson).not.toContain('40712345678');
+    expect(phoneJson).not.toContain('phone');
     u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin: 30 })] }));
     u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin: 30 })] }));
     await expect.poll(() => texts().filter(t => t.includes('întârziere de 30 min')).length, { timeout: 10000 }).toBe(1);
@@ -91,6 +121,19 @@ describe('passenger messaging in the Tower', () => {
     // No evac.plan: the generic message after ~3 s.
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['security'] })).status).toBe(202);
     await expect.poll(() => u.of('agent.message').filter(m => m.kind === 'evacuate' && m.text.includes('Control de securitate e închisă')).length, { timeout: 8000 }).toBe(1);
+    await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).evacuation).toEqual({ active: true, zones: ['security'] });
+    for (let delayMin = 31; delayMin <= 36; delayMin++) {
+      u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin })] }));
+      await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).alerts.at(-1)?.text).toContain(`întârziere de ${delayMin} min`);
+    }
+    await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).alerts.at(-1)?.text).toContain('întârziere de 36 min');
+    const final = await (await api(passengerPath, undefined, '')).json() as any;
+    expect(final.alerts).toHaveLength(5);
+    expect(final.alerts.every((a: any) => a.kind === 'flight')).toBe(true);
+    expect(final.flight.gateCloseAt).toBe('09:46');
+    // Re-registration keeps the existing secret and history.
+    u.ws.send(envelope('agent.register', { agentId: 'a1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' }));
+    expect((await api(passengerPath, undefined, '')).status).toBe(200);
     u.ws.send(envelope('evac.plan', { id: 'x', blocked: [], clearSec: 1, exits: [], routes: [] }));
     await expect.poll(() => u.of('error').length).toBe(2);
   });

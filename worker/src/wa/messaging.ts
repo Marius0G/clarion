@@ -5,6 +5,7 @@
 import { clockLabel, clockText, closeAt, etd, findFlight, flightKey, gateName, type Flight } from './flights.js';
 import { arrivalPlan, nodeName, type AirportView, type Profile } from './tools.js';
 export { nodeName } from './tools.js';
+import type { PassengerData } from '../../../app/src/me/types.js';
 import { masked, type WhatsAppClient } from './transport.js';
 import type { WaStore } from './index.js';
 
@@ -12,7 +13,7 @@ export const WINDOW_MS = 86400000;
 /** How long an evacuate waits for vision's evac.plan before the generic message goes out. */
 export const EVAC_WAIT_MS = 3000;
 export type NotifyKind = 'arrive' | 'flight' | 'route' | 'evacuate' | 'admin';
-export interface SimSubscriber { agentId: string; role: string; flight: string }
+export interface SimSubscriber { agentId: string; role: string; flight: string; pageToken?: string; hasCheckedBag?: boolean }
 export type Subscriber = { channel: 'whatsapp'; phone: string } | ({ channel: 'sim' } & SimSubscriber);
 export type Delivery = 'sent' | 'outside_window' | 'offline' | 'failed';
 const SIM_MAX = 5000;
@@ -78,6 +79,7 @@ export interface MessagingDeps {
   store: WaStore; wa: WhatsAppClient; view: AirportView;
   /** Backend -> Unity on the twin socket; false when Unity is offline. */
   toUnity: (type: string, data: unknown) => boolean;
+  appUrl?: string;
   evacWaitMs?: number;
   now?: () => number;
 }
@@ -86,6 +88,61 @@ export class Messaging {
   private chain: Promise<unknown> = Promise.resolve();
   private planned = new Set<string>();
   constructor(private deps: MessagingDeps) {}
+
+  private pageChain: Promise<unknown> = Promise.resolve();
+  private pageSerial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.pageChain.then(work);
+    this.pageChain = next.catch(() => {});
+    return next;
+  }
+  private identity(sub: Subscriber) {
+    return sub.channel === 'sim' ? `sim:${sub.agentId}` : `wa:${sub.phone}`;
+  }
+  private async subscriberProfile(sub: Subscriber): Promise<Profile | SimSubscriber | undefined> {
+    return sub.channel === 'sim' ? (await this.sims())[sub.agentId]
+      : this.deps.store.get<Profile>(`wa:profile:${sub.phone}`);
+  }
+  /** Random bearer token, separate from the boarding-pass token; always rehydrate the stored profile. */
+  pageLink(sub: Subscriber): Promise<string> {
+    return this.pageSerial(async () => {
+      const p = await this.subscriberProfile(sub);
+      if (!p) throw new Error('Unknown subscriber');
+      if (!p.pageToken) {
+        p.pageToken = crypto.randomUUID();
+        if (sub.channel === 'sim') {
+          const sims = await this.sims(); sims[sub.agentId] = p as SimSubscriber;
+          await this.deps.store.put('sim:subs', sims);
+        } else await this.deps.store.put(`wa:profile:${sub.phone}`, p);
+        await this.deps.store.put(`page:${p.pageToken}`, sub);
+      }
+      return `${(this.deps.appUrl ?? 'https://clarion-craiova.pages.dev').replace(/\/$/, '')}/m/${p.pageToken}`;
+    });
+  }
+  async passenger(token: string): Promise<PassengerData | undefined> {
+    if (!token || token.length > 100) return;
+    const sub = await this.deps.store.get<Subscriber>(`page:${token}`);
+    if (!sub) return;
+    const p = await this.subscriberProfile(sub);
+    if (!p || p.pageToken !== token || !p.flight) return;
+    const f = findFlight(this.deps.view.flights(), p.flight);
+    if (!f) return;
+    const clock = this.deps.view.clock();
+    // Unknown bag choice uses the same conservative assumption as WhatsApp.
+    const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag);
+    return {
+      simTime: clock.sim ? clock.now : null,
+      flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
+        gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin },
+      arriveBy: plan.beAtEntranceAt,
+      steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.step, waitMin: s.min })),
+      alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
+      evacuation: await this.deps.store.get<PassengerData['evacuation']>('msg:evacuation') ?? { active: false, zones: [] },
+    };
+  }
+  async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean) {
+    const link = await this.pageLink(sub);
+    return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag)}\n${link}` });
+  }
 
   /** Serialises fan-outs so two quick flight.updates cannot both announce one change. */
   private serial<T>(work: () => Promise<T>): Promise<T> {
@@ -96,15 +153,23 @@ export class Messaging {
 
   /** The one way out for a passenger message: WhatsApp inside the 24h window, or agent.message to Unity. */
   async notify(sub: Subscriber, m: { kind: NotifyKind; text: string }): Promise<Delivery> {
-    if (sub.channel === 'sim')
-      return this.deps.toUnity('agent.message', { agentId: sub.agentId, text: m.text, kind: m.kind }) ? 'sent' : 'offline';
-    const last = await this.deps.store.get<number>(`wa:last:${sub.phone}`);
-    // Outside the window only approved templates may go; there is none for these yet (D2), so it is skipped and logged.
-    if (typeof last !== 'number' || (this.deps.now?.() ?? Date.now()) - last >= WINDOW_MS) {
-      console.log(JSON.stringify({ msg: 'skipped', reason: 'outside_window', kind: m.kind, to: masked(sub.phone) }));
-      return 'outside_window';
+    let delivery: Delivery;
+    if (sub.channel === 'sim') {
+      delivery = this.deps.toUnity('agent.message', { agentId: sub.agentId, text: m.text, kind: m.kind }) ? 'sent' : 'offline';
+    } else {
+      const last = await this.deps.store.get<number>(`wa:last:${sub.phone}`);
+      if (typeof last !== 'number' || (this.deps.now?.() ?? Date.now()) - last >= WINDOW_MS) {
+        console.log(JSON.stringify({ msg: 'skipped', reason: 'outside_window', kind: m.kind, to: masked(sub.phone) }));
+        return 'outside_window';
+      }
+      delivery = (await this.deps.wa.sendText(sub.phone, m.text)).ok ? 'sent' : 'failed';
     }
-    return (await this.deps.wa.sendText(sub.phone, m.text)).ok ? 'sent' : 'failed';
+    if (delivery === 'sent') await this.pageSerial(async () => {
+      const key = `msg:alerts:${this.identity(sub)}`;
+      const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
+      await this.deps.store.put(key, [...alerts, { at: new Date(this.deps.now?.() ?? Date.now()).toISOString(), ...m }].slice(-5));
+    });
+    return delivery;
   }
 
   // ---- Subscribers.
@@ -115,6 +180,7 @@ export class Messaging {
   async removePhone(phone: string) {
     const list = (await this.deps.store.get<string[]>('wa:subs')) ?? [];
     if (list.includes(phone)) await this.deps.store.put('wa:subs', list.filter(p => p !== phone));
+    await this.deps.store.delete(`msg:alerts:wa:${phone}`);
   }
   private async sims() { return (await this.deps.store.get<Record<string, SimSubscriber>>('sim:subs')) ?? {}; }
   /** Everyone, with the flight each one is bound to (undefined for staff without one). */
@@ -124,7 +190,7 @@ export class Messaging {
       const p = await this.deps.store.get<Profile>(`wa:profile:${phone}`);
       if (p) out.push({ sub: { channel: 'whatsapp', phone }, flight: p.flight, hasCheckedBag: p.hasCheckedBag });
     }
-    for (const s of Object.values(await this.sims())) out.push({ sub: { channel: 'sim', ...s }, flight: s.flight });
+    for (const s of Object.values(await this.sims())) out.push({ sub: { channel: 'sim', ...s }, flight: s.flight, hasCheckedBag: s.hasCheckedBag });
     return out;
   }
 
@@ -141,13 +207,13 @@ export class Messaging {
     return this.serial(async () => {
       const subs = await this.sims();
       const fresh = list.filter(s => !subs[s.agentId] || subs[s.agentId]!.flight !== s.flight);
-      for (const s of list) subs[s.agentId] = s;
+      for (const s of list) subs[s.agentId] = { ...subs[s.agentId], ...s };
       if (Object.keys(subs).length > SIM_MAX) throw new Error(`Sim subscribers exceed ${SIM_MAX}`);
       await this.deps.store.put('sim:subs', subs);
       const flights = this.deps.view.flights();
       for (const s of fresh) {
         const f = findFlight(flights, s.flight);
-        if (f) await this.notify({ channel: 'sim', ...s }, { kind: f.status === 'cancelled' ? 'flight' : 'arrive', text: this.arriveText(f) });
+        if (f) await this.arrive({ channel: 'sim', ...s }, f, s.hasCheckedBag);
       }
       return fresh.length;
     });
@@ -200,6 +266,7 @@ export class Messaging {
    * without it, everyone gets the generic message. Returns what went out.
    */
   async evacuate(zones: string[], id: string): Promise<'planned' | 'generic'> {
+    await this.deps.store.put('msg:evacuation', { active: true, zones });
     await new Promise(r => setTimeout(r, this.deps.evacWaitMs ?? EVAC_WAIT_MS));
     if (this.planned.has(id)) return 'planned';
     await this.serial(async () => {
@@ -211,6 +278,7 @@ export class Messaging {
   plan(p: EvacPlan) {
     this.planned.add(p.id);
     return this.serial(async () => {
+      await this.deps.store.put('msg:evacuation', { active: true, zones: p.blocked });
       const flights = this.deps.view.flights(), now = this.deps.view.clock().now;
       let sent = 0;
       for (const s of await this.subscribers()) {

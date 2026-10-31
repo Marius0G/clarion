@@ -26,6 +26,49 @@ function fakeSim(flights: SimFlightRow[] = [row()], flow: Record<string, ZoneRow
 afterEach(() => vi.restoreAllMocks());
 const quiet = () => { vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); };
 
+describe('passenger page profiles', () => {
+  it('keeps tokens across restarts and rebindings, respects bag choice, and revokes on deletion', async () => {
+    quiet();
+    const { view } = fakeSim([row(), row({ flight: 'W6 3401' })]);
+    const h = harness(view, { APP_URL: 'https://passenger.example/' });
+    await h.inbound('START W6 3751 a8f2');
+    const sub = { channel: 'whatsapp' as const, phone: '+40712345678' };
+    const link = await h.m.pageLink(sub);
+    expect(link).toMatch(/^https:\/\/passenger.example\/m\/[a-f0-9-]{36}$/);
+    const token = link.split('/').at(-1)!;
+    const profile = await h.agent.profile(sub.phone);
+    expect(profile?.token).toBe('a8f2');
+    await h.store.put(`wa:profile:${sub.phone}`, { ...profile, hasCheckedBag: false });
+    const restarted = new WhatsAppAgent({ APP_URL: 'https://passenger.example' }, h.store, view, { pause: 0 });
+    expect(await restarted.messaging.pageLink(sub)).toBe(link);
+    const data = await restarted.messaging.passenger(token);
+    expect(data?.steps.map(s => s.zone)).toEqual(['security', 'walk']);
+    expect(data?.arriveBy).toBe(arrivalPlan(view.flights()[0]!, view.flow(), view.clock(), false).beAtEntranceAt);
+    expect(JSON.stringify(data)).not.toContain(sub.phone);
+    await h.inbound('START W6 3401');
+    expect(await h.m.pageLink(sub)).toBe(link);
+    expect((await h.m.passenger(token))?.flight.flight).toBe('W6 3401');
+    await h.inbound('delete my data');
+    expect(await h.m.passenger(token)).toBeUndefined();
+    expect(h.store.data.has(`page:${token}`)).toBe(false);
+    expect(h.store.data.has(`msg:alerts:wa:${sub.phone}`)).toBe(false);
+  });
+
+  it('excludes undelivered alerts and persists evacuation plans', async () => {
+    quiet();
+    const { view } = fakeSim();
+    const h = harness(view);
+    const sub = { channel: 'sim' as const, agentId: 'page-agent', role: 'passenger', flight: 'W6 3751' };
+    await h.m.registerSims([sub]);
+    const token = (await h.m.pageLink(sub)).split('/').at(-1)!;
+    const offline = new Messaging({ store: h.store, wa: h.agent.wa, view, toUnity: () => false });
+    expect(await offline.notify(sub, { kind: 'admin', text: 'Unsent' })).toBe('offline');
+    expect((await offline.passenger(token))?.alerts).toHaveLength(1);
+    await h.m.plan({ id: 'page-evac', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
+    expect((await offline.passenger(token))?.evacuation).toEqual({ active: true, zones: ['security'] });
+  });
+});
+
 function harness(view: AirportView, env: Record<string, string> = { WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_NUMBER_ID: 'PN1' }) {
   const store = new MemoryStore();
   const graph: any[] = [];

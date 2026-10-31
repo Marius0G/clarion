@@ -15,7 +15,7 @@ export interface AirportView {
 }
 export interface Profile {
   phone: string; role: 'passenger' | 'staff';
-  flight?: string; airline?: string; token?: string; verified?: boolean;
+  flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
   hasCheckedBag?: boolean; lastInboundAt?: number; name?: string;
 }
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
@@ -85,15 +85,15 @@ function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight)
 export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined) {
   const bag = hasCheckedBag !== false;
   const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight);
-  const secZone = zoneFor(flow, ['security'], flight);
+  const secZone = { key: 'security', row: flow.security };
   const close = closeAt(flight);
   const steps = (inMin: number) => {
-    const out: { step: string; min: number; source: string }[] = [];
-    if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
+    const out: { zone: string; step: string; min: number; source: string }[] = [];
+    if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ zone: bagZone.key, step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
     const s = waitAt(secZone.row, 'security', inMin);
-    out.push({ step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
-    out.push({ step: `Drum până la poarta ${gateName(flight.gate)}`, min: GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: 'constantă' });
-    out.push({ step: 'Marjă', min: MARGIN_MIN, source: 'constantă' });
+    out.push({ zone: secZone.key, step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
+    out.push({ zone: 'walk', step: `Drum până la poarta ${gateName(flight.gate)}`, min: GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: 'constantă' });
+    out.push({ zone: 'margin', step: 'Marjă', min: MARGIN_MIN, source: 'constantă' });
     return out;
   };
   let plan = steps(0);

@@ -47,7 +47,7 @@ export class WhatsAppAgent {
     opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number } = {}) {
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.wa = new WhatsAppClient(env, this.fetcher, opts.pause);
-    this.messaging = new Messaging({ store, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
+    this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
     this.reports = new Reports(store);
   }
 
@@ -101,6 +101,7 @@ export class WhatsAppAgent {
     if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, TEXT_ONLY); return; }
     // ş (cedilla, older keyboards) is matched as ș.
     if (DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
+      if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);
       for (const k of [key, `wa:ctx:${m.phone}`, `wa:last:${m.phone}`]) await this.store.delete(k);
       await this.messaging.removePhone(m.phone);
       await this.wa.sendText(m.phone, 'Gata, am șters tot ce știam despre tine și zborul tău. Dacă vrei să reîncepi, scrie-mi oricând.');
@@ -141,6 +142,7 @@ export class WhatsAppAgent {
       const ask = 'Ai bagaj de cală? Așa îți spun exact când să fii la aeroport.';
       await this.wa.sendReaction(m.phone, m.id, '✈️');
       await this.wa.sendText(m.phone, text);
+      await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
       await this.wa.sendButtons(m.phone, ask, BAG_BUTTONS);
       await remember(m.text, [text, ask]);
       return;

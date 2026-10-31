@@ -2,6 +2,7 @@
 // Without WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID every send is a dry-run log line. Logs never contain message text.
 
 export interface WaEnv {
+  APP_URL?: string;
   WHATSAPP_TOKEN?: string; WA_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string; WA_PHONE_NUMBER_ID?: string;
   /** E.164 numbers separated by commas or spaces. Unset = everyone (Meta's test number has its own list). */
