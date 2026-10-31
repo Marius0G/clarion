@@ -62,6 +62,28 @@ describe('Worker Unity integration', () => {
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).connected).toBe(false);
     expect((await request('/api/sim/command', { action: 'stop' })).status).toBe(409);
   });
+  it('forwards ops.command and agent.route to Unity and tracks ops.ack', async () => {
+    for (const path of ['/api/ops/command', '/api/agent/route']) expect((await unauthorized(path, {})).status).toBe(401);
+    expect((await request('/api/ops/command', { type: 'evacuate', zones: ['gate_1'] })).status).toBe(409);
+    expect((await request('/api/agent/route', { agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'evacuate' })).status).toBe(409);
+    const twin = await connect('twin');
+    expect((await request('/api/ops/command', { type: 'evacuate', zones: [] })).status).toBe(400);
+    const res = await request('/api/ops/command', { type: 'evacuate', zones: ['gate_1', 'airside'] });
+    expect(res.status).toBe(202);
+    const { command } = await res.json() as any;
+    await expect.poll(() => twin.messages.find(m => m.type === 'ops.command')?.data).toEqual({ type: 'evacuate', zones: ['gate_1', 'airside'], id: command.id });
+    expect((await (await request('/api/sim')).json() as any).ops[0]).toMatchObject({ id: command.id, status: 'sent' });
+    twin.ws.send(JSON.stringify(envelope('ops.ack', { id: command.id })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).ops[0]?.status).toBe('acked');
+    expect((await request('/api/agent/route', { agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'evacuate' })).status).toBe(202);
+    await expect.poll(() => twin.messages.find(m => m.type === 'agent.route')?.data).toEqual({ agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'evacuate' });
+    twin.ws.send(JSON.stringify(envelope('flight.update', { flights: [{ flight: 'W6 3751', airline: 'W6', destination: 'Luton', std: 100, status: 'boarding' }] })));
+    twin.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'check_in:W6', waiting: 12, staff: 2, forecast: [{ inMin: 30, waitMin: 9 }] }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).flow['check_in:W6']?.staff).toBe(2);
+    expect((await (await request('/api/sim')).json() as any).flights[0]).toMatchObject({ flight: 'W6 3751', status: 'boarding' });
+    expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
+    twin.ws.close();
+  });
   it('keeps live connectivity but clears telemetry after hibernation', async () => {
     const twin = await connect('twin');
     twin.ws.send(JSON.stringify(envelope('sim.status', {running:true,scenario:'S2',arm:'A',coverage:.5,seed:42,speed:60,simTime:1,agents:0})));

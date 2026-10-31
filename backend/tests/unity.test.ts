@@ -74,4 +74,25 @@ describe('Node Unity integration', () => {
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).connected).toBe(false);
     expect((await request('/api/sim/command', { action: 'stop' })).status).toBe(409);
   });
+  it('forwards ops.command and agent.route to Unity and tracks ops.ack', async () => {
+    for (const path of ['/api/ops/command', '/api/agent/route']) expect((await unauthorized(path, {})).status).toBe(401);
+    expect((await request('/api/ops/command', { type: 'staff', zone: 'security', delta: 1 })).status).toBe(409);
+    expect((await request('/api/agent/route', { agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'gate' })).status).toBe(409);
+    expect((await (await request('/api/sim')).json() as any).ops).toEqual([]);
+    const twin = await connect('twin');
+    expect((await request('/api/ops/command', { type: 'staff', zone: 'security', delta: 0 })).status).toBe(400);
+    const res = await request('/api/ops/command', { type: 'staff', zone: 'bag_drop:w6', delta: 1 });
+    expect(res.status).toBe(202);
+    const { command } = await res.json() as any;
+    expect(command).toMatchObject({ type: 'staff', zone: 'bag_drop:W6', delta: 1, status: 'sent' });
+    await expect.poll(() => twin.messages.find(m => m.type === 'ops.command')?.data).toEqual({ type: 'staff', zone: 'bag_drop:W6', delta: 1, id: command.id });
+    twin.ws.send(JSON.stringify(envelope('ops.ack', { id: command.id })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).ops[0]?.status).toBe('acked');
+    expect((await request('/api/agent/route', { agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'gate' })).status).toBe(202);
+    await expect.poll(() => twin.messages.find(m => m.type === 'agent.route')?.data).toEqual({ agentId: 'u1', nodes: ['entrance', 'gate_1'], reason: 'gate' });
+    twin.ws.send(JSON.stringify(envelope('crowd.positions', { people: [{ x: 1, y: 2, kind: 'pax' }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).positions?.people).toEqual([{ x: 1, y: 2, kind: 'pax' }]);
+    expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
+    twin.ws.close();
+  });
 });

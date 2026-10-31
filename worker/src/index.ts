@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { simCommand } from '../../backend/src/sim.js';
+import { agentRoute, opsCommand, opsWire, simCommand } from '../../backend/src/sim.js';
 import { Engine } from '../../backend/src/engine.js';
 import type { Envelope } from '../../backend/src/types.js';
 import { Telegram } from '../../backend/src/channels/telegram.js';
@@ -139,6 +139,12 @@ export class Tower extends DurableObject<Env> {
     }
   }
   private twins() { return this.ctx.getWebSockets('twin').filter(ws => ws.readyState === WebSocket.OPEN); }
+  /** Backend → Unity (ops.command, agent.route). False when Unity is not connected. */
+  private toTwins(type: string, data: unknown) {
+    const twins = this.twins();
+    for (const ws of twins) ws.send(packet(type, data));
+    return twins.length > 0;
+  }
   private broadcast(type: string, data: unknown) {
     const value = packet(type, data);
     for (const ws of this.ctx.getWebSockets()) {
@@ -192,7 +198,7 @@ export class Tower extends DurableObject<Env> {
       const url = new URL(request.url);
       const path = url.pathname;
       try {
-        if (request.method === 'POST' && ['/api/action', '/api/sim/command'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
           if (!['twin', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
@@ -283,6 +289,18 @@ export class Tower extends DurableObject<Env> {
             const twins = this.twins();
             for (const ws of twins) ws.send(packet('sim.command', data));
             return json({ connected: twins.length > 0 }, twins.length ? 202 : 409);
+          }
+          if (path === '/api/ops/command') {
+            // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.
+            const command = opsCommand(JSON.parse(await bodyText(request)));
+            if (!this.twins().length) return json({ connected: false }, 409);
+            const record = this.engine.sim.sent(command);
+            this.toTwins('ops.command', opsWire(record));
+            return json({ connected: true, command: record }, 202);
+          }
+          if (path === '/api/agent/route') {
+            const sent = this.toTwins('agent.route', agentRoute(JSON.parse(await bodyText(request))));
+            return json({ connected: sent }, sent ? 202 : 409);
           }
           if (path === '/api/action') {
             const event = JSON.parse(await bodyText(request)) as Envelope;

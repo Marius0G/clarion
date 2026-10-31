@@ -6,7 +6,7 @@ import { loadEnvFile } from "node:process";
 import { existsSync } from "node:fs";
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { simCommand } from "./sim.js";
+import { agentRoute, opsCommand, opsWire, simCommand } from "./sim.js";
 import { Engine } from "./engine.js";
 import { Telegram } from "./channels/telegram.js";
 import { sms } from "./channels/sms.js";
@@ -133,7 +133,7 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
-      if (req.method === "POST" && ["/api/action", "/api/sim/command"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
+      if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
       const twins = () => [...clients].filter(([ws, kind]) => kind === "twin" && ws.readyState === WebSocket.OPEN);
@@ -151,6 +151,21 @@ export function createControlTower() {
         const data = simCommand(await jsonBody(req));
         const open = twins();
         for (const [ws] of open) ws.send(JSON.stringify({ type: "sim.command", ts: new Date().toISOString(), data }));
+        res.writeHead(open.length ? 202 : 409); res.end(JSON.stringify({ connected: open.length > 0 })); return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/ops/command") {
+        // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.
+        const command = opsCommand(await jsonBody(req));
+        const open = twins();
+        if (!open.length) { res.writeHead(409); res.end(JSON.stringify({ connected: false })); return; }
+        const record = engine.sim.sent(command);
+        for (const [ws] of open) ws.send(JSON.stringify({ type: "ops.command", ts: new Date().toISOString(), data: opsWire(record) }));
+        res.writeHead(202); res.end(JSON.stringify({ connected: true, command: record })); return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/agent/route") {
+        const data = agentRoute(await jsonBody(req));
+        const open = twins();
+        for (const [ws] of open) ws.send(JSON.stringify({ type: "agent.route", ts: new Date().toISOString(), data }));
         res.writeHead(open.length ? 202 : 409); res.end(JSON.stringify({ connected: open.length > 0 })); return;
       }
       if (url.pathname === "/webhooks/whatsapp") {
