@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 3000 1050" width="3000" height="1050">
+<title>T2 - Parter (Ground floor)</title>
+<image id="base" href="base_parter.png" xlink:href="base_parter.png" x="0" y="0" width="3000" height="1050"/>
+<g id="zones" stroke-width="3" fill-opacity="0.35">
+<path id="G_CHECKIN_DESKS" class="zone service" data-code="G1" data-kind="service" data-side="landside" fill="#d32f2f" stroke="#d32f2f" fill-rule="evenodd" d="M2467.9,710.4 L2467.6,750.4 L2109.5,752.1 L2112.2,712.1 Z"><title>G1 Ghișee check-in + bag drop</title></path>
+<path id="G_CHECKIN_QUEUE" class="zone queue" data-code="G2" data-kind="queue" data-side="landside" fill="#f57c00" stroke="#f57c00" fill-rule="evenodd" d="M2109.5,752.1 L2467.6,750.4 L2467.9,710.4 L2467.1,830.4 L2104.2,832.2 Z"><title>G2 Cozi check-in + bag drop</title></path>
+<path id="G_ARRIVALS_EXIT" class="zone circulation" data-code="G3" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M1286.9,642.5 L1289.2,631.6 L1344.0,649.4 L1341.8,660.3 L1351.0,663.3 L1341.2,712.7 L1267.4,688.6 L1277.8,639.5 Z"><title>G3 Ieșire sosiri (din bagaje)</title></path>
+<path id="G_INFO" class="zone service" data-code="G4" data-kind="service" data-side="landside" fill="#d32f2f" stroke="#d32f2f" fill-rule="evenodd" d="M1416.0,679.2 L1525.7,714.9 L1509.2,814.7 L1397.6,778.4 Z"><title>G4 Informații</title></path>
+<path id="G_ESCALATOR" class="zone stairs" data-code="G5" data-kind="stairs" data-side="landside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M1505.8,835.7 L1516.6,769.8 L1562.8,784.8 L1699.0,784.2 L1690.1,850.2 L1552.5,850.9 Z"><title>G5 Scări + escalator spre securitate</title></path>
+<path id="G_STAIRS_WEST" class="zone stairs" data-code="G6" data-kind="stairs" data-side="landside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M851.9,553.4 L1018.1,607.5 L1009.3,641.4 L842.1,587.0 Z"><title>G6 Scări vest</title></path>
+<path id="G_WC" class="zone wc" data-code="G7" data-kind="wc" data-side="landside" fill="#546e7a" stroke="#546e7a" fill-rule="evenodd" d="M1937.2,733.0 L1961.3,732.9 L1956.7,782.9 L1932.4,783.0 Z"><title>G7 Toalete</title></path>
+<path id="G_CAFE" class="zone shops" data-code="G8" data-kind="shops" data-side="landside" fill="#7c4dff" stroke="#7c4dff" fill-rule="evenodd" d="M2467.4,780.4 L2541.0,780.0 L2541.8,950.0 L2406.2,950.7 L2408.2,830.7 L2467.1,830.4 L2467.9,710.4 Z"><title>G8 Gourmet Bar (capăt est)</title></path>
+<path id="G_DEPARTURES" class="zone circulation" data-code="G9" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M1996.2,952.7 L2010.2,782.6 L2107.5,782.1 L2109.1,759.1 L2104.2,832.2 L2408.2,830.7 L2406.2,950.7 L2466.2,950.4 Z"><title>G9 Intrare plecări + self check-in</title></path>
+<path id="G_CENTER" class="zone circulation" data-code="G10" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M1488.7,939.5 L1516.6,769.8 L1505.8,835.7 L1552.5,850.9 L1690.1,850.2 L1699.0,784.2 L1562.8,784.8 L2010.2,782.6 L1996.2,952.7 L1536.3,955.0 Z"><title>G10 Hol central</title></path>
+<path id="G_MEETING" class="zone waiting" data-code="G11" data-kind="waiting" data-side="landside" fill="#1e88e5" stroke="#1e88e5" fill-rule="evenodd" d="M1110.4,637.5 L1405.9,733.7 L1397.6,778.4 L1509.2,814.7 L1514.8,780.6 L1488.7,939.5 L1070.3,803.3 Z"><title>G11 Zonă de așteptare sosiri</title></path>
+<path id="G_WEST" class="zone circulation" data-code="G12" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M695.0,502.3 L733.5,514.8 L727.3,512.8 L754.7,427.1 L791.0,438.9 L764.2,524.8 L1110.4,637.5 L1070.3,803.3 L642.4,664.0 Z M842.1,587.0 L1009.3,641.4 L1018.1,607.5 L851.9,553.4 Z"><title>G12 Hol vest (închirieri auto, Lost &amp; Found)</title></path>
+<path id="G_RECLAIM_1" class="zone reclaim" data-code="G13" data-kind="reclaim" data-side="airside" fill="#fdd835" stroke="#fdd835" fill-rule="evenodd" d="M1334.8,447.7 L1296.0,633.8 L1289.2,631.6 L1289.0,632.6 L969.3,528.5 L1019.5,345.0 Z"><title>G13 Bagaje - banda 1</title></path>
+<path id="G_RECLAIM_2" class="zone reclaim" data-code="G14" data-kind="reclaim" data-side="airside" fill="#fdd835" stroke="#fdd835" fill-rule="evenodd" d="M1601.9,534.6 L1657.8,534.4 L1629.9,724.5 L1572.2,724.8 L1343.8,650.4 L1344.0,649.4 L1289.2,631.6 L1296.0,633.8 L1334.8,447.7 L1019.5,345.0 Z"><title>G14 Bagaje - banda 2</title></path>
+<path id="G_ARRIVALS_PASSPORT" class="zone queue" data-code="G15" data-kind="queue" data-side="airside" fill="#f57c00" stroke="#f57c00" fill-rule="evenodd" d="M1074.4,212.5 L1143.1,234.9 L1107.7,373.7 L1037.2,350.7 Z"><title>G15 Coridor sosiri + pașapoarte</title></path>
+<path id="G_GATE_DOOR_1" class="zone stairs" data-code="G16" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M200.7,98.3 L203.0,93.4 L207.8,91.1 L240.6,90.5 L245.7,92.2 L248.0,95.3 L248.7,98.4 L249.2,130.2 L247.5,134.5 L245.1,136.5 L241.3,137.5 L209.3,138.0 L204.2,136.3 L202.2,133.9 L201.3,130.9 Z"><title>G16 Ușă peron poarta 1</title></path>
+<path id="G_GATE_DOOR_2" class="zone stairs" data-code="G17" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M489.3,93.8 L491.6,88.9 L496.4,86.6 L529.2,86.0 L534.3,87.7 L536.6,90.8 L537.3,93.9 L537.8,125.7 L536.1,130.0 L533.7,132.0 L529.9,133.0 L497.9,133.5 L492.8,131.8 L490.8,129.4 L489.9,126.4 Z"><title>G17 Ușă peron poarta 2</title></path>
+<path id="G_GATE_DOOR_6" class="zone stairs" data-code="G18" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M1618.2,387.2 L1621.9,383.3 L1627.3,382.6 L1658.4,392.9 L1662.7,396.2 L1663.9,399.9 L1663.5,403.0 L1653.5,433.1 L1650.5,436.7 L1647.6,437.8 L1643.7,437.5 L1613.3,427.5 L1609.0,424.2 L1607.9,421.3 L1608.0,418.2 Z"><title>G18 Ușă peron poarta 6</title></path>
+<path id="G_GATE_DOOR_7" class="zone stairs" data-code="G19" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M1871.6,463.8 L1873.8,458.9 L1878.6,456.5 L1911.4,455.7 L1916.5,457.4 L1918.6,459.8 L1919.6,463.5 L1920.3,495.3 L1918.6,499.6 L1916.2,501.7 L1912.5,502.7 L1880.6,503.4 L1875.5,501.7 L1873.4,499.3 L1872.5,496.4 Z"><title>G19 Ușă peron poarta 7</title></path>
+<path id="G_GATE_DOOR_8" class="zone stairs" data-code="G20" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M2160.2,457.2 L2162.4,452.3 L2167.2,449.9 L2200.0,449.1 L2205.1,450.8 L2207.2,453.2 L2208.2,456.9 L2208.9,488.7 L2207.2,493.0 L2204.1,495.4 L2201.1,496.1 L2169.1,496.8 L2164.0,495.1 L2161.9,492.7 L2161.0,489.8 Z"><title>G20 Ușă peron poarta 8</title></path>
+<path id="G_GATE_DOOR_9" class="zone stairs" data-code="G21" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M2448.7,450.7 L2450.9,445.8 L2455.7,443.4 L2488.5,442.5 L2493.6,444.2 L2495.7,446.6 L2496.7,450.3 L2497.4,482.1 L2495.7,486.4 L2493.3,488.5 L2489.6,489.5 L2457.7,490.2 L2452.6,488.5 L2450.5,486.1 L2449.6,483.2 Z"><title>G21 Ușă peron poarta 9</title></path>
+<path id="G_GATE_DOOR_10" class="zone stairs" data-code="G22" data-kind="stairs" data-side="airside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M2737.3,444.1 L2739.5,439.2 L2744.3,436.8 L2777.1,435.9 L2782.2,437.6 L2784.3,440.0 L2785.3,443.7 L2786.0,475.5 L2784.3,479.8 L2781.9,481.9 L2778.2,482.9 L2746.2,483.6 L2741.1,481.9 L2739.0,479.5 L2738.1,476.6 Z"><title>G22 Ușă peron poarta 10</title></path>
+</g>
+<g id="points">
+<circle id="door_exit_west" class="point door" cx="938.3" cy="717.2" r="5" fill="#fff" stroke="#000"><title>Sosiri / Arrivals side</title></circle>
+<circle id="door_exit_mid" class="point door" cx="1396.3" cy="866.3" r="5" fill="#fff" stroke="#000"><title>P exit</title></circle>
+<circle id="door_arrivals_east" class="point door" cx="1781.0" cy="912.8" r="5" fill="#fff" stroke="#000"><title>door_arrivals_east</title></circle>
+<circle id="door_departures" class="point door" cx="2094.0" cy="911.2" r="5" fill="#fff" stroke="#000"><title>Plecări / Departures</title></circle>
+<circle id="door_apron_gate_1" class="point door" cx="224.9" cy="113.8" r="5" fill="#fff" stroke="#000"><title>Poarta 1 / Gate 1 (apron)</title></circle>
+<circle id="door_apron_gate_2" class="point door" cx="513.5" cy="109.3" r="5" fill="#fff" stroke="#000"><title>Poarta 2 / Gate 2 (apron)</title></circle>
+<circle id="door_apron_gate_6" class="point door" cx="1636.0" cy="409.7" r="5" fill="#fff" stroke="#000"><title>Poarta 6 / Gate 6 (apron)</title></circle>
+<circle id="door_apron_gate_7" class="point door" cx="1896.0" cy="479.1" r="5" fill="#fff" stroke="#000"><title>Poarta 7 / Gate 7 (apron)</title></circle>
+<circle id="door_apron_gate_8" class="point door" cx="2184.5" cy="472.5" r="5" fill="#fff" stroke="#000"><title>Poarta 8 / Gate 8 (apron)</title></circle>
+<circle id="door_apron_gate_9" class="point door" cx="2473.1" cy="465.9" r="5" fill="#fff" stroke="#000"><title>Poarta 9 / Gate 9 (apron)</title></circle>
+<circle id="door_apron_gate_10" class="point door" cx="2761.6" cy="459.3" r="5" fill="#fff" stroke="#000"><title>Poarta 10 / Gate 10 (apron)</title></circle>
+<circle id="door_emergency_west" class="point emergency_exit" cx="675.3" cy="601.1" r="5" fill="#fff" stroke="#000"><title>Ieșire de urgență / Emergency exit</title></circle>
+<circle id="door_emergency_east" class="point emergency_exit" cx="2529.6" cy="870.1" r="5" fill="#fff" stroke="#000"><title>Ieșire de urgență / Emergency exit</title></circle>
+<circle id="door_arrivals_entry" class="point door" cx="1106.2" cy="233.4" r="5" fill="#fff" stroke="#000"><title>Sosiri / Arrivals (from the apron)</title></circle>
+<circle id="stairs_west_G" class="point stairs" cx="839.2" cy="569.2" r="5" fill="#fff" stroke="#000"><title>stairs_west</title></circle>
+<circle id="stairs_east_G" class="point stairs" cx="1700.1" cy="834.2" r="5" fill="#fff" stroke="#000"><title>stairs_east</title></circle>
+<circle id="escalator_east_G" class="point escalator" cx="1708.1" cy="803.1" r="5" fill="#fff" stroke="#000"><title>escalator_east</title></circle>
+<circle id="lift_east_G" class="point lift" cx="1432.6" cy="694.1" r="5" fill="#fff" stroke="#000"><title>lift_east</title></circle>
+<circle id="lift_west_G" class="point lift" cx="778.9" cy="445.5" r="5" fill="#fff" stroke="#000"><title>lift_west</title></circle>
+<circle id="gate_1_stairs_G" class="point stairs" cx="224.9" cy="113.8" r="5" fill="#fff" stroke="#000"><title>gate_1_stairs</title></circle>
+<circle id="gate_2_stairs_G" class="point stairs" cx="513.5" cy="109.3" r="5" fill="#fff" stroke="#000"><title>gate_2_stairs</title></circle>
+<circle id="gate_6_stairs_G" class="point stairs" cx="1636.0" cy="409.7" r="5" fill="#fff" stroke="#000"><title>gate_6_stairs</title></circle>
+<circle id="gate_7_stairs_G" class="point stairs" cx="1896.0" cy="479.1" r="5" fill="#fff" stroke="#000"><title>gate_7_stairs</title></circle>
+<circle id="gate_8_stairs_G" class="point stairs" cx="2184.5" cy="472.5" r="5" fill="#fff" stroke="#000"><title>gate_8_stairs</title></circle>
+<circle id="gate_9_stairs_G" class="point stairs" cx="2473.1" cy="465.9" r="5" fill="#fff" stroke="#000"><title>gate_9_stairs</title></circle>
+<circle id="gate_10_stairs_G" class="point stairs" cx="2761.6" cy="459.3" r="5" fill="#fff" stroke="#000"><title>gate_10_stairs</title></circle>
+<circle id="checkin_1" class="point checkin_desk" cx="2135.8" cy="747.0" r="5" fill="#fff" stroke="#000"><title>checkin_1</title></circle>
+<circle id="checkin_2" class="point checkin_desk" cx="2155.1" cy="746.9" r="5" fill="#fff" stroke="#000"><title>checkin_2</title></circle>
+<circle id="checkin_3" class="point checkin_desk" cx="2183.8" cy="746.8" r="5" fill="#fff" stroke="#000"><title>checkin_3</title></circle>
+<circle id="checkin_4" class="point checkin_desk" cx="2203.2" cy="746.7" r="5" fill="#fff" stroke="#000"><title>checkin_4</title></circle>
+<circle id="checkin_5" class="point checkin_desk" cx="2255.1" cy="746.4" r="5" fill="#fff" stroke="#000"><title>checkin_5</title></circle>
+<circle id="checkin_6" class="point checkin_desk" cx="2274.4" cy="746.3" r="5" fill="#fff" stroke="#000"><title>checkin_6</title></circle>
+<circle id="checkin_7" class="point checkin_desk" cx="2303.1" cy="746.2" r="5" fill="#fff" stroke="#000"><title>checkin_7</title></circle>
+<circle id="checkin_8" class="point checkin_desk" cx="2322.4" cy="746.1" r="5" fill="#fff" stroke="#000"><title>checkin_8</title></circle>
+<circle id="checkin_9" class="point checkin_desk" cx="2374.3" cy="745.8" r="5" fill="#fff" stroke="#000"><title>checkin_9</title></circle>
+<circle id="checkin_10" class="point checkin_desk" cx="2393.7" cy="745.7" r="5" fill="#fff" stroke="#000"><title>checkin_10</title></circle>
+<circle id="checkin_11" class="point checkin_desk" cx="2422.4" cy="745.6" r="5" fill="#fff" stroke="#000"><title>checkin_11</title></circle>
+<circle id="checkin_12" class="point checkin_desk" cx="2441.7" cy="745.5" r="5" fill="#fff" stroke="#000"><title>checkin_12</title></circle>
+<circle id="kiosk_1" class="point self_checkin" cx="2230.6" cy="864.0" r="5" fill="#fff" stroke="#000"><title>kiosk_1</title></circle>
+<circle id="kiosk_2" class="point self_checkin" cx="2270.0" cy="863.8" r="5" fill="#fff" stroke="#000"><title>kiosk_2</title></circle>
+<circle id="kiosk_3" class="point self_checkin" cx="2325.3" cy="825.6" r="5" fill="#fff" stroke="#000"><title>kiosk_3</title></circle>
+<circle id="kiosk_4" class="point self_checkin" cx="2281.2" cy="825.8" r="5" fill="#fff" stroke="#000"><title>kiosk_4</title></circle>
+<circle id="kiosk_5" class="point self_checkin" cx="2364.4" cy="825.4" r="5" fill="#fff" stroke="#000"><title>kiosk_5</title></circle>
+<circle id="kiosk_6" class="point self_checkin" cx="2418.3" cy="825.1" r="5" fill="#fff" stroke="#000"><title>kiosk_6</title></circle>
+<circle id="info_desk" class="point information" cx="1474.9" cy="814.1" r="5" fill="#fff" stroke="#000"><title>info_desk</title></circle>
+<circle id="shop_pricecarz" class="point shop" cx="1050.3" cy="628.5" r="5" fill="#fff" stroke="#000"><title>PriceCarz</title></circle>
+<circle id="shop_frosted" class="point shop" cx="1098.8" cy="644.3" r="5" fill="#fff" stroke="#000"><title>frosted units</title></circle>
+<circle id="shop_sixt" class="point shop" cx="1154.3" cy="662.4" r="5" fill="#fff" stroke="#000"><title>Sixt</title></circle>
+<circle id="shop_autonom" class="point shop" cx="1223.7" cy="684.9" r="5" fill="#fff" stroke="#000"><title>Autonom</title></circle>
+<circle id="shop_offices" class="point shop" cx="1371.6" cy="733.1" r="5" fill="#fff" stroke="#000"><title>offices</title></circle>
+<circle id="shop_glazed" class="point shop" cx="1887.6" cy="793.2" r="5" fill="#fff" stroke="#000"><title>glazed office</title></circle>
+<circle id="cafe_east" class="point cafe" cx="2461.8" cy="870.4" r="5" fill="#fff" stroke="#000"><title>Gourmet Bar</title></circle>
+<circle id="kiosk_west" class="point cafe" cx="754.0" cy="574.1" r="5" fill="#fff" stroke="#000"><title>kiosk with the green sign, wording unread</title></circle>
+<circle id="atm_bcr" class="point atm" cx="860.3" cy="701.3" r="5" fill="#fff" stroke="#000"><title>BCR</title></circle>
+<circle id="atm_euronet" class="point atm" cx="1182.1" cy="805.0" r="5" fill="#fff" stroke="#000"><title>Euronet</title></circle>
+<circle id="vending_1" class="point vending" cx="1831.1" cy="797.5" r="5" fill="#fff" stroke="#000"><title>vending_1</title></circle>
+<circle id="wc" class="point wc" cx="1948.3" cy="742.9" r="5" fill="#fff" stroke="#000"><title>wc</title></circle>
+<circle id="fids_checkin_1_f1" class="point flight_screen" cx="2161.6" cy="832.8" r="5" fill="#fff" stroke="#000"><title>fids_checkin_1_f1</title></circle>
+<circle id="fids_checkin_1_f2" class="point flight_screen" cx="2174.4" cy="832.7" r="5" fill="#fff" stroke="#000"><title>fids_checkin_1_f2</title></circle>
+<circle id="fids_checkin_2_f1" class="point flight_screen" cx="2281.3" cy="832.2" r="5" fill="#fff" stroke="#000"><title>fids_checkin_2_f1</title></circle>
+<circle id="fids_checkin_2_f2" class="point flight_screen" cx="2294.1" cy="832.1" r="5" fill="#fff" stroke="#000"><title>fids_checkin_2_f2</title></circle>
+<circle id="fids_checkin_3_f1" class="point flight_screen" cx="2400.9" cy="831.6" r="5" fill="#fff" stroke="#000"><title>fids_checkin_3_f1</title></circle>
+<circle id="fids_checkin_3_f2" class="point flight_screen" cx="2413.7" cy="831.6" r="5" fill="#fff" stroke="#000"><title>fids_checkin_3_f2</title></circle>
+<circle id="fids_arr_schengen_f1" class="point flight_screen" cx="1283.9" cy="751.5" r="5" fill="#fff" stroke="#000"><title>fids_arr_schengen_f1</title></circle>
+<circle id="fids_arr_schengen_f2" class="point flight_screen" cx="1296.1" cy="755.4" r="5" fill="#fff" stroke="#000"><title>fids_arr_schengen_f2</title></circle>
+<circle id="fids_arr_schengen_b1" class="point flight_screen" cx="1315.0" cy="697.2" r="5" fill="#fff" stroke="#000"><title>fids_arr_schengen_b1</title></circle>
+<circle id="fids_arr_schengen_b2" class="point flight_screen" cx="1302.8" cy="693.2" r="5" fill="#fff" stroke="#000"><title>fids_arr_schengen_b2</title></circle>
+<circle id="fids_arr_west_f1" class="point flight_screen" cx="889.1" cy="644.0" r="5" fill="#fff" stroke="#000"><title>fids_arr_west_f1</title></circle>
+<circle id="fids_arr_west_f2" class="point flight_screen" cx="901.3" cy="647.9" r="5" fill="#fff" stroke="#000"><title>fids_arr_west_f2</title></circle>
+<circle id="passport_arr_1" class="point passport_booth" cx="1075.0" cy="300.0" r="5" fill="#fff" stroke="#000"><title>passport_arr_1</title></circle>
+<circle id="passport_arr_2" class="point passport_booth" cx="1095.9" cy="306.8" r="5" fill="#fff" stroke="#000"><title>passport_arr_2</title></circle>
+<circle id="lost_found" class="point office" cx="802.5" cy="545.7" r="5" fill="#fff" stroke="#000"><title>Bagaje pierdute / Lost & Found</title></circle>
+<circle id="cctv_checkin_1" class="point camera" cx="2149.5" cy="852.0" r="5" fill="#fff" stroke="#000"><title>check-in queue</title></circle>
+<circle id="cctv_checkin_2" class="point camera" cx="2259.3" cy="721.4" r="5" fill="#fff" stroke="#000"><title>check-in queue</title></circle>
+<circle id="cctv_checkin_3" class="point camera" cx="2359.1" cy="730.8" r="5" fill="#fff" stroke="#000"><title>check-in queue</title></circle>
+<circle id="cctv_door_exit_west" class="point camera" cx="1006.9" cy="687.8" r="5" fill="#fff" stroke="#000"><title>door exit_west</title></circle>
+<circle id="cctv_door_exit_mid" class="point camera" cx="1452.9" cy="826.2" r="5" fill="#fff" stroke="#000"><title>door exit_mid</title></circle>
+<circle id="cctv_door_arrivals_east" class="point camera" cx="1818.4" cy="848.5" r="5" fill="#fff" stroke="#000"><title>door arrivals_east</title></circle>
+<circle id="cctv_door_departures" class="point camera" cx="2160.1" cy="917.0" r="5" fill="#fff" stroke="#000"><title>door departures</title></circle>
+<circle id="cctv_arrivals_exit" class="point camera" cx="1333.2" cy="753.8" r="5" fill="#fff" stroke="#000"><title>arrivals exit Schengen</title></circle>
+<circle id="cctv_info" class="point camera" cx="1425.1" cy="826.6" r="5" fill="#fff" stroke="#000"><title>information</title></circle>
+<circle id="cctv_reclaim_1" class="point camera" cx="1131.9" cy="537.9" r="5" fill="#fff" stroke="#000"><title>baggage reclaim</title></circle>
+<circle id="cctv_reclaim_2" class="point camera" cx="1358.9" cy="611.8" r="5" fill="#fff" stroke="#000"><title>baggage reclaim</title></circle>
+<circle id="cctv_passport_arr" class="point camera" cx="1132.0" cy="261.8" r="5" fill="#fff" stroke="#000"><title>arrivals corridor</title></circle>
+<circle id="cctv_hall_west" class="point camera" cx="731.5" cy="660.4" r="5" fill="#fff" stroke="#000"><title>hall (arrivals waiting)</title></circle>
+<circle id="cctv_hall_east" class="point camera" cx="2471.8" cy="918.2" r="5" fill="#fff" stroke="#000"><title>hall (check-in side)</title></circle>
+<circle id="cctv_checkin_overview" class="point camera" cx="2290.0" cy="935.0" r="5" fill="#fff" stroke="#000"><title>check-in queues 1-3 (whole)</title></circle>
+</g></svg>
