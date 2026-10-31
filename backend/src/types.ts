@@ -24,6 +24,8 @@ export type Lang = "ro" | "en";
 export type Situation =
   "runway_closed" | "evacuation" | "diverted" | "reopen_wave" | "reopened";
 export type Phase = "normal" | "detection" | "suspended" | "recovery";
+/** WebSocket client kinds. `vision` is the camera service (SPEC-v2 D0); it may send only flow.report and crowd.positions. */
+export type Client = "twin" | "vision" | "console" | "viewer";
 export interface Envelope {
   type: string;
   ts: string;

@@ -17,13 +17,18 @@ import {
   type Subscription,
 } from "./types.js";
 import { buttonAction, parseStartCode, parseWhatsAppWebhook } from "./channels/whatsapp.js";
-import type { Flight } from "./types.js";
+import type { Client, Flight } from "./types.js";
 import { render } from "./messages.js";
 import { fixtureSource, schedule, settlePast } from "./data/flights.js";
 import { roalertDraft } from "./channels/roalert.js";
 import type { Adapter, Outbound } from "./channels/types.js";
 // Demo assumption: 10 drivers/minute while the simulated Waze closure is active.
 export const WAZE_DRIVERS_PER_MINUTE = 10;
+/** The only events the camera service (client=vision) may send. */
+const visionEvents = ["flow.report", "crowd.positions"];
+/** metric.report names: legacy T2 metrics plus the D19 A/B names. */
+export const metricNames = ["isuTimeToT2", "carsStartedInVain", "kerbPeak", "peopleInT2AtEvacuation", "minutesLost",
+  "securityWaitMean", "securityWaitP90", "missedBoarding", "evacT90", "evacLastOut"];
 const iso = () => new Date().toISOString();
 const flightKey = (value: string) => value.replace(/\s/g, "").toUpperCase();
 const clock = (date: string) =>
@@ -581,12 +586,12 @@ export class Engine {
       opened: false,
     }));
   }
-  async handle(event: Envelope, client: "twin" | "console" | "viewer" = "console"): Promise<void> {
+  async handle(event: Envelope, client: Client = "console"): Promise<void> {
     return this.batch(() => this.handleEvent(event, client));
   }
   private async handleEvent(
     event: Envelope,
-    client: "twin" | "console" | "viewer" = "console",
+    client: Client = "console",
   ): Promise<void> {
     if (
       !event ||
@@ -600,22 +605,28 @@ export class Engine {
     const { type, data } = event;
     if (
       client === "viewer" ||
-      (type.startsWith("console.") ? client !== "console" : client !== "twin")
+      (type.startsWith("console.") ? client !== "console"
+        : client === "vision" ? !visionEvents.includes(type) : client !== "twin")
     )
       throw new Error("Client cannot issue this event");
     switch (type) {
       case "sim.status":
         this.sim.status(data);
         return;
+      // Camera telemetry: from vision (contract v2), still accepted from a legacy Unity build.
       case "flow.report":
-        this.sim.flow(data);
+        this.sim.flow(data, client === "vision" ? "vision" : "twin");
+        return;
+      // D0: Unity's truth, kept apart for the accuracy panel and A/B only.
+      case "truth.report":
+        this.sim.truth(data);
         return;
       // Contract v2 telemetry: in memory only, read through GET /api/sim.
       case "flight.update":
         this.sim.flights(data);
         return;
       case "crowd.positions":
-        this.sim.positions(data);
+        this.sim.positions(data, client === "vision" ? "vision" : "twin");
         return;
       case "ops.ack":
         this.sim.ack(data);
@@ -831,7 +842,7 @@ export class Engine {
       }
       case "metric.report":
         if (
-          !["isuTimeToT2", "carsStartedInVain", "kerbPeak", "peopleInT2AtEvacuation", "minutesLost"].includes(
+          !metricNames.includes(
             data.name,
           ) ||
           !Number.isFinite(data.value) ||

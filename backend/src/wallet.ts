@@ -1,6 +1,6 @@
 import { dryRun, type Delivery, type Outbound } from './channels/types.js';
 import type { Engine } from './engine.js';
-import type { Envelope, Subscription } from './types.js';
+import type { Client, Envelope, Subscription } from './types.js';
 
 export interface WalletEnv {
   GOOGLE_WALLET_ISSUER_ID?: string;
@@ -138,7 +138,7 @@ export class Wallet {
         messageType: 'TEXT_AND_NOTIFY' } }) });
     return { delivered: true, simulated: false };
   }
-  async handle(engine: Engine, event: Envelope, client?: 'twin' | 'console' | 'viewer') {
+  async handle(engine: Engine, event: Envelope, client?: Client) {
     const before = engine.state.phase;
     await engine.handle(event, client);
     const phase = engine.state.phase;

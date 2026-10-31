@@ -79,7 +79,7 @@ describe('Unity shared engine', () => {
     });
     it('rejects the whole report on any invalid entry', async () => {
       const e = new Engine();
-      for (const zones of [[zone('security', 1), zone('gate', 1)], [zone('security', 1), zone('kerb', -1)], [zone('security', 1), zone('security', 2)],
+      for (const zones of [[zone('security', 1), zone('Gate 1', 1)], [zone('security', 1), zone('kerb', -1)], [zone('security', 1), zone('security', 2)],
         [zone('kerb', 1.5)], [zone('kerb', 1, { capacity: 0 })], [zone('kerb', 1, { waitMin: -1 })], [], Array.from({ length: 7 }, () => zone('kerb', 1))])
         await expect(e.handle(event('flow.report', { zones }), 'twin')).rejects.toThrow();
       expect(flow(e)).toEqual({});

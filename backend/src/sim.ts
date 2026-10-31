@@ -1,4 +1,5 @@
 import { isRole, type Role } from './types.js';
+import { initialLanes } from './terminal.js';
 export const locations = ['home', 'road', 'terminal', 'kerb'] as const;
 export type LegacyLocation = typeof locations[number];
 const phones = ['unknown', 'notified', 'read', 'acting'] as const;
@@ -16,17 +17,46 @@ const withoutNulls = (r: any) => object(r) ? Object.fromEntries(Object.entries(r
 export const flowZones = ['check_in', 'bag_drop', 'security', 'arrivals_hall', 'taxi_rank', 'kerb'] as const;
 export type FlowZone = typeof flowZones[number];
 export interface Forecast { inMin: number; waitMin: number }
+/** Who sent a flow row: the camera service (contract v2) or a legacy Unity build. */
+export type FlowSource = 'vision' | 'twin';
+/**
+ * A7 lane advice from vision. Contract shape `{ lanes, by, waitMinIfNot }`; a plain sentence is also accepted.
+ * `by` is sim time (seconds or a clock string, as sent).
+ */
+export type Advice = string | { lanes: number | null; by: number | string | null; waitMinIfNot: number | null };
 export interface FlowRow {
-  waiting: number; capacity: number | null; waitMin: number | null; staff: number | null;
+  waiting: number; waitMin: number | null;
+  /** Vision (A3, A4): standard deviation of `waiting`, people per m², p90 wait. Null when not sent. */
+  waitingSd: number | null; density: number | null; waitMinP90: number | null;
+  /** Share of the queue the cameras see (0-1); null when vision did not say. */
+  coverage: number | null;
+  advice: Advice | null;
   forecast: Forecast[] | null; peak: number; updatedAt: string;
+  /** No report for this zone in the last FLOW_STALE_MS: treat it as unknown, not as the old number. */
+  stale: boolean; source: FlowSource;
+  /** Legacy Unity fields; vision does not send them (lanes live in `lanes`). */
+  capacity: number | null; staff: number | null;
 }
-/** Node / zone id from terminal.json, e.g. `security`, `gate_1`, `check_in:W6`. */
+/** Truth from Unity (D0): only for the accuracy panel and A/B, never for decisions. */
+export interface TruthRow { waiting: number; waitMin: number | null }
+/** Node / zone id from terminal.json, e.g. `security`, `gate_1`, `check_in:2`. */
 const nodeId = (v: any) => typeof v === 'string' && /^[a-z][a-z0-9_]{0,39}(:[A-Za-z0-9_-]{1,16})?$/.test(v);
 /** Per-airline ids carry the IATA code in upper case (D8). */
 const upperSuffix = (v: any) => typeof v === 'string' ? v.replace(/:([A-Za-z0-9]{2})$/, (_, c: string) => `:${c.toUpperCase()}`) : v;
-/** The six T2 queues plus `check_in:<IATA>` / `bag_drop:<IATA>` (D8). */
-export const isFlowZone = (v: any) => (flowZones as readonly string[]).includes(v) || (typeof v === 'string' && /^(check_in|bag_drop):[A-Z0-9]{2}$/.test(v));
-const FLOW_ZONES_MAX = 64, FORECAST_MAX = 12, FLIGHTS_MAX = 300, PEOPLE_MAX = 2000, OPS_KEPT = 50, POSITIONS_MIN_MS = 900;
+/** Any zone id from terminal.json (D7, D8): `security`, `gate_3`, `check_in:2`, `bag_drop:2`. Not a fixed list. */
+export const isFlowZone = nodeId;
+const FLOW_ZONES_MAX = 64, FORECAST_MAX = 12, FLIGHTS_MAX = 300, PEOPLE_MAX = 2000, OPS_KEPT = 50, POSITIONS_MIN_MS = 900, TRUTH_MIN_MS = 900;
+/** Vision reports at most 1/s; a zone missing for this long is unknown again. */
+export const FLOW_STALE_MS = 5000;
+const LANES_MAX = 50, DENSITY_MAX = 20;
+/** A7 advice: a sentence (≤200 chars) or `{ lanes?, by?, waitMinIfNot? }`; `waitMin` is read as `waitMinIfNot`. */
+function advice(a: any): Advice {
+  if (typeof a === 'string') { if (!a.trim() || a.length > 200) throw new Error('Invalid flow zone'); return a.trim(); }
+  const v = withoutNulls(a), wait = v?.waitMinIfNot ?? v?.waitMin;
+  if (!object(v) || (v.lanes !== undefined && (!Number.isSafeInteger(v.lanes) || v.lanes < 0 || v.lanes > LANES_MAX)) ||
+    (v.by !== undefined && !simTimeValue(v.by)) || (wait !== undefined && !finite(wait, 0))) throw new Error('Invalid flow zone');
+  return { lanes: v.lanes ?? null, by: v.by ?? null, waitMinIfNot: wait ?? null };
+}
 /** Peak window: 30 minutes, in sim seconds when sim.status has given a simTime, else wall-clock seconds. */
 const PEAK_WINDOW_S = 1800, HISTORY_MAX = 4000;
 const flightStatuses = ['scheduled', 'boarding', 'delayed', 'cancelled', 'departed'] as const;
@@ -37,7 +67,8 @@ export interface TerminalFlight {
   checkIn?: string;
   gateCloseAt: number | string | null; status: typeof flightStatuses[number]; delayMin: number; pax: number | null;
 }
-export interface Person { x: number; y: number; kind: 'pax' | 'staff' }
+/** Feet point of a detected person, terminal metres. Vision sends only x, y; legacy Unity also sent kind. */
+export interface Person { x: number; y: number; kind?: 'pax' | 'staff' }
 export const opsTypes = ['staff', 'redirect', 'evacuate', 'close', 'open'] as const;
 export type OpsCommand =
   | { type: 'staff'; zone: string; delta: number }
@@ -91,12 +122,17 @@ export class SimStore {
   private simTime: number | null = null;
   private speed: number | null = null;
   private lastSeen: string | null = null;
-  private flowRows = new Map<string, FlowRow>();
+  private flowRows = new Map<string, Omit<FlowRow, 'stale'> & { at: number }>();
+  private visionFlowMs = -Infinity;
+  private laneRows = new Map<string, number>(Object.entries(initialLanes));
+  private truthRows: { zones: Record<string, TruthRow>; at: string } | null = null;
+  private truthMs = -Infinity;
   private flowHistory = new Map<string, { t: number; waiting: number }[]>();
   private flightRows: TerminalFlight[] = [];
   private flightsAt: string | null = null;
   private people: { people: Person[]; at: string } | null = null;
   private peopleMs = -Infinity;
+  private visionPeopleMs = -Infinity;
   private ops: OpsRecord[] = [];
   status(d: any) {
     if (!object(d)) throw new Error('Invalid sim status');
@@ -122,31 +158,61 @@ export class SimStore {
     this.lastSeen = new Date().toISOString();
     return updates;
   }
-  flow(d: any) {
+  /**
+   * flow.report. v2 from vision: { zone, waiting, waitingSd?, density?, waitMin?, waitMinP90?, coverage?, forecast?, advice? };
+   * legacy Unity rows may add staff/capacity. A zone not in the report is not touched (it goes stale).
+   * While vision is reporting, legacy twin reports are ignored (D0). Returns false when the report was ignored.
+   */
+  flow(d: any, source: FlowSource = 'twin', now = Date.now()): boolean {
     if (!object(d) || !Array.isArray(d.zones) || d.zones.length < 1 || d.zones.length > FLOW_ZONES_MAX) throw new Error(`zones[] required (1-${FLOW_ZONES_MAX})`);
     const seen = new Set<string>();
     // Validate the complete report before applying any zone.
-    const zones = d.zones.map((z: any) => object(z) ? { ...z, zone: upperSuffix(z.zone), capacity: z.capacity ?? null, waitMin: z.waitMin ?? null, staff: z.staff ?? null, forecast: z.forecast ?? null } : z);
-    for (const z of zones) {
-      if (!object(z) || !isFlowZone(z.zone) || seen.has(z.zone) || !Number.isSafeInteger(z.waiting) || z.waiting < 0 ||
-        (z.capacity !== null && (!Number.isSafeInteger(z.capacity) || z.capacity <= 0)) ||
-        (z.waitMin !== null && !finite(z.waitMin, 0)) ||
-        (z.staff !== null && (!Number.isSafeInteger(z.staff) || z.staff < 0)) ||
-        (z.forecast !== null && (!Array.isArray(z.forecast) || z.forecast.length > FORECAST_MAX ||
+    const rows = d.zones.map((raw: any) => {
+      const z = withoutNulls(raw), zone = upperSuffix(z?.zone);
+      if (!object(z) || !isFlowZone(zone) || seen.has(zone) || !Number.isSafeInteger(z.waiting) || z.waiting < 0 ||
+        (z.capacity !== undefined && (!Number.isSafeInteger(z.capacity) || z.capacity <= 0)) ||
+        (z.staff !== undefined && (!Number.isSafeInteger(z.staff) || z.staff < 0)) ||
+        (z.coverage !== undefined && !finite(z.coverage, 0, 1)) ||
+        (z.density !== undefined && !finite(z.density, 0, DENSITY_MAX)) ||
+        !['waitMin', 'waitMinP90', 'waitingSd'].every(k => z[k] === undefined || finite(z[k], 0)) ||
+        (z.forecast !== undefined && (!Array.isArray(z.forecast) || z.forecast.length > FORECAST_MAX ||
           !z.forecast.every((f: any) => object(f) && finite(f.inMin, 0, 1440) && finite(f.waitMin, 0))))) throw new Error('Invalid flow zone');
-      seen.add(z.zone);
-    }
-    const t = this.simTime ?? Date.now() / 1000, updatedAt = new Date().toISOString();
-    for (const z of zones as { zone: string; waiting: number; capacity: number | null; waitMin: number | null; staff: number | null; forecast: Forecast[] | null }[]) {
+      seen.add(zone);
+      const forecast: Forecast[] | null = z.forecast ? z.forecast.map((f: Forecast) => ({ inMin: f.inMin, waitMin: f.waitMin })) : null;
+      return { zone, waiting: z.waiting as number, waitingSd: z.waitingSd ?? null, density: z.density ?? null, waitMin: z.waitMin ?? null,
+        waitMinP90: z.waitMinP90 ?? null, coverage: z.coverage ?? null, forecast, advice: z.advice === undefined ? null : advice(z.advice),
+        capacity: z.capacity ?? null, staff: z.staff ?? null };
+    });
+    if (source === 'vision') this.visionFlowMs = now;
+    else if (now - this.visionFlowMs < FLOW_STALE_MS) return false;
+    const t = this.simTime ?? now / 1000, updatedAt = new Date(now).toISOString();
+    for (const { zone, ...row } of rows as ({ zone: string } & Omit<FlowRow, 'peak' | 'updatedAt' | 'stale' | 'source'>)[]) {
       // Entries newer than t mean the sim clock restarted; drop them with the expired ones.
-      const history = (this.flowHistory.get(z.zone) ?? []).filter(h => h.t <= t && h.t > t - PEAK_WINDOW_S).slice(-HISTORY_MAX + 1);
-      history.push({ t, waiting: z.waiting });
-      this.flowHistory.set(z.zone, history);
-      const forecast = z.forecast && z.forecast.map(f => ({ inMin: f.inMin, waitMin: f.waitMin }));
-      this.flowRows.set(z.zone, { waiting: z.waiting, capacity: z.capacity, waitMin: z.waitMin, staff: z.staff, forecast, peak: Math.max(...history.map(h => h.waiting)), updatedAt });
+      const history = (this.flowHistory.get(zone) ?? []).filter(h => h.t <= t && h.t > t - PEAK_WINDOW_S).slice(-HISTORY_MAX + 1);
+      history.push({ t, waiting: row.waiting });
+      this.flowHistory.set(zone, history);
+      this.flowRows.set(zone, { ...row, peak: Math.max(...history.map(h => h.waiting)), updatedAt, source, at: now });
     }
     this.lastSeen = updatedAt;
+    return true;
   }
+  /** truth.report from Unity (D0), at most ~1/s; faster ones are dropped (false). Kept apart from flow. */
+  truth(d: any, now = Date.now()): boolean {
+    if (!object(d) || !Array.isArray(d.zones) || d.zones.length < 1 || d.zones.length > FLOW_ZONES_MAX) throw new Error(`zones[] required (1-${FLOW_ZONES_MAX})`);
+    const zones: Record<string, TruthRow> = {};
+    for (const raw of d.zones) {
+      const z = withoutNulls(raw);
+      if (!object(z) || !isFlowZone(z.zone) || Object.hasOwn(zones, upperSuffix(z.zone)) || !Number.isSafeInteger(z.waiting) || z.waiting < 0 ||
+        (z.waitMin !== undefined && !finite(z.waitMin, 0))) throw new Error('Invalid truth zone');
+      zones[upperSuffix(z.zone)] = { waiting: z.waiting, waitMin: z.waitMin ?? null };
+    }
+    if (now - this.truthMs < TRUTH_MIN_MS) return false;
+    this.truthMs = now;
+    this.truthRows = { zones, at: this.lastSeen = new Date(now).toISOString() };
+    return true;
+  }
+  /** Open lanes / desks for a zone (D12); null when the backend has never had a number for it. */
+  lanes(zone: string): number | null { return this.laneRows.get(zone) ?? null; }
   /** D14: the full schedule, replaced on every message. */
   flights(d: any) {
     if (!object(d) || !Array.isArray(d.flights) || d.flights.length > FLIGHTS_MAX) throw new Error(`flights[] required (max ${FLIGHTS_MAX})`);
@@ -166,19 +232,28 @@ export class SimStore {
     this.flightRows = rows; this.flightsAt = this.lastSeen = new Date().toISOString();
   }
   /** Crowd dots in terminal metres. One snapshot per ~second is kept; faster ones are dropped (false). */
-  positions(d: any, now = Date.now()): boolean {
+  positions(d: any, source: FlowSource = 'twin', now = Date.now()): boolean {
     if (!object(d) || !Array.isArray(d.people) || d.people.length > PEOPLE_MAX) throw new Error(`people[] required (max ${PEOPLE_MAX})`);
-    const people: Person[] = d.people.map((p: any) => {
-      if (!object(p) || !finite(p.x, -1e5, 1e5) || !finite(p.y, -1e5, 1e5) || !['pax', 'staff'].includes(p.kind)) throw new Error('Invalid person');
-      return { x: p.x, y: p.y, kind: p.kind };
+    const people: Person[] = d.people.map((raw: any) => {
+      const p = withoutNulls(raw);
+      if (!object(p) || !finite(p.x, -1e5, 1e5) || !finite(p.y, -1e5, 1e5) || (p.kind !== undefined && !['pax', 'staff'].includes(p.kind))) throw new Error('Invalid person');
+      return p.kind === undefined ? { x: p.x, y: p.y } : { x: p.x, y: p.y, kind: p.kind };
     });
+    // Same rule as flow: the cameras win over a legacy Unity build.
+    if (source === 'vision') this.visionPeopleMs = now;
+    else if (now - this.visionPeopleMs < FLOW_STALE_MS) return false;
     if (now - this.peopleMs < POSITIONS_MIN_MS) return false;
     this.peopleMs = now;
     this.people = { people, at: this.lastSeen = new Date(now).toISOString() };
     return true;
   }
-  /** Records a command forwarded to Unity and gives it its id. */
+  /**
+   * Records a command forwarded to Unity and gives it its id. `staff` changes the backend's open lanes at once
+   * (D12: the backend holds them, vision reads them); never below 0, at most LANES_MAX.
+   */
   sent(command: OpsCommand): OpsRecord {
+    if (command.type === 'staff')
+      this.laneRows.set(command.zone, Math.min(LANES_MAX, Math.max(0, (this.laneRows.get(command.zone) ?? 0) + command.delta)));
     const record: OpsRecord = { ...command, id: crypto.randomUUID(), status: 'sent', sentAt: new Date().toISOString(), ackedAt: null };
     this.ops = [...this.ops, record].slice(-OPS_KEPT);
     return record;
@@ -193,7 +268,8 @@ export class SimStore {
   agents(filters: URLSearchParams) {
     return [...this.rows.values()].filter(r => ['role', 'location', 'action'].every(k => !filters.get(k) || filters.get(k) === (r as any)[k]));
   }
-  snapshot(connected: boolean, metrics: unknown) {
+  /** `connected` = Unity (twin) online, `vision` = camera service online. */
+  snapshot(connected: boolean, metrics: unknown, vision = false, now = Date.now()) {
     const counts: Record<string, Record<string, number>> = {}, actions: Record<string, number> = Object.create(null);
     const phoneCounts = { unknown: 0, notified: 0, read: 0, acting: 0 };
     for (const row of this.rows.values()) {
@@ -201,8 +277,10 @@ export class SimStore {
       role[row.location] = (role[row.location] ?? 0) + 1; actions[row.action] = (actions[row.action] ?? 0) + 1; phoneCounts[row.phone]++;
     }
     return {
-      connected, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed,
-      counts, actions, phones: phoneCounts, metrics, flow: Object.fromEntries(this.flowRows),
+      connected, vision, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed,
+      counts, actions, phones: phoneCounts, metrics,
+      flow: Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]): [string, FlowRow] => [zone, { ...row, stale: now - at > FLOW_STALE_MS }])),
+      lanes: Object.fromEntries(this.laneRows), truth: this.truthRows,
       flights: this.flightRows, flightsAt: this.flightsAt, positions: this.people, ops: [...this.ops].reverse(),
     };
   }
