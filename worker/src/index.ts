@@ -98,7 +98,7 @@ export class Tower extends DurableObject<Env> {
     super(ctx, env);
     this.waEvents = new WaEvents(ctx.storage);
     this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0),
-      { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record });
+      { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
@@ -120,6 +120,7 @@ export class Tower extends DurableObject<Env> {
         },
         simSpeed: numeric(env.SIM_SPEED, 60, 0.001), seed: env.SIM_SEED,
       });
+      this.engine.updateStaffReports(await this.whatsapp.reports.list());
       await this.refreshFlights();
       this.engine.persist();
       // Never replace an existing alarm while waking for it.
@@ -275,7 +276,7 @@ export class Tower extends DurableObject<Env> {
           },
         });
         if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
-        if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/alerts/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
           if (!['twin', 'vision', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
@@ -384,6 +385,11 @@ export class Tower extends DurableObject<Env> {
             const twins = this.twins();
             for (const ws of twins) ws.send(packet('sim.command', data));
             return json({ connected: twins.length > 0 }, twins.length ? 202 : 409);
+          }
+          if (path === '/api/alerts/command') {
+            const data = JSON.parse(await bodyText(request));
+            await this.handle({ type: 'console.alert.command', ts: new Date().toISOString(), data }, 'console');
+            return json({ alerts: this.engine.sim.alertSnapshot() });
           }
           if (path === '/api/ops/command') {
             // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.

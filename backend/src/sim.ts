@@ -1,3 +1,4 @@
+import { Alerts, alertCommand, type StaffReport } from './alerts.js';
 import { isNodeId } from './mapIds.js';
 import { isRole, type Role } from './types.js';
 import { initialLanes } from './terminal.js';
@@ -119,6 +120,27 @@ export function simCommand(d: any) {
 }
 /** Ephemeral Unity telemetry. Never part of the persisted engine store. */
 export class SimStore {
+  private alerts = new Alerts();
+  private staffReports: StaffReport[] = [];
+  reports(rows: readonly StaffReport[]) {
+    if (!Array.isArray(rows) || rows.length > 200 || rows.some(r => !r || typeof r.id !== 'string' || !r.id || r.id.length > 100 || typeof r.kind !== 'string' || !['open', 'closed'].includes(r.status) || (r.node !== null && !isNodeId(r.node)) || typeof r.text !== 'string' || r.text.length > 500)) throw new Error('Invalid staff reports');
+    this.staffReports = structuredClone([...rows]);
+    this.alertSnapshot();
+  }
+  reportSnapshot() { return structuredClone(this.staffReports); }
+  alertSnapshot(now = Date.now()) {
+    if (this.simTime === null) return this.alerts.snapshot();
+    return this.alerts.update({ simTime: this.simTime, flow: this.flowSnapshot(now), flights: this.flightRows, reports: this.staffReports });
+  }
+  alertCommand(data: unknown) {
+    const command = alertCommand(data);
+    if (this.simTime === null) throw new Error('Simulation clock required');
+    this.alertSnapshot();
+    return this.alerts.command(command, this.simTime);
+  }
+  private flowSnapshot(now: number): Record<string, FlowRow> {
+    return Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]) => [zone, { ...row, stale: now - at > FLOW_STALE_MS }]));
+  }
   private rows = new Map<string, SimAgent>();
   private run: { scenario: string; arm: 'A' | 'B'; coverage: number; seed: number } | null = null;
   private simTime: number | null = null;
@@ -141,6 +163,7 @@ export class SimStore {
     const cleared = { simAgents: this.rows.size, flowZones: this.flowRows.size,
       truthZones: Object.keys(this.truthRows?.zones ?? {}).length, positions: this.people?.people.length ?? 0,
       flights: this.flightRows.length, commands: this.ops.length, blockedZones: this.blockedZones.size };
+    this.alerts.reset(); this.staffReports = [];
     this.rows.clear(); this.run = null; this.simTime = this.speed = null; this.lastSeen = null;
     this.flowRows.clear(); this.flowHistory.clear(); this.visionFlowMs = -Infinity;
     this.laneRows = new Map(Object.entries(initialLanes));
@@ -156,6 +179,7 @@ export class SimStore {
     if (typeof d.running !== 'boolean' || !finite(d.simTime, 0) || !Number.isSafeInteger(d.agents) || d.agents < 0) throw new Error('Invalid sim status');
     this.run = { scenario: d.scenario, arm: d.arm, coverage: d.coverage, seed: d.seed };
     this.simTime = d.simTime; this.speed = d.speed; this.lastSeen = new Date().toISOString();
+    this.alertSnapshot();
   }
   batch(d: any): SimAgent[] {
     if (!object(d) || !Array.isArray(d.updates) || d.updates.length > 500) throw new Error('updates[] required (max 500)');
@@ -210,6 +234,7 @@ export class SimStore {
       this.flowRows.set(zone, { ...row, peak: Math.max(...history.map(h => h.waiting)), updatedAt, source, at: now });
     }
     this.lastSeen = updatedAt;
+    this.alertSnapshot(now);
     return true;
   }
   /** truth.report from Unity (D0), at most ~1/s; faster ones are dropped (false). Kept apart from flow. */
@@ -252,6 +277,7 @@ export class SimStore {
         checkInDesks: (f.checkInDesks ?? []).map(upperSuffix), ...(f.checkIn !== undefined && { checkIn: upperSuffix(f.checkIn) }), gateCloseAt: f.gateCloseAt ?? null, status: f.status, delayMin: f.delayMin ?? 0, pax: f.pax ?? null };
     });
     this.flightRows = rows; this.flightsAt = this.lastSeen = new Date().toISOString();
+    this.alertSnapshot();
   }
   /** Crowd dots in terminal metres. One snapshot per ~second is kept; faster ones are dropped (false). */
   positions(d: any, source: FlowSource = 'twin', now = Date.now()): boolean {
@@ -306,7 +332,7 @@ export class SimStore {
     return {
       connected, vision, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed,
       counts, actions, phones: phoneCounts, metrics,
-      flow: Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]): [string, FlowRow] => [zone, { ...row, stale: now - at > FLOW_STALE_MS }])),
+      flow: this.flowSnapshot(now), alerts: this.alertSnapshot(now),
       blocked: [...this.blockedZones], lanes: this.laneSnapshot(), truth: this.truthRows,
       flights: this.flightRows, flightsAt: this.flightsAt, positions: this.people, ops: [...this.ops].reverse(),
     };

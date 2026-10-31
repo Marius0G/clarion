@@ -1,0 +1,35 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { AddressInfo } from 'node:net';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { createControlTower } from '../src/server.js';
+let server: ReturnType<typeof createControlTower>, base: string;
+const dir = mkdtempSync(join(tmpdir(), 'alerts-http-'));
+beforeAll(async () => {
+  vi.stubEnv('STATE_FILE', join(dir, 'state.json')); vi.stubEnv('DEMO_TOKEN', 'op');
+  server = createControlTower();
+  await new Promise<void>(resolve => server.http.listen(0, '127.0.0.1', resolve));
+  base = `http://127.0.0.1:${(server.http.address() as AddressInfo).port}`;
+});
+afterAll(async () => { await server.stop(); rmSync(dir, { recursive: true }); vi.unstubAllEnvs(); });
+const post = (path: string, body: unknown, token = 'op') => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+it('exposes shared alerts and authenticated local commands without a Unity connection', async () => {
+  server.engine.sim.status({ running: true, scenario: 'rush', arm: 'B', coverage: 1, seed: 1, simTime: 1000, speed: 10, agents: 0 });
+  server.engine.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }] }, 'vision');
+  const sim = await fetch(`${base}/api/sim`).then(r => r.json());
+  const id = sim.alerts[0].id;
+  expect((await post('/api/alerts/command', { type: 'ack', id }, '')).status).toBe(401);
+  expect((await post('/api/alerts/command', { type: 'ack', id: 'missing' })).status).toBe(400);
+  expect((await post('/api/alerts/command', { type: 'ack', id })).status).toBe(200);
+  expect((await fetch(`${base}/api/state`).then(r => r.json())).alerts[0].state).toBe('acked');
+  const shelved = await post('/api/alerts/command', { type: 'shelve', id, durationSec: 60, reason: 'Control' }).then(r => r.json());
+  expect(shelved.alerts[0]).toMatchObject({ state: 'shelved', shelvedUntil: 1060 });
+  const report = { id: 'R1', kind: 'securitate', node: 'gate_1', text: 'Incident', status: 'open' };
+  expect((await post('/api/reports', report, '')).status).toBe(401);
+  expect((await post('/api/reports', report)).status).toBe(200);
+  const state = await fetch(`${base}/api/state`).then(r => r.json());
+  expect(state.alerts.find((a: any) => a.kind === 'staff-security')).toMatchObject({ priority: 'P1', active: true });
+  await post('/api/reports', { ...report, status: 'closed' });
+  expect((await fetch(`${base}/api/state`).then(r => r.json())).alerts.find((a: any) => a.kind === 'staff-security')).toMatchObject({ state: 'cleared-unacked', active: false });
+});

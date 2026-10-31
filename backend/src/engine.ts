@@ -385,6 +385,10 @@ export class Engine {
     )
       throw new Error("Client cannot issue this event");
     switch (type) {
+      case 'console.alert.command':
+        this.sim.alertCommand(data);
+        this.changed();
+        return;
       case "sim.status":
         this.sim.status(data);
         return;
@@ -573,10 +577,15 @@ export class Engine {
       }
     }
   }
+  updateStaffReports(rows: import('./alerts.js').StaffReport[]) {
+    this.sim.reports(rows);
+    this.changed();
+  }
   snapshot() {
     this.expire();
     return {
       ...this.state,
+      alerts: this.sim.alertSnapshot(),
       metrics: {
         ...this.state.metrics,
         isuTimeToT2:

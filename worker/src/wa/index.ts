@@ -51,7 +51,7 @@ export class WhatsAppAgent {
   private observe?: Observe;
   private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
-    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe } = {}) {
+    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.observe = opts.observe;
     this.wa = new WhatsAppClient(env, this.fetcher, opts.pause, async event => {
@@ -60,7 +60,7 @@ export class WhatsAppAgent {
       await this.observe?.(event);
     });
     this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
-    this.reports = new Reports(store);
+    this.reports = new Reports(store, opts.reportsChanged);
   }
 
   async reset() {

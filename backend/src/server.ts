@@ -129,7 +129,7 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
-      if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route", "/api/demo/reset"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
+      if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/alerts/command", "/api/reports", "/api/agent/route", "/api/demo/reset"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
       if (url.pathname.startsWith('/api/auth/')) {
@@ -185,6 +185,20 @@ export function createControlTower() {
         const open = twins();
         for (const [ws] of open) ws.send(JSON.stringify({ type: "sim.command", ts: new Date().toISOString(), data }));
         res.writeHead(open.length ? 202 : 409); res.end(JSON.stringify({ connected: open.length > 0 })); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/alerts/command') {
+        const data = await jsonBody(req);
+        await ordered(() => engine.handle({ type: 'console.alert.command', ts: new Date().toISOString(), data }, 'console'));
+        res.end(JSON.stringify({ alerts: engine.sim.alertSnapshot() })); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/reports') {
+        if (!operator(req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null)) { res.writeHead(401); res.end(JSON.stringify({ error: 'Operator token required' })); return; }
+        res.end(JSON.stringify(engine.sim.reportSnapshot())); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/reports') {
+        const report = await jsonBody(req);
+        await ordered(() => engine.updateStaffReports([...engine.sim.reportSnapshot().filter(r => r.id !== report.id), report].slice(-200)));
+        res.end(JSON.stringify(report)); return;
       }
       if (req.method === "POST" && url.pathname === "/api/ops/command") {
         // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.
