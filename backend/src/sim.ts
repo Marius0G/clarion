@@ -33,6 +33,8 @@ const flightStatuses = ['scheduled', 'boarding', 'delayed', 'cancelled', 'depart
 /** D14 schedule row. Times are sim time (seconds or a clock string, as Unity sends them). */
 export interface TerminalFlight {
   flight: string; airline: string; destination: string; std: number | string; gate: string | null; checkInDesks: string[];
+  /** D8: the desk group zone serving the flight, e.g. `check_in:2`. Absent when Unity does not send it. */
+  checkIn?: string;
   gateCloseAt: number | string | null; status: typeof flightStatuses[number]; delayMin: number; pax: number | null;
 }
 export interface Person { x: number; y: number; kind: 'pax' | 'staff' }
@@ -154,11 +156,12 @@ export class SimStore {
       if (!object(f) || !text(f.flight, 20) || !f.flight.trim() || ids.has(f.flight) || typeof f.airline !== 'string' || !/^[A-Za-z0-9]{2}$/.test(f.airline) ||
         !text(f.destination, 100) || !simTimeValue(f.std) || (f.gate !== undefined && !nodeId(f.gate)) ||
         (f.checkInDesks !== undefined && (!Array.isArray(f.checkInDesks) || f.checkInDesks.length > 50 || !f.checkInDesks.every(nodeId))) ||
+        (f.checkIn !== undefined && (!nodeId(f.checkIn) || !/^check_in:/.test(f.checkIn))) ||
         (f.gateCloseAt !== undefined && !simTimeValue(f.gateCloseAt)) || !flightStatuses.includes(f.status) ||
         (f.delayMin !== undefined && !finite(f.delayMin, 0)) || (f.pax !== undefined && (!Number.isSafeInteger(f.pax) || f.pax < 0))) throw new Error('Invalid flight');
       ids.add(f.flight);
       return { flight: f.flight, airline: f.airline.toUpperCase(), destination: f.destination, std: f.std, gate: f.gate ?? null,
-        checkInDesks: (f.checkInDesks ?? []).map(upperSuffix), gateCloseAt: f.gateCloseAt ?? null, status: f.status, delayMin: f.delayMin ?? 0, pax: f.pax ?? null };
+        checkInDesks: (f.checkInDesks ?? []).map(upperSuffix), ...(f.checkIn !== undefined && { checkIn: upperSuffix(f.checkIn) }), gateCloseAt: f.gateCloseAt ?? null, status: f.status, delayMin: f.delayMin ?? 0, pax: f.pax ?? null };
     });
     this.flightRows = rows; this.flightsAt = this.lastSeen = new Date().toISOString();
   }

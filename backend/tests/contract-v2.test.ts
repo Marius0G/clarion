@@ -41,10 +41,10 @@ describe('flow.report v2 (D5b, D8)', () => {
 describe('flight.update (D14)', () => {
   it('replaces the schedule and normalises nulls', async () => {
     const e = new Engine();
-    await e.handle(event('flight.update', { flights: [flight(), flight({ flight: 'RO 642', airline: 'ro', gate: null, gateCloseAt: null, delayMin: null, pax: null, status: 'delayed', std: '14:30' })] }), 'twin');
+    await e.handle(event('flight.update', { flights: [flight(), flight({ flight: 'RO 642', airline: 'ro', checkIn: 'check_in:2', gate: null, gateCloseAt: null, delayMin: null, pax: null, status: 'delayed', std: '14:30' })] }), 'twin');
     expect(snap(e).flights).toEqual([
       { flight: 'W6 3751', airline: 'W6', destination: 'London Luton', std: 52200, gate: 'gate_1', checkInDesks: ['check_in:W6'], gateCloseAt: 51000, status: 'scheduled', delayMin: 0, pax: 180 },
-      { flight: 'RO 642', airline: 'RO', destination: 'London Luton', std: '14:30', gate: null, checkInDesks: ['check_in:W6'], gateCloseAt: null, status: 'delayed', delayMin: 0, pax: null },
+      { flight: 'RO 642', airline: 'RO', destination: 'London Luton', std: '14:30', gate: null, checkInDesks: ['check_in:W6'], checkIn: 'check_in:2', gateCloseAt: null, status: 'delayed', delayMin: 0, pax: null },
     ]);
     expect(Date.parse(snap(e).flightsAt)).not.toBeNaN();
     await e.handle(event('flight.update', { flights: [] }), 'twin');
@@ -53,7 +53,7 @@ describe('flight.update (D14)', () => {
   it('rejects the whole schedule on any invalid flight', async () => {
     const e = new Engine();
     await e.handle(event('flight.update', { flights: [flight()] }), 'twin');
-    for (const bad of [{ status: 'landed' }, { airline: 'W' }, { flight: '' }, { std: -1 }, { gate: 'Gate 1' }, { checkInDesks: 'check_in:W6' }, { delayMin: -5 }, { pax: 1.5 }, { destination: 1 }])
+    for (const bad of [{ status: 'landed' }, { airline: 'W' }, { flight: '' }, { std: -1 }, { gate: 'Gate 1' }, { checkInDesks: 'check_in:W6' }, { checkIn: 'security' }, { checkIn: 'Check In 2' }, { delayMin: -5 }, { pax: 1.5 }, { destination: 1 }])
       await expect(e.handle(event('flight.update', { flights: [flight({ flight: 'RO 1' }), flight(bad)] }), 'twin')).rejects.toThrow();
     await expect(e.handle(event('flight.update', { flights: [flight(), flight()] }), 'twin')).rejects.toThrow();
     await expect(e.handle(event('flight.update', {}), 'twin')).rejects.toThrow();
