@@ -13,9 +13,9 @@ Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Ținta este not
 | Consolă | https://clarion-craiova.pages.dev |
 | Abonare | https://clarion-craiova.pages.dev/join |
 | QR pentru juriu | https://clarion-craiova.pages.dev/join/qr |
-| Twin 2D | https://clarion-craiova.pages.dev/twin |
+| Clonă 2D pentru teste și urgențe | https://clarion-craiova.pages.dev/twin |
 
-Fluxul de scenă: juriul scanează QR-ul afișat la `/join/qr`, alege rolul și acceptă canalul. Deschide WhatsApp și **trimite** mesajul precompletat către Clarion, **+40 700 000 000**. Operatorul apasă **Confirmă suspendarea**, apoi **Aprobă mesajele**, selectează rolurile și apasă **Aprobă și trimite**. Telefoanele primesc alerta. `/twin` arată reacțiile agenților, apoi rezultatele A/B.
+Fluxul de scenă: juriul scanează QR-ul afișat la `/join/qr`, alege rolul și acceptă canalul. Deschide WhatsApp și **trimite** mesajul precompletat către Clarion, **+40 700 000 000**. Operatorul apasă **Confirmă suspendarea**, apoi **Aprobă mesajele**, selectează rolurile și apasă **Aprobă și trimite**. Telefoanele primesc alerta. Unity 3D arată reacțiile agenților; Marius prezintă numai rezultate A/B validate din Unity. `/twin` este o clonă 2D pentru teste și urgențe (2D clone for testing and emergencies).
 
 **Stare la revizia documentației, 31 octombrie:** ruta `/twin`, interfața, transportul și modelul 2D există în checkout. Verificarea automată Pages din acest mediu a primit HTTP 403. Deploy-ul și fluxul pe telefon trebuie verificate înainte de scenă. Rezerva este înregistrarea locală. Vezi [runbook](docs/pitch/runbook.md).
 
@@ -29,7 +29,7 @@ Twin → backend → canale și consolă. Consola trimite deciziile înapoi la b
 
 Originea publică a Worker-ului se ia din deploy-ul real, nu se ghicește. Valorile implicite Pages sunt `VITE_BACKEND_HTTP` și `VITE_BACKEND_URL`, setate înainte de build. Pentru Pages plus backend pe laptop trebuie un **tunel HTTPS** către portul 8787. HTTPS nu poate folosi direct un API HTTP de pe hotspot. Mută și webhook-ul WhatsApp la tunel. Telegram pe Node folosește polling; Worker-ul folosește webhook. Un singur backend trebuie să primească actualizările botului.
 
-Twin-ul 2D `/twin` este înlocuitorul Unity pentru demo. Vorbește [contractul final](app/PM/CONTRACT.md): evenimente de incident, `agent.register`, `agent.update`, `metric.report`; primește `alert.sent`, `agent.notified`, `wave.green` și `state`. Unity poate folosi același contract când este conectat. Alegem o singură sursă de evenimente pe incident. Modelul 2D și modelul `sim-ab/` au rezultate distincte. În `/twin`, alege **Cu Clarion**, acoperire **50%**, apoi **▶ Auto**. Confirmarea și aprobarea rămân în consolă. **Run A/B (20 seeds)** deschide rezultatele pereche, pentru acoperire 20%, 50% și 80%.
+Unity 3D este baza proiectului și sursa evenimentelor în demo și video. `/twin` este o clonă 2D pentru teste și urgențe (2D clone for testing and emergencies). Vorbește [contractul](app/PM/CONTRACT.md), extins de [docs/SPEC.md §5](docs/SPEC.md#5-sim-api): evenimente de incident, `agent.register`, `agent.update`, `metric.report`; primește `alert.sent`, `agent.notified`, `wave.green` și `state`. Unity se conectează ca `client=twin`; nu porni simultan Unity și clona 2D. Alegem o singură sursă de evenimente pe incident. Modelul 2D și modelul `sim-ab/` au rezultate distincte. Doar pentru teste sau urgențe, în `/twin`, alege **Cu Clarion**, acoperire **50%**, apoi **▶ Auto**. Confirmarea și aprobarea rămân în consolă. **Run A/B (20 seeds)** deschide rezultatele pereche, pentru acoperire 20%, 50% și 80%.
 
 ## Local, în 3 comenzi
 
@@ -84,7 +84,7 @@ ISU/SMURD rămâne linia secundară: **circa 1,1 minute, interval 0,6-1,7**. Rez
 
 | Înainte | Contribuția din repo pentru hackathon |
 |---|---|
-| Twin-ul Unity al lui Marius, declarat ca asset de vizualizare pregătit înainte. Nu este inclus în acest checkout. | Twin landside 2D la `/twin`: hartă, agenți, transport WS, evenimente, reacții, metrici și rulare A/B în browser. |
+| Baza Unity 3D a simulării lui Marius, cu asset de vizualizare pregătit înainte. Nu este inclus în acest checkout. | Clonă landside 2D pentru teste și urgențe la `/twin`: hartă, agenți, transport WS, evenimente, reacții, metrici și rulare A/B în browser. |
 | Date publice și servicii externe. Nu sunt creația echipei. | Hartă React/MapLibre, GeoJSON locale, straturi T2 și intervenție, coridor SCJU, grilă și puncte operaționale aproximative; vreme/METAR cu rezervă locală. |
 | Baza vizuală Unity rămâne declarată separat. Acordul organizatorului pentru folosire trebuie consemnat. | Consolă cu confirmare, aprobare pe rol, prezență, contoare, cronologie, ciornă RO-Alert, valuri și redeschidere. Exercițiile inițiale și scenariile generale rămân în repo. |
 | API-uri de mesagerie și formate publice. | Backend Node, Worker/Durable Object, stare persistentă, contract HTTP/WS, mesaje RO/EN, WhatsApp și webhook-uri, Telegram, SMSLink; adaptoare simulate Waze/push/Wallet. |
@@ -120,6 +120,6 @@ Regula produsului este expirarea la 48 h după zbor. Backend-ul elimină abonăr
 
 ## Documente și termene
 
-[Spec v3](app/PM/SPEC.md), [contract final](app/PM/CONTRACT.md), [roluri](docs/ROLURI.md), [plan](app/PM/control-tower-plan.pdf), [pitch](docs/pitch/pitch-final.md), [pre-pitch](docs/pitch/pre-pitch-90s.md), [slide-uri](docs/pitch/slides.md), [Q&A](docs/pitch/qa.md), [checklist](docs/pitch/checklist-sambata.md), [runbook](docs/pitch/runbook.md).
+[Spec v3](app/PM/SPEC.md), [contract](app/PM/CONTRACT.md), [roluri](docs/ROLURI.md), [plan](app/PM/control-tower-plan.pdf), [pitch](docs/pitch/pitch-final.md), [pre-pitch](docs/pitch/pre-pitch-90s.md), [slide-uri](docs/pitch/slides.md), [Q&A](docs/pitch/qa.md), [checklist](docs/pitch/checklist-sambata.md), [runbook](docs/pitch/runbook.md).
 
 Sâmbătă **31 octombrie, 22:00**: repo public înregistrat în UserHub. Duminică **1 noiembrie, 15:00**: cod final; **15:00-17:00** pre-pitch; **17:00-19:00** pitch. Ore locale, Craiova. Pilotul gratuit de 30 de zile este o propunere. Nu avem aici dovada unui client sau parteneriat semnat.

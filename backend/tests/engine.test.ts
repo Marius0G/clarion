@@ -17,7 +17,7 @@ const detection = () =>
   event("drone.detected", {
     distanceM: 2000,
     bearingDeg: 270,
-    nearRunway: "27",
+    nearRunway: "26",
     source: "radar",
   });
 async function suspend(e: Engine) {

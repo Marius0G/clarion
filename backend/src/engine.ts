@@ -1,3 +1,4 @@
+import { SimStore } from "./sim.js";
 import { wazeFeed } from "./channels/waze.js";
 import { engineRuntime } from "./runtime.js";
 const randomUUID = () => crypto.randomUUID();
@@ -70,6 +71,22 @@ interface Options {
   simAbFile?: string;
 }
 export class Engine {
+  readonly sim = new SimStore();
+  private batchDepth = 0;
+  private dirty = false;
+  private persistPending = false;
+  async batch<T>(work: () => T | Promise<T>): Promise<T> {
+    this.batchDepth++;
+    try { return await work(); }
+    finally { this.endBatch(); }
+  }
+  private endBatch() {
+    if (--this.batchDepth !== 0) return;
+    const dirty = this.dirty, persist = this.persistPending;
+    this.dirty = this.persistPending = false;
+    if (dirty) this.changed();
+    else if (persist) this.persist();
+  }
   state: State;
   subscriptions: Subscription[] = [];
   agents: Agent[] = [];
@@ -171,6 +188,7 @@ export class Engine {
     };
   }
   persist() {
+    if (this.batchDepth) { this.persistPending = true; return; }
     if (!this.options.file) return;
     const store: Store = {
       state: this.state,
@@ -188,6 +206,7 @@ export class Engine {
   }
 
   private changed() {
+    if (this.batchDepth) { this.dirty = true; return; }
     this.recount();
     this.persist();
     this.options.emit?.("state", this.snapshot());
@@ -559,7 +578,10 @@ export class Engine {
       opened: false,
     }));
   }
-  async handle(
+  async handle(event: Envelope, client: "twin" | "console" | "viewer" = "console"): Promise<void> {
+    return this.batch(() => this.handleEvent(event, client));
+  }
+  private async handleEvent(
     event: Envelope,
     client: "twin" | "console" | "viewer" = "console",
   ): Promise<void> {
@@ -579,10 +601,25 @@ export class Engine {
     )
       throw new Error("Client cannot issue this event");
     switch (type) {
+      case "sim.status":
+        this.sim.status(data);
+        return;
+      case "agent.batch": {
+        const updates = this.sim.batch(data);
+        const registered = new Map(this.agents.map(a => [a.agentId, a]));
+        let changed = false;
+        for (const row of updates) {
+          const agent = registered.get(row.agentId);
+          if (!agent || (agent.role === row.role && agent.location === row.location && agent.action === row.action)) continue;
+          agent.role = row.role; agent.location = row.location; agent.action = row.action; changed = true;
+        }
+        if (changed) this.changed();
+        return;
+      }
       case "drone.detected":
         this.requirePhase("normal");
         if (
-          !["09", "27"].includes(data.nearRunway) ||
+          !["08", "26"].includes(data.nearRunway) ||
           !["radar", "report"].includes(data.source) ||
           !Number.isFinite(data.distanceM) ||
           data.distanceM < 0 ||
@@ -778,7 +815,7 @@ export class Engine {
       }
       case "metric.report":
         if (
-          !["isuTimeToT2", "carsStartedInVain", "kerbPeak"].includes(
+          !["isuTimeToT2", "carsStartedInVain", "kerbPeak", "peopleInT2AtEvacuation", "minutesLost"].includes(
             data.name,
           ) ||
           !Number.isFinite(data.value) ||
@@ -999,7 +1036,6 @@ export class Engine {
       Date.parse(r.deliveredAt) - Date.parse(this.state.confirmedAt ?? "");
     if (r.delivered && elapsed >= 0 && elapsed <= 60000)
       this.firstNotified.add(this.recipientKey(r));
-    this.recount();
   }
   markRead(id: string, chat?: string) {
     const r = this.receipts.find((r) => r.id === id);
@@ -1027,6 +1063,10 @@ export class Engine {
     this.changed();
   }
   tick(now = Date.now()) {
+    this.batchDepth++;
+    try { this.tickReceipts(now); } finally { this.endBatch(); }
+  }
+  private tickReceipts(now: number) {
     for (const r of this.receipts) {
       if (r.simulated && r.readAt && r.readAt <= now && !r.read)
         this.markRead(r.id);

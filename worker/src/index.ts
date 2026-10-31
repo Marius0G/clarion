@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { simCommand } from '../../backend/src/sim.js';
 import { Engine } from '../../backend/src/engine.js';
 import type { Envelope } from '../../backend/src/types.js';
 import { Telegram } from '../../backend/src/channels/telegram.js';
@@ -11,10 +12,12 @@ import { createSms, equalSecret, validWhatsAppSignature, type Secrets } from './
 
 export interface Env extends Secrets {
   TOWER: DurableObjectNamespace<Tower>;
+  DEMO_TOKEN?: string;
   SIM_SPEED?: string; SIM_SEED?: string; AUTO_CONFIRM?: string;
   WAVES_ENABLED?: string; WAVE_COUNT?: string; WAVE_MINUTES?: string;
 }
 type Client = 'twin' | 'console' | 'viewer';
+const ALARM_SPACING_MS = 500;
 const json = (body: unknown, status = 200) => Response.json(body, {
   status, headers: { 'Cache-Control': 'no-store' },
 });
@@ -56,7 +59,7 @@ export default {
     const origin = request.headers.get('Origin');
     if (origin && !allowedOrigin(origin)) return json({ error: 'Origin not allowed' }, 403);
     const headers = new Headers({ 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' });
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Vary': 'Origin' });
     if (origin) headers.set('Access-Control-Allow-Origin', origin);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     // All devices and transports coordinate through exactly one tower instance.
@@ -76,6 +79,7 @@ export class Tower extends DurableObject<Env> {
   // Invoke Workers' global fetch with its own receiver, not as an adapter method.
   private fids = new FidsAdapter((input, init) => fetch(input, init));
   private nextFidsRefresh = 0;
+  private lastAlarm = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -126,6 +130,7 @@ export class Tower extends DurableObject<Env> {
       this.engine.updateFlights(result.flights, result.dataSource);
     }
   }
+  private twins() { return this.ctx.getWebSockets('twin').filter(ws => ws.readyState === WebSocket.OPEN); }
   private broadcast(type: string, data: unknown) {
     const value = packet(type, data);
     for (const ws of this.ctx.getWebSockets()) {
@@ -142,14 +147,18 @@ export class Tower extends DurableObject<Env> {
       if (!r.acted && r.actAt) due.push(r.actAt);
     }
     const next = due.filter(Number.isFinite).reduce((a, b) => Math.min(a, b), Infinity);
-    if (next === Infinity) await this.ctx.storage.deleteAlarm();
-    else await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, Math.ceil(next)));
+    const current = await this.ctx.storage.getAlarm();
+    if (next === Infinity) { if (current !== null) await this.ctx.storage.deleteAlarm(); return; }
+    // SPEC §5.6: at most two persists/state broadcasts per second. Hundreds of
+    // seeded reads fall due within seconds; coalesce them into one alarm per 500 ms.
+    const at = Math.max(Date.now() + 1, this.lastAlarm + ALARM_SPACING_MS, Math.ceil(next));
+    // Skip redundant alarm writes: every request and agent.batch reschedules.
+    if (current !== at) await this.ctx.storage.setAlarm(at);
   }
   private ordered<T>(work: () => Promise<T> | T): Promise<T> {
     const result = this.queue.then(async () => {
-      try { return await work(); }
+      try { return await this.engine.batch(work); }
       finally {
-        this.engine.persist();
         await this.schedule();
       }
     });
@@ -157,6 +166,7 @@ export class Tower extends DurableObject<Env> {
     return result;
   }
   async alarm() {
+    this.lastAlarm = Date.now();
     await this.ordered(async () => {
       this.engine.tick(); this.engine.expire();
       if (Date.now() >= this.nextFidsRefresh) await this.refreshFlights();
@@ -174,10 +184,12 @@ export class Tower extends DurableObject<Env> {
       const url = new URL(request.url);
       const path = url.pathname;
       try {
+        if (request.method === 'POST' && ['/api/action', '/api/sim/command'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
           if (!['twin', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
           if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'WebSocket upgrade required' }, 426);
+          if (client !== 'viewer' && this.env.DEMO_TOKEN && !await equalSecret(url.searchParams.get('token'), this.env.DEMO_TOKEN)) return json({ error: 'Operator token required' }, 401);
           const pair = new WebSocketPair();
           this.ctx.acceptWebSocket(pair[1], [client]);
           pair[1].serializeAttachment({ client });
@@ -185,6 +197,8 @@ export class Tower extends DurableObject<Env> {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         if (request.method === 'GET') {
+          if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics));
+          if (path === '/api/sim/agents') return json(this.engine.sim.agents(url.searchParams));
           if (path === '/health') return json({ ok: true, service: 'clarion', telegram: this.telegram.enabled ? 'live' : 'dry-run' });
           if (path === '/api/state') return json(this.engine.snapshot());
           if (path === '/api/telegram') { await this.telegramIdentity(); return json(this.telegram.status()); }
@@ -218,6 +232,7 @@ export class Tower extends DurableObject<Env> {
               }
             }
             this.engine.telegramOffset = update.update_id + 1;
+            this.engine.persist();
             return json({ ok: true });
           }
           if (path === '/webhooks/whatsapp') {
@@ -248,6 +263,12 @@ export class Tower extends DurableObject<Env> {
             return json({ subscriptionId: sub.id, ...(sub.channel === 'telegram' ? {
               telegramLink: this.engine.telegramLink(sub, this.telegram.botUsername ?? this.env.TELEGRAM_BOT_USERNAME ?? 'ClarionDemoBot'),
             } : {}) }, 201);
+          }
+          if (path === '/api/sim/command') {
+            const data = simCommand(JSON.parse(await bodyText(request)));
+            const twins = this.twins();
+            for (const ws of twins) ws.send(packet('sim.command', data));
+            return json({ connected: twins.length > 0 }, twins.length ? 202 : 409);
           }
           if (path === '/api/action') {
             const event = JSON.parse(await bodyText(request)) as Envelope;

@@ -18,7 +18,7 @@ const drone = (extra = {}) =>
   event("drone.detected", {
     distanceM: 2000,
     bearingDeg: 270,
-    nearRunway: "27",
+    nearRunway: "26",
     source: "radar",
     ...extra,
   });

@@ -168,3 +168,11 @@ Existing exports (`Engine`, `whatsapp`, `Telegram`, renderers and types) remain 
 Node filesystem persistence and the optional sim-ab file projection live in `node-runtime.ts`. `server.ts` installs it automatically. Direct Node consumers using `new Engine({file, simAbFile})` must import `./node-runtime.js` first. Workers must **not** import that file or `server.ts`; use `Engine` without `file`, or supply Durable Object storage hooks through `engineRuntime` in `runtime.ts`. The hooks accept/return the complete private store, including subscriptions, receipts, replay IDs and metric deduplication sets. Keep one engine/storage configuration per isolated runtime.
 
 Worker routes can use `verifyWhatsApp(url.searchParams, env.WHATSAPP_VERIFY_TOKEN)` for GET, and await `engine.whatsappWebhook(body)` for POST. `parseWhatsAppWebhook(body)` is the pure parser. After an HTTP subscription, await `engine.confirmSubscription(sub)`; `subscribe()` retains its synchronous return type for compatibility. Use `new FidsAdapter().get()` then `engine.updateFlights(result.flights, result.dataSource)` at startup and every five minutes. Keep engine mutations serialized, as the Node server does.
+
+## Unity link
+
+Unity connects as `/ws?client=twin`; `/twin` is a 2D clone for testing and emergencies. Use only one twin producer. `docs/SPEC.md` §5 governs the Sim API.
+
+`sim.status` and `agent.batch` populate an ephemeral telemetry store (500 rows/message, 5,000 stored agents). Registered rows also update presence, with one state broadcast. `GET /api/sim` and `GET /api/sim/agents?role=&location=&action=` are public. `POST /api/sim/command` sends only to live twin sockets: 202 when connected, 409 otherwise. Telemetry is empty after Worker hibernation; connectivity still reflects live sockets.
+
+Set optional `DEMO_TOKEN` in the Node environment or as a Cloudflare Worker secret (never `VITE_*`). Console/twin WS URLs use `?token=`, and `/api/action` and `/api/sim/command` use `Authorization: Bearer <token>`. Browser `?token=` is saved in localStorage; `?token=` with an empty value clears it. Viewer sockets, subscriptions, state/sim reads and webhook authentication retain their existing public/provider behavior. `backendFetch` in the app's backend client adds Bearer authentication for operator HTTP calls. Demo scripts inherit `DEMO_TOKEN`, including `demo:pitch`.

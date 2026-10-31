@@ -96,7 +96,7 @@ export interface State {
     lon: number;
     distanceM: number;
     bearingDeg: number;
-    nearRunway: "09" | "27";
+    nearRunway: "08" | "26";
     source: "radar" | "report";
     at: string;
   } | null;
@@ -147,6 +147,8 @@ export interface State {
         }
       | null;
     kerbPeak: number | null;
+    peopleInT2AtEvacuation?: number;
+    minutesLost?: number;
   };
   dataSource: string;
   dataSourceDetail?: string;

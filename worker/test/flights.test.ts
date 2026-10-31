@@ -73,7 +73,7 @@ describe('Tower FIDS polling with mocked fetch', () => {
   it('preserves suspended/diverted overlays while multiplexing simulated read alarms', async () => {
     await start();
     await send('agent.register', { agents: [{ agentId: 'fids-read', role: 'public', channel: 'telegram' }] });
-    await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '27', source: 'radar' });
+    await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '26', source: 'radar' });
     await send('console.confirm_suspension');
     const eta = new Date(Date.now() + 3600000).toISOString();
     await send('flight.diverted', { flight: 'W6 3412', from: 'BGY', to: 'OTP', eta });

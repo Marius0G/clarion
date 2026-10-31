@@ -44,7 +44,7 @@ async function connect(client: string) {
 }
 async function detect() {
   const twin = await connect('twin');
-  twin.ws.send(JSON.stringify(envelope('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '27', source: 'radar' })));
+  twin.ws.send(JSON.stringify(envelope('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '26', source: 'radar' })));
   await expect.poll(() => twin.messages.some(m => m.type === 'state' && m.data.phase === 'detection')).toBe(true);
   return twin;
 }
@@ -74,7 +74,7 @@ describe('Worker + SQLite Tower in workerd', () => {
       return request('/api/state').then(r => r.json()) as Promise<any>;
     };
     await send('agent.register', { agents: roles.map(role => ({ agentId: `contract-${role}`, role, channel: 'telegram' })) });
-    const detected = await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '27', source: 'radar', lat: 44.32, lon: 23.88 });
+    const detected = await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '26', source: 'radar', lat: 44.32, lon: 23.88 });
     expect(detected.drone).toMatchObject({ lat: 44.32, lon: 23.88 });
     const suspended = await send('ops.suspended', { reason: 'drone', estimatedReopen: new Date(Date.now() + 3600000).toISOString() });
     expect(suspended.phase).toBe('detection');

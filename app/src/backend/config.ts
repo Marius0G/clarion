@@ -11,9 +11,12 @@ export function backendConfig(
       return url
     } catch { return null }
   }
+  let token = new URLSearchParams(location.search).get('token')
   let override = parse(new URLSearchParams(location.search).get('backend') || '')
   try {
     const local = storage ?? window.localStorage
+    if (token !== null) local.setItem('clarion.token', token)
+    else token = local.getItem('clarion.token')
     if (override) local.setItem(storageKey, override.origin)
     else override = parse(local.getItem(storageKey) || '')
   } catch { /* Private mode/storage denial must not block connections. */ }
@@ -26,7 +29,15 @@ export function backendConfig(
   ws.protocol = ['https:', 'wss:'].includes(ws.protocol) ? 'wss:' : 'ws:'
   ws.pathname = '/ws'
   ws.searchParams.set('client', 'console')
+  if (token) ws.searchParams.set('token', token)
+  else ws.searchParams.delete('token')
   http.protocol = ['https:', 'wss:'].includes(http.protocol) ? 'https:' : 'http:'
-  return { ws: ws.href, http: http.origin, host: ws.host, override: override?.origin }
+  return { token: token || undefined, ws: ws.href, http: http.origin, host: ws.host, override: override?.origin }
 }
 export const backend = backendConfig()
+// The operator token is now in storage; keep it off the projected address bar and history.
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('token')) {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('token')
+  window.history.replaceState(window.history.state, '', url)
+}

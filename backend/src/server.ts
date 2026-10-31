@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { existsSync } from "node:fs";
 import { WebSocketServer, WebSocket } from "ws";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { simCommand } from "./sim.js";
 import { Engine } from "./engine.js";
 import { Telegram } from "./channels/telegram.js";
 import { sms } from "./channels/sms.js";
@@ -86,7 +88,7 @@ export function createControlTower() {
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
   let queue = Promise.resolve();
   function ordered<T>(work: () => Promise<T> | T): Promise<T> {
-    const result = queue.then(work);
+    const result = queue.then(() => engine.batch(work));
     queue = result.then(
       () => {},
       () => {},
@@ -94,6 +96,10 @@ export function createControlTower() {
     return result;
   }
   let aircraft: unknown[] = [];
+  // Constant-time operator token check; digests equalize lengths.
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  const operator = (actual: string | null | undefined) =>
+    !process.env.DEMO_TOKEN || (typeof actual === "string" && timingSafeEqual(digest(actual), digest(process.env.DEMO_TOKEN)));
   const http = createServer(async (req, res) => {
     const origin = req.headers.origin;
     if (origin) {
@@ -113,7 +119,7 @@ export function createControlTower() {
       res.setHeader("Vary", "Origin");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     if (req.method === "OPTIONS") {
@@ -123,6 +129,22 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
+      if (req.method === "POST" && ["/api/action", "/api/sim/command"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
+        res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
+      }
+      const twins = () => [...clients].filter(([ws, kind]) => kind === "twin" && ws.readyState === WebSocket.OPEN);
+      if (req.method === "GET" && url.pathname === "/api/sim") {
+        res.end(JSON.stringify(engine.sim.snapshot(twins().length > 0, engine.state.metrics))); return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/sim/agents") {
+        res.end(JSON.stringify(engine.sim.agents(url.searchParams))); return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/sim/command") {
+        const data = simCommand(await jsonBody(req));
+        const open = twins();
+        for (const [ws] of open) ws.send(JSON.stringify({ type: "sim.command", ts: new Date().toISOString(), data }));
+        res.writeHead(open.length ? 202 : 409); res.end(JSON.stringify({ connected: open.length > 0 })); return;
+      }
       if (url.pathname === "/webhooks/whatsapp") {
         if (req.method === "GET") {
           const challenge = verifyWhatsApp(url.searchParams, process.env.WHATSAPP_VERIFY_TOKEN);
@@ -218,6 +240,9 @@ export function createControlTower() {
       socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
       return;
     }
+    if (kind !== "viewer" && !operator(url.searchParams.get("token"))) {
+      socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n"); return;
+    }
     sockets.handleUpgrade(req, socket, head, (ws) => {
       clients.set(ws, kind as "twin" | "console" | "viewer");
       ws.send(
@@ -248,9 +273,10 @@ export function createControlTower() {
       ws.on("close", () => clients.delete(ws));
     });
   });
+  // SPEC §5.6: due reads coalesce to at most two persists/state broadcasts per second.
   const tick = setInterval(() => {
     void ordered(() => engine.tick());
-  }, 100);
+  }, 500);
   tick.unref();
   const expiry = setInterval(() => {
     void ordered(() => engine.expire());

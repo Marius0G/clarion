@@ -49,7 +49,7 @@ Wrangler prints the assigned HTTPS workers.dev URL after deployment. Use:
 
 The existing console backend selector supports `?backend=<HTTPS origin>`, persisted in browser local storage. For example, open `https://clarion-craiova.pages.dev/?backend=https%3A%2F%2Fclarion-backend.<account-subdomain>.workers.dev`; `/join?backend=...` selects the same API for subscriptions. For a default connection on every browser, set the Pages build variables `VITE_BACKEND_HTTP=https://<worker-host>` and `VITE_BACKEND_URL=wss://<worker-host>/ws?client=console`, then rebuild Pages. This task does not change or deploy Pages.
 
-CORS and WebSocket Origin validation allow HTTPS `*.pages.dev` and HTTP/HTTPS localhost, 127.0.0.1 and ::1 on any port. Native Unity requests without Origin work. This retains the Node demo contract: client roles enforce which events a connection may send, but the console/twin roles themselves have no operator login.
+CORS and WebSocket Origin validation allow HTTPS `*.pages.dev` and HTTP/HTTPS localhost, 127.0.0.1 and ::1 on any port. Native Unity requests without Origin work. Client roles enforce which events a connection may send. With the optional `DEMO_TOKEN` secret, console/twin WebSockets also require `?token=`, and operator HTTP POSTs require `Authorization: Bearer <token>`. Without the secret, local development stays open.
 
 ## Secrets
 
@@ -127,3 +127,11 @@ Routes: `GET /health`, `/api/state`, `/api/telegram`, `/api/aircraft`, `/waze/ci
 This verification used an isolated free port and a separate local DO store. No deploy, git commit or push was run. The Worker retains stricter webhook authentication and broader localhost CORS than Node, and uses Telegram webhooks instead of Node long polling.
 
 Cloudflare implementation references: [hibernating WebSockets](https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/), [alarms](https://developers.cloudflare.com/durable-objects/api/alarms/), [SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+
+## Unity link
+
+Unity connects as `/ws?client=twin`; `/twin` is a 2D clone for testing and emergencies. Use only one twin producer. `docs/SPEC.md` §5 governs the Sim API.
+
+`sim.status` and `agent.batch` populate an ephemeral telemetry store (500 rows/message, 5,000 stored agents). Registered rows also update presence, with one state broadcast. `GET /api/sim` and `GET /api/sim/agents?role=&location=&action=` are public. `POST /api/sim/command` sends only to live twin sockets: 202 when connected, 409 otherwise. Telemetry is empty after Worker hibernation; connectivity still reflects live sockets.
+
+Set optional `DEMO_TOKEN` in the Node environment or as a Cloudflare Worker secret (never `VITE_*`). Console/twin WS URLs use `?token=`, and `/api/action` and `/api/sim/command` use `Authorization: Bearer <token>`. Browser `?token=` is saved in localStorage; `?token=` with an empty value clears it. Viewer sockets, subscriptions, state/sim reads and webhook authentication retain their existing public/provider behavior. `backendFetch` in the app's backend client adds Bearer authentication for operator HTTP calls. Demo scripts inherit `DEMO_TOKEN`, including `demo:pitch`.
