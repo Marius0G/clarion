@@ -1,26 +1,62 @@
 import { test, expect } from '@playwright/test'
 
-test('the T2 map draws every floor and zooms', async ({ page }) => {
+test('the T2 map draws both floors at once, joined by the stairs, escalator and lift', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
+  await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/harta')
-  await expect(page.getByTestId('t2-map-G')).toBeVisible()
-  await expect(page.locator('[data-testid^="t2-zone-G_"]')).toHaveCount(22)
-  await page.getByTestId('t2-zone-G_CHECKIN_QUEUE').click({ force: true })
-  await expect(page.getByText('G_CHECKIN_QUEUE')).toBeVisible()
-
-  const initial = (await page.getByTestId('t2-map-G').getAttribute('viewBox'))!
-  // Cropped to the building, not the whole Unity frame.
-  expect(Number(initial.split(' ')[2])).toBeLessThan(3000)
-  await page.getByRole('button', { name: 'Mărește' }).click()
-  // Zoom glides, so wait for the view to settle smaller.
-  await expect.poll(async () => Number((await page.getByTestId('t2-map-G').getAttribute('viewBox'))!.split(' ')[2])).toBeLessThan(Number(initial.split(' ')[2]))
-  await page.getByRole('button', { name: 'Toată harta' }).click()
-  await expect(page.getByTestId('t2-map-G')).toHaveAttribute('viewBox', initial)
-
-  await page.getByRole('button', { name: 'Etaj 1' }).click()
-  await expect(page.locator('[data-testid^="t2-zone-U_"]')).toHaveCount(19)
-  await page.getByRole('button', { name: 'Exterior' }).click()
-  await expect(page.locator('[data-testid^="t2-zone-"]')).toHaveCount(11)
+  const map = page.getByTestId('t2-map-G')
+  await expect(map).toBeVisible()
+  // Both floors are drawn; test ids follow the highlighted floor.
+  await expect(map.locator('[data-zone^="G_"]')).toHaveCount(22)
+  await expect(map.locator('[data-zone^="U_"]')).toHaveCount(19)
+  await expect(map.locator('[data-testid^="t2-zone-G_"]')).toHaveCount(22)
+  await expect(map.locator('[data-testid^="t2-zone-U_"]')).toHaveCount(0)
+  // Exterior is the ground plate's lighter edge, no separate button.
+  await expect(map.locator('[data-zone="X_TAXI_RANK"]')).toHaveClass(/ext/)
+  await expect(page.getByRole('button', { name: 'Exterior' })).toHaveCount(0)
+  // Upper plate sits above the ground plate.
+  const top = async (id: string) => (await map.locator(`[data-zone="${id}"] .fill`).boundingBox())!
+  expect((await top('U_CONCOURSE')).y + (await top('U_CONCOURSE')).height).toBeLessThan((await top('G_RECLAIM_1')).y)
+  // East core drawn as lines, escalator with arrows; apron stairs are markers only.
+  await expect(page.getByTestId('map-links').locator('.t2-link')).toHaveCount(5)
+  await expect(page.getByTestId('link-escalator_east').locator('.arrow')).toHaveCount(3)
+  await expect(page.locator('.t2-link.r-core')).toHaveCount(3)
+  await expect(page.getByTestId('link-gate_1_stairs_')).toHaveCount(0)
+  // Labels on both floors.
+  await expect(map.locator('.t2-labels text', { hasText: /^Banda 1$/ })).toHaveCount(1)
+  await expect(map.locator('.t2-labels text', { hasText: /^Securitate$/ })).toHaveCount(1)
   expect(errors).toEqual([])
+})
+
+test('hover and click work on either floor, and zoom glides', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.goto('/harta')
+  const map = page.getByTestId('t2-map-G')
+  await page.getByTestId('t2-zone-G_CHECKIN_QUEUE').hover()
+  await expect(page.getByTestId('map-card')).toContainText('Coadă check-in')
+  await page.getByTestId('t2-zone-G_CHECKIN_QUEUE').click({ force: true })
+  await expect(page.locator('span', { hasText: /^G_CHECKIN_QUEUE$/ })).toBeVisible()
+
+  // A zone upstairs: hover card, click selects it and highlights that floor.
+  await map.locator('[data-zone="U_SECURITY"]').hover()
+  await expect(page.getByTestId('map-card')).toContainText('Securitate')
+  await map.locator('[data-zone="U_SECURITY"]').dispatchEvent('click')
+  const upper = page.getByTestId('t2-map-U')
+  await expect(upper).toBeVisible()
+  await expect(upper.getByTestId('t2-zone-U_SECURITY')).toHaveClass(/sel/)
+  await expect(page.getByTestId('map-floor-U')).toHaveClass(/on/)
+
+  // The floor name of the other floor switches back.
+  await page.getByTestId('map-floor-G').click()
+  await expect(page.getByTestId('t2-map-G')).toBeVisible()
+
+  const g = page.getByTestId('t2-map-G')
+  const width = async () => Number((await g.getAttribute('viewBox'))!.split(' ')[2])
+  const whole = await width()
+  await expect(page.getByRole('button', { name: 'Toată harta' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Mărește' }).click()
+  await expect.poll(width).toBeLessThan(whole)
+  await page.getByRole('button', { name: 'Toată harta' }).click()
+  await expect.poll(width).toBeCloseTo(whole, 0)
 })
