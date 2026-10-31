@@ -58,7 +58,7 @@
 },
 "checkInGroups":{
 "1":{
-"node":"check_in:W6",
+"node":"check_in:1",
 "desks":[
 "checkin_1",
 "checkin_2",
@@ -68,7 +68,7 @@
 "unityQueue":"checkin_group_1"
 },
 "2":{
-"node":"check_in:RO",
+"node":"check_in:2",
 "desks":[
 "checkin_5",
 "checkin_6",
@@ -78,7 +78,7 @@
 "unityQueue":"checkin_group_2"
 },
 "3":{
-"node":"check_in:FR",
+"node":"check_in:3",
 "desks":[
 "checkin_9",
 "checkin_10",
@@ -3173,7 +3173,7 @@
 "y":-486.6,
 "level":"G",
 "zone":"G_GATE_DOOR_9",
-"nav":"apron_door_gate_9"
+"nav":"exit_apron_gate_9"
 }, {
 "id":"G_GATE_DOOR_10",
 "kind":"stairs",
@@ -3181,7 +3181,7 @@
 "y":-486.0,
 "level":"G",
 "zone":"G_GATE_DOOR_10",
-"nav":"gate_10_stairs_a"
+"nav":"door_apron_gate_10"
 }, {
 "id":"U_SECURITY_QUEUE",
 "kind":"security",
@@ -3976,7 +3976,7 @@
 "widthM":1.8,
 "nav":"gate_10_stairs_b"
 }, {
-"id":"check_in:W6",
+"id":"check_in:1",
 "kind":"check_in",
 "x":6382.5,
 "y":-509.8,
@@ -3984,7 +3984,7 @@
 "zone":"G_CHECKIN_QUEUE",
 "group":1,
 "aliases":[
-"check_in:1",
+"check_in:W6",
 "bag_drop:1",
 "checkin_group_1"
 ],
@@ -3996,7 +3996,7 @@
 ],
 "nav":"checkin_1"
 }, {
-"id":"check_in:RO",
+"id":"check_in:2",
 "kind":"check_in",
 "x":6394.3,
 "y":-509.7,
@@ -4004,7 +4004,7 @@
 "zone":"G_CHECKIN_QUEUE",
 "group":2,
 "aliases":[
-"check_in:2",
+"check_in:RO",
 "bag_drop:2",
 "checkin_group_2"
 ],
@@ -4016,7 +4016,7 @@
 ],
 "nav":"G_144"
 }, {
-"id":"check_in:FR",
+"id":"check_in:3",
 "kind":"check_in",
 "x":6406.2,
 "y":-509.7,
@@ -4024,7 +4024,7 @@
 "zone":"G_CHECKIN_QUEUE",
 "group":3,
 "aliases":[
-"check_in:3",
+"check_in:FR",
 "bag_drop:3",
 "checkin_group_3"
 ],
@@ -4048,7 +4048,7 @@
 "bag_drop:4"
 ],
 "desks":[],
-"note":"alias of check_in:FR: Unity has three physical groups",
+"note":"stands with check_in:3: Unity has three physical groups",
 "nav":"checkin_9"
 }
 ],
@@ -4311,10 +4311,6 @@
 "walkSec":7.1
 }, {
 "from":"door_exit_mid",
-"to":"G_ARRIVALS_EXIT",
-"walkSec":11.5
-}, {
-"from":"door_exit_mid",
 "to":"G_RECLAIM_2",
 "walkSec":33.0,
 "evacuationOnly":true
@@ -4335,13 +4331,9 @@
 "to":"escalator_east_G",
 "walkSec":36.2
 }, {
-"from":"door_arrivals_east",
-"to":"G_DEPARTURES",
-"walkSec":35.0
-}, {
-"from":"door_arrivals_east",
-"to":"door_departures",
-"walkSec":55.9
+"from":"door_exit_mid",
+"to":"G_ARRIVALS_EXIT",
+"walkSec":11.5
 }, {
 "from":"door_arrivals_east",
 "to":"G_INFO",
@@ -4352,8 +4344,12 @@
 "walkSec":10.4
 }, {
 "from":"door_arrivals_east",
-"to":"G_MEETING",
-"walkSec":31.2
+"to":"G_DEPARTURES",
+"walkSec":35.0
+}, {
+"from":"door_arrivals_east",
+"to":"door_departures",
+"walkSec":55.9
 }, {
 "from":"door_arrivals_east",
 "to":"G_CENTER",
@@ -4367,13 +4363,9 @@
 "to":"escalator_east_G",
 "walkSec":13.7
 }, {
-"from":"stairs_east_G",
-"to":"G_DEPARTURES",
-"walkSec":25.5
-}, {
-"from":"stairs_east_G",
-"to":"door_departures",
-"walkSec":47.1
+"from":"door_arrivals_east",
+"to":"G_MEETING",
+"walkSec":31.2
 }, {
 "from":"stairs_east_G",
 "to":"G_INFO",
@@ -4384,8 +4376,12 @@
 "walkSec":20.9
 }, {
 "from":"stairs_east_G",
-"to":"G_MEETING",
-"walkSec":42.9
+"to":"G_DEPARTURES",
+"walkSec":25.5
+}, {
+"from":"stairs_east_G",
+"to":"door_departures",
+"walkSec":47.1
 }, {
 "from":"stairs_east_G",
 "to":"G_CENTER",
@@ -4395,13 +4391,9 @@
 "to":"escalator_east_G",
 "walkSec":2.5
 }, {
-"from":"escalator_east_G",
-"to":"G_DEPARTURES",
-"walkSec":25.4
-}, {
-"from":"escalator_east_G",
-"to":"door_departures",
-"walkSec":47.0
+"from":"stairs_east_G",
+"to":"G_MEETING",
+"walkSec":42.9
 }, {
 "from":"escalator_east_G",
 "to":"G_INFO",
@@ -4412,40 +4404,24 @@
 "walkSec":21.2
 }, {
 "from":"escalator_east_G",
-"to":"G_MEETING",
-"walkSec":43.2
+"to":"G_DEPARTURES",
+"walkSec":25.4
+}, {
+"from":"escalator_east_G",
+"to":"door_departures",
+"walkSec":47.0
 }, {
 "from":"escalator_east_G",
 "to":"G_CENTER",
 "walkSec":2.3
 }, {
+"from":"escalator_east_G",
+"to":"G_MEETING",
+"walkSec":43.2
+}, {
 "from":"door_departures",
 "to":"G_DEPARTURES",
 "walkSec":22.8
-}, {
-"from":"door_departures",
-"to":"G_CHECKIN_DESKS",
-"walkSec":17.3
-}, {
-"from":"door_departures",
-"to":"G_CHECKIN_QUEUE",
-"walkSec":13.3
-}, {
-"from":"door_departures",
-"to":"check_in:W6",
-"walkSec":22.5
-}, {
-"from":"door_departures",
-"to":"check_in:RO",
-"walkSec":18.6
-}, {
-"from":"door_departures",
-"to":"check_in:FR",
-"walkSec":17.6
-}, {
-"from":"door_departures",
-"to":"G_WC",
-"walkSec":32.6
 }, {
 "from":"door_departures",
 "to":"G_CAFE",
@@ -4456,8 +4432,32 @@
 "walkSec":12.0
 }, {
 "from":"door_departures",
+"to":"G_CHECKIN_DESKS",
+"walkSec":17.3
+}, {
+"from":"door_departures",
 "to":"G_CENTER",
 "walkSec":45.1
+}, {
+"from":"door_departures",
+"to":"G_CHECKIN_QUEUE",
+"walkSec":13.3
+}, {
+"from":"door_departures",
+"to":"check_in:1",
+"walkSec":22.5
+}, {
+"from":"door_departures",
+"to":"check_in:2",
+"walkSec":18.6
+}, {
+"from":"door_departures",
+"to":"check_in:3",
+"walkSec":17.6
+}, {
+"from":"door_departures",
+"to":"G_WC",
+"walkSec":32.6
 }, {
 "from":"door_apron_gate_1",
 "to":"G_GATE_DOOR_1",
@@ -4544,10 +4544,6 @@
 "walkSec":0.1
 }, {
 "from":"door_emergency_east",
-"to":"G_CAFE",
-"walkSec":3.6
-}, {
-"from":"door_emergency_east",
 "to":"G_DEPARTURES",
 "walkSec":30.2
 }, {
@@ -4556,32 +4552,32 @@
 "walkSec":14.7
 }, {
 "from":"door_emergency_east",
-"to":"check_in:W6",
+"to":"check_in:1",
 "walkSec":27.9
 }, {
 "from":"door_emergency_east",
-"to":"check_in:RO",
+"to":"check_in:2",
 "walkSec":20.0
 }, {
 "from":"door_emergency_east",
-"to":"check_in:FR",
+"to":"check_in:3",
 "walkSec":14.9
 }, {
-"from":"door_arrivals_entry",
-"to":"G_ARRIVALS_PASSPORT",
-"walkSec":4.6
+"from":"door_emergency_east",
+"to":"G_CAFE",
+"walkSec":3.6
 }, {
 "from":"door_arrivals_entry",
 "to":"G_RECLAIM_1",
 "walkSec":24.9
 }, {
+"from":"door_arrivals_entry",
+"to":"G_ARRIVALS_PASSPORT",
+"walkSec":4.6
+}, {
 "from":"security_lane_1_arch",
 "to":"U_SECURITY_QUEUE",
 "walkSec":12.4
-}, {
-"from":"security_lane_1_arch",
-"to":"U_GATE_5",
-"walkSec":17.7
 }, {
 "from":"security_lane_1_arch",
 "to":"U_GATE_6",
@@ -4594,6 +4590,14 @@
 "from":"security_lane_1_arch",
 "to":"gate_6_stairs_U",
 "walkSec":25.6
+}, {
+"from":"security_lane_1_arch",
+"to":"U_DUTY_FREE",
+"walkSec":17.9
+}, {
+"from":"security_lane_1_arch",
+"to":"gate_5",
+"walkSec":20.3
 }, {
 "from":"security_lane_1_arch",
 "to":"U_SECURITY",
@@ -4612,14 +4616,6 @@
 "walkSec":19.9
 }, {
 "from":"security_lane_1_arch",
-"to":"U_DUTY_FREE",
-"walkSec":17.9
-}, {
-"from":"security_lane_1_arch",
-"to":"gate_5",
-"walkSec":20.3
-}, {
-"from":"security_lane_1_arch",
 "to":"U_CONCOURSE",
 "walkSec":18.4
 }, {
@@ -4635,13 +4631,13 @@
 "to":"lift_west_U",
 "walkSec":37.0
 }, {
+"from":"security_lane_1_arch",
+"to":"U_GATE_5",
+"walkSec":17.7
+}, {
 "from":"security_lane_2_arch",
 "to":"U_SECURITY_QUEUE",
 "walkSec":9.8
-}, {
-"from":"security_lane_2_arch",
-"to":"U_GATE_5",
-"walkSec":17.4
 }, {
 "from":"security_lane_2_arch",
 "to":"U_GATE_6",
@@ -4656,6 +4652,14 @@
 "walkSec":22.5
 }, {
 "from":"security_lane_2_arch",
+"to":"U_DUTY_FREE",
+"walkSec":20.5
+}, {
+"from":"security_lane_2_arch",
+"to":"gate_5",
+"walkSec":20.0
+}, {
+"from":"security_lane_2_arch",
 "to":"U_SECURITY",
 "walkSec":2.3
 }, {
@@ -4666,14 +4670,6 @@
 "from":"security_lane_2_arch",
 "to":"security_lane_4_arch",
 "walkSec":16.0
-}, {
-"from":"security_lane_2_arch",
-"to":"U_DUTY_FREE",
-"walkSec":20.5
-}, {
-"from":"security_lane_2_arch",
-"to":"gate_5",
-"walkSec":20.0
 }, {
 "from":"security_lane_2_arch",
 "to":"U_CONCOURSE",
@@ -4691,13 +4687,13 @@
 "to":"lift_west_U",
 "walkSec":41.5
 }, {
+"from":"security_lane_2_arch",
+"to":"U_GATE_5",
+"walkSec":17.4
+}, {
 "from":"security_lane_3_arch",
 "to":"U_SECURITY_QUEUE",
 "walkSec":11.9
-}, {
-"from":"security_lane_3_arch",
-"to":"U_GATE_5",
-"walkSec":17.7
 }, {
 "from":"security_lane_3_arch",
 "to":"U_GATE_6",
@@ -4712,20 +4708,20 @@
 "walkSec":20.8
 }, {
 "from":"security_lane_3_arch",
-"to":"U_SECURITY",
-"walkSec":9.8
-}, {
-"from":"security_lane_3_arch",
-"to":"security_lane_4_arch",
-"walkSec":12.2
-}, {
-"from":"security_lane_3_arch",
 "to":"U_DUTY_FREE",
 "walkSec":23.2
 }, {
 "from":"security_lane_3_arch",
 "to":"gate_5",
 "walkSec":22.7
+}, {
+"from":"security_lane_3_arch",
+"to":"U_SECURITY",
+"walkSec":9.8
+}, {
+"from":"security_lane_3_arch",
+"to":"security_lane_4_arch",
+"walkSec":12.2
 }, {
 "from":"security_lane_3_arch",
 "to":"U_CONCOURSE",
@@ -4743,13 +4739,13 @@
 "to":"lift_west_U",
 "walkSec":44.1
 }, {
+"from":"security_lane_3_arch",
+"to":"U_GATE_5",
+"walkSec":17.7
+}, {
 "from":"security_lane_4_arch",
 "to":"U_SECURITY_QUEUE",
 "walkSec":12.3
-}, {
-"from":"security_lane_4_arch",
-"to":"U_GATE_5",
-"walkSec":19.7
 }, {
 "from":"security_lane_4_arch",
 "to":"U_GATE_6",
@@ -4764,16 +4760,16 @@
 "walkSec":20.3
 }, {
 "from":"security_lane_4_arch",
-"to":"U_SECURITY",
-"walkSec":14.1
-}, {
-"from":"security_lane_4_arch",
 "to":"U_DUTY_FREE",
 "walkSec":26.2
 }, {
 "from":"security_lane_4_arch",
 "to":"gate_5",
 "walkSec":25.4
+}, {
+"from":"security_lane_4_arch",
+"to":"U_SECURITY",
+"walkSec":14.1
 }, {
 "from":"security_lane_4_arch",
 "to":"U_CONCOURSE",
@@ -4791,13 +4787,9 @@
 "to":"lift_west_U",
 "walkSec":46.7
 }, {
-"from":"gate_1",
-"to":"U_GATE_1",
-"walkSec":0.1
-}, {
-"from":"gate_1",
-"to":"gate_1_stairs_U",
-"walkSec":3.1
+"from":"security_lane_4_arch",
+"to":"U_GATE_5",
+"walkSec":19.7
 }, {
 "from":"gate_1",
 "to":"U_GATE_2",
@@ -4811,8 +4803,12 @@
 "to":"gate_2_stairs_U",
 "walkSec":22.0
 }, {
-"from":"gate_1_stairs_U",
+"from":"gate_1",
 "to":"U_GATE_1",
+"walkSec":0.1
+}, {
+"from":"gate_1",
+"to":"gate_1_stairs_U",
 "walkSec":3.1
 }, {
 "from":"gate_1_stairs_U",
@@ -4827,9 +4823,9 @@
 "to":"gate_2_stairs_U",
 "walkSec":21.6
 }, {
-"from":"gate_2",
+"from":"gate_1_stairs_U",
 "to":"U_GATE_1",
-"walkSec":22.9
+"walkSec":3.1
 }, {
 "from":"gate_2",
 "to":"U_GATE_2",
@@ -4847,9 +4843,9 @@
 "to":"gate_3",
 "walkSec":31.7
 }, {
-"from":"gate_2_stairs_U",
+"from":"gate_2",
 "to":"U_GATE_1",
-"walkSec":22.0
+"walkSec":22.9
 }, {
 "from":"gate_2_stairs_U",
 "to":"U_GATE_2",
@@ -4862,6 +4858,10 @@
 "from":"gate_2_stairs_U",
 "to":"gate_3",
 "walkSec":23.0
+}, {
+"from":"gate_2_stairs_U",
+"to":"U_GATE_1",
+"walkSec":22.0
 }, {
 "from":"gate_3",
 "to":"U_PASSPORT_DEP",
@@ -4876,8 +4876,12 @@
 "walkSec":0.1
 }, {
 "from":"gate_4",
-"to":"U_GATE_5",
-"walkSec":31.6
+"to":"U_DUTY_FREE",
+"walkSec":21.8
+}, {
+"from":"gate_4",
+"to":"gate_5",
+"walkSec":21.7
 }, {
 "from":"gate_4",
 "to":"U_PASSPORT_DEP",
@@ -4888,16 +4892,12 @@
 "walkSec":11.8
 }, {
 "from":"gate_4",
-"to":"U_DUTY_FREE",
-"walkSec":21.8
-}, {
-"from":"gate_4",
-"to":"gate_5",
-"walkSec":21.7
+"to":"U_GATE_5",
+"walkSec":31.6
 }, {
 "from":"gate_5",
-"to":"U_GATE_5",
-"walkSec":14.7
+"to":"U_DUTY_FREE",
+"walkSec":13.1
 }, {
 "from":"gate_5",
 "to":"U_SECURITY",
@@ -4908,12 +4908,12 @@
 "walkSec":16.8
 }, {
 "from":"gate_5",
-"to":"U_DUTY_FREE",
-"walkSec":13.1
+"to":"U_GATE_5",
+"walkSec":14.7
 }, {
 "from":"gate_6",
-"to":"U_GATE_5",
-"walkSec":13.2
+"to":"U_CAFE",
+"walkSec":16.7
 }, {
 "from":"gate_6",
 "to":"U_GATE_6",
@@ -4940,12 +4940,12 @@
 "walkSec":23.0
 }, {
 "from":"gate_6",
-"to":"U_CAFE",
-"walkSec":16.7
+"to":"U_GATE_5",
+"walkSec":13.2
 }, {
 "from":"gate_6_stairs_U",
-"to":"U_GATE_5",
-"walkSec":12.2
+"to":"U_CAFE",
+"walkSec":16.5
 }, {
 "from":"gate_6_stairs_U",
 "to":"U_GATE_6",
@@ -4968,12 +4968,12 @@
 "walkSec":20.3
 }, {
 "from":"gate_6_stairs_U",
-"to":"U_CAFE",
-"walkSec":16.5
+"to":"U_GATE_5",
+"walkSec":12.2
 }, {
 "from":"gate_7",
-"to":"U_GATE_6",
-"walkSec":23.9
+"to":"U_WC",
+"walkSec":17.7
 }, {
 "from":"gate_7",
 "to":"U_GATE_8",
@@ -4988,8 +4988,12 @@
 "walkSec":24.0
 }, {
 "from":"gate_7",
-"to":"U_WC",
-"walkSec":17.7
+"to":"U_CAFE",
+"walkSec":7.6
+}, {
+"from":"gate_7",
+"to":"U_GATE_6",
+"walkSec":23.9
 }, {
 "from":"gate_7",
 "to":"U_GATE_7",
@@ -4999,13 +5003,9 @@
 "to":"gate_7_stairs_U",
 "walkSec":11.0
 }, {
-"from":"gate_7",
-"to":"U_CAFE",
-"walkSec":7.6
-}, {
 "from":"gate_7_stairs_U",
-"to":"U_GATE_6",
-"walkSec":20.5
+"to":"U_WC",
+"walkSec":19.7
 }, {
 "from":"gate_7_stairs_U",
 "to":"U_GATE_8",
@@ -5020,16 +5020,20 @@
 "walkSec":21.6
 }, {
 "from":"gate_7_stairs_U",
-"to":"U_WC",
-"walkSec":19.7
+"to":"U_CAFE",
+"walkSec":6.6
+}, {
+"from":"gate_7_stairs_U",
+"to":"U_GATE_6",
+"walkSec":20.5
 }, {
 "from":"gate_7_stairs_U",
 "to":"U_GATE_7",
 "walkSec":7.1
 }, {
-"from":"gate_7_stairs_U",
-"to":"U_CAFE",
-"walkSec":6.6
+"from":"gate_8",
+"to":"U_WC",
+"walkSec":4.8
 }, {
 "from":"gate_8",
 "to":"U_GATE_8",
@@ -5044,14 +5048,6 @@
 "walkSec":16.5
 }, {
 "from":"gate_8",
-"to":"U_WC",
-"walkSec":4.8
-}, {
-"from":"gate_8",
-"to":"U_GATE_7",
-"walkSec":17.2
-}, {
-"from":"gate_8",
 "to":"U_GATE_9",
 "walkSec":23.4
 }, {
@@ -5063,6 +5059,14 @@
 "to":"gate_9_stairs_U",
 "walkSec":24.4
 }, {
+"from":"gate_8",
+"to":"U_GATE_7",
+"walkSec":17.2
+}, {
+"from":"gate_8_stairs_U",
+"to":"U_WC",
+"walkSec":9.2
+}, {
 "from":"gate_8_stairs_U",
 "to":"U_GATE_8",
 "walkSec":3.1
@@ -5070,14 +5074,6 @@
 "from":"gate_8_stairs_U",
 "to":"U_CORRIDOR_EAST",
 "walkSec":19.3
-}, {
-"from":"gate_8_stairs_U",
-"to":"U_WC",
-"walkSec":9.2
-}, {
-"from":"gate_8_stairs_U",
-"to":"U_GATE_7",
-"walkSec":15.9
 }, {
 "from":"gate_8_stairs_U",
 "to":"U_GATE_9",
@@ -5091,13 +5087,9 @@
 "to":"gate_9_stairs_U",
 "walkSec":21.6
 }, {
-"from":"gate_9",
-"to":"U_GATE_8",
-"walkSec":22.2
-}, {
-"from":"gate_9",
-"to":"U_CORRIDOR_EAST",
-"walkSec":19.3
+"from":"gate_8_stairs_U",
+"to":"U_GATE_7",
+"walkSec":15.9
 }, {
 "from":"gate_9",
 "to":"U_GATE_10",
@@ -5112,6 +5104,10 @@
 "walkSec":24.3
 }, {
 "from":"gate_9",
+"to":"U_CORRIDOR_EAST",
+"walkSec":19.3
+}, {
+"from":"gate_9",
 "to":"U_GATE_9",
 "walkSec":14.1
 }, {
@@ -5119,13 +5115,9 @@
 "to":"gate_9_stairs_U",
 "walkSec":13.4
 }, {
-"from":"gate_9_stairs_U",
+"from":"gate_9",
 "to":"U_GATE_8",
-"walkSec":22.0
-}, {
-"from":"gate_9_stairs_U",
-"to":"U_CORRIDOR_EAST",
-"walkSec":20.8
+"walkSec":22.2
 }, {
 "from":"gate_9_stairs_U",
 "to":"U_GATE_10",
@@ -5140,8 +5132,16 @@
 "walkSec":21.6
 }, {
 "from":"gate_9_stairs_U",
+"to":"U_CORRIDOR_EAST",
+"walkSec":20.8
+}, {
+"from":"gate_9_stairs_U",
 "to":"U_GATE_9",
 "walkSec":3.1
+}, {
+"from":"gate_9_stairs_U",
+"to":"U_GATE_8",
+"walkSec":22.0
 }, {
 "from":"gate_10",
 "to":"U_GATE_10",
@@ -5164,24 +5164,12 @@
 "walkSec":22.0
 }, {
 "from":"stairs_west_U",
-"to":"U_SECURITY_QUEUE",
-"walkSec":35.1
-}, {
-"from":"stairs_west_U",
-"to":"U_ESCALATOR_TOP",
-"walkSec":57.4
-}, {
-"from":"stairs_west_U",
-"to":"stairs_east_U",
-"walkSec":57.4
-}, {
-"from":"stairs_west_U",
-"to":"escalator_east_U",
-"walkSec":56.6
-}, {
-"from":"stairs_west_U",
 "to":"U_SECURITY",
 "walkSec":44.5
+}, {
+"from":"stairs_west_U",
+"to":"U_SECURITY_QUEUE",
+"walkSec":35.1
 }, {
 "from":"stairs_west_U",
 "to":"U_CONCOURSE",
@@ -5195,9 +5183,33 @@
 "to":"lift_west_U",
 "walkSec":0.7
 }, {
+"from":"stairs_west_U",
+"to":"U_ESCALATOR_TOP",
+"walkSec":57.4
+}, {
+"from":"stairs_west_U",
+"to":"stairs_east_U",
+"walkSec":57.4
+}, {
+"from":"stairs_west_U",
+"to":"escalator_east_U",
+"walkSec":56.6
+}, {
+"from":"lift_east_U",
+"to":"U_SECURITY",
+"walkSec":29.5
+}, {
 "from":"lift_east_U",
 "to":"U_SECURITY_QUEUE",
 "walkSec":17.4
+}, {
+"from":"lift_east_U",
+"to":"U_CONCOURSE",
+"walkSec":33.2
+}, {
+"from":"lift_east_U",
+"to":"lift_west_U",
+"walkSec":51.8
 }, {
 "from":"lift_east_U",
 "to":"U_ESCALATOR_TOP",
@@ -5211,21 +5223,17 @@
 "to":"escalator_east_U",
 "walkSec":6.7
 }, {
-"from":"lift_east_U",
+"from":"lift_west_U",
 "to":"U_SECURITY",
-"walkSec":29.5
-}, {
-"from":"lift_east_U",
-"to":"U_CONCOURSE",
-"walkSec":33.2
-}, {
-"from":"lift_east_U",
-"to":"lift_west_U",
-"walkSec":51.8
+"walkSec":43.9
 }, {
 "from":"lift_west_U",
 "to":"U_SECURITY_QUEUE",
 "walkSec":34.5
+}, {
+"from":"lift_west_U",
+"to":"U_CONCOURSE",
+"walkSec":18.6
 }, {
 "from":"lift_west_U",
 "to":"U_ESCALATOR_TOP",
@@ -5239,13 +5247,9 @@
 "to":"escalator_east_U",
 "walkSec":56.0
 }, {
-"from":"lift_west_U",
-"to":"U_SECURITY",
-"walkSec":43.9
-}, {
-"from":"lift_west_U",
+"from":"stairs_east_U",
 "to":"U_CONCOURSE",
-"walkSec":18.6
+"walkSec":38.1
 }, {
 "from":"stairs_east_U",
 "to":"U_ESCALATOR_TOP",
@@ -5255,17 +5259,13 @@
 "to":"escalator_east_U",
 "walkSec":2.5
 }, {
-"from":"stairs_east_U",
+"from":"escalator_east_U",
 "to":"U_CONCOURSE",
-"walkSec":38.1
+"walkSec":37.4
 }, {
 "from":"escalator_east_U",
 "to":"U_ESCALATOR_TOP",
 "walkSec":2.5
-}, {
-"from":"escalator_east_U",
-"to":"U_CONCOURSE",
-"walkSec":37.4
 }, {
 "from":"lift_east_G",
 "to":"G_INFO",
@@ -5275,63 +5275,63 @@
 "to":"G_CENTER",
 "walkSec":18.9
 }, {
-"from":"check_in:W6",
-"to":"G_CAFE",
-"walkSec":24.9
-}, {
-"from":"check_in:W6",
-"to":"G_DEPARTURES",
-"walkSec":14.7
-}, {
-"from":"check_in:W6",
+"from":"check_in:1",
 "to":"G_CHECKIN_DESKS",
 "walkSec":12.4
 }, {
-"from":"check_in:W6",
+"from":"check_in:1",
+"to":"G_DEPARTURES",
+"walkSec":14.7
+}, {
+"from":"check_in:1",
+"to":"G_CAFE",
+"walkSec":24.9
+}, {
+"from":"check_in:1",
 "to":"G_CHECKIN_QUEUE",
 "walkSec":13.9
 }, {
-"from":"check_in:W6",
-"to":"check_in:RO",
+"from":"check_in:1",
+"to":"check_in:2",
 "walkSec":8.9
 }, {
-"from":"check_in:W6",
-"to":"check_in:FR",
+"from":"check_in:1",
+"to":"check_in:3",
 "walkSec":17.7
 }, {
-"from":"check_in:RO",
-"to":"G_CAFE",
-"walkSec":17.0
-}, {
-"from":"check_in:RO",
-"to":"G_DEPARTURES",
-"walkSec":21.1
-}, {
-"from":"check_in:RO",
+"from":"check_in:2",
 "to":"G_CHECKIN_DESKS",
 "walkSec":3.5
 }, {
-"from":"check_in:RO",
+"from":"check_in:2",
+"to":"G_DEPARTURES",
+"walkSec":21.1
+}, {
+"from":"check_in:2",
+"to":"G_CAFE",
+"walkSec":17.0
+}, {
+"from":"check_in:2",
 "to":"G_CHECKIN_QUEUE",
 "walkSec":5.3
 }, {
-"from":"check_in:RO",
-"to":"check_in:FR",
+"from":"check_in:2",
+"to":"check_in:3",
 "walkSec":8.8
 }, {
-"from":"check_in:FR",
-"to":"G_CAFE",
-"walkSec":14.4
-}, {
-"from":"check_in:FR",
-"to":"G_DEPARTURES",
-"walkSec":28.1
-}, {
-"from":"check_in:FR",
+"from":"check_in:3",
 "to":"G_CHECKIN_DESKS",
 "walkSec":5.3
 }, {
-"from":"check_in:FR",
+"from":"check_in:3",
+"to":"G_DEPARTURES",
+"walkSec":28.1
+}, {
+"from":"check_in:3",
+"to":"G_CAFE",
+"walkSec":14.4
+}, {
+"from":"check_in:3",
 "to":"G_CHECKIN_QUEUE",
 "walkSec":6.6
 }, {
@@ -5383,56 +5383,56 @@
 "to":"G_CHECKIN_DESKS",
 "walkSec":10.6
 }, {
-"from":"check_in:W6",
+"from":"check_in:1",
 "to":"checkin_1",
 "walkSec":0.1
 }, {
-"from":"check_in:W6",
+"from":"check_in:1",
 "to":"checkin_2",
 "walkSec":1.7
 }, {
-"from":"check_in:W6",
+"from":"check_in:1",
 "to":"checkin_3",
 "walkSec":3.6
 }, {
-"from":"check_in:W6",
+"from":"check_in:1",
 "to":"checkin_4",
 "walkSec":5.3
 }, {
-"from":"check_in:RO",
+"from":"check_in:2",
 "to":"checkin_5",
 "walkSec":0.2
 }, {
-"from":"check_in:RO",
+"from":"check_in:2",
 "to":"checkin_6",
 "walkSec":1.7
 }, {
-"from":"check_in:RO",
+"from":"check_in:2",
 "to":"checkin_7",
 "walkSec":3.5
 }, {
-"from":"check_in:RO",
+"from":"check_in:2",
 "to":"checkin_8",
 "walkSec":5.2
 }, {
-"from":"check_in:FR",
+"from":"check_in:3",
 "to":"checkin_9",
 "walkSec":0.1
 }, {
-"from":"check_in:FR",
+"from":"check_in:3",
 "to":"checkin_10",
 "walkSec":1.7
 }, {
-"from":"check_in:FR",
+"from":"check_in:3",
 "to":"checkin_11",
 "walkSec":3.6
 }, {
-"from":"check_in:FR",
+"from":"check_in:3",
 "to":"checkin_12",
 "walkSec":5.3
 }, {
 "from":"check_in:OTHER",
-"to":"check_in:FR",
+"to":"check_in:3",
 "walkSec":0.1
 }, {
 "from":"check_in:OTHER",
