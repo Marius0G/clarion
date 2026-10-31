@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { arrivalPlan } from '../src/wa/tools.js';
 import { PROVISIONAL_FLIGHTS, gateName } from '../src/wa/flights.js';
 import { evacPlan, routeFor } from '../src/wa/messaging.js';
-import { desksForAirline } from '../../backend/src/mapIds.js';
+import { desksForGroup } from '../../backend/src/mapIds.js';
 
 it('reads real map camera ids in the arrival plan and preserves measured waits', () => {
   const result = arrivalPlan(PROVISIONAL_FLIGHTS[0]!, {
@@ -31,7 +31,7 @@ it('uses real gates by departure area and the shared desk-group table', () => {
     const gate = Number(gateName(f.gate));
     expect(gate).toBeGreaterThanOrEqual(f.destination.startsWith('Londra') ? 1 : 4);
     expect(gate).toBeLessThanOrEqual(f.destination.startsWith('Londra') ? 3 : 10);
-    expect(f.checkInDesks).toEqual(desksForAirline(f.airline));
+    expect(f.checkInDesks).toEqual(desksForGroup(f.checkIn));
   }
   expect(gateName('U_GATE_10')).toBe('10');
 });

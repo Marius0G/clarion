@@ -56,7 +56,8 @@ describe('D26 real map contract', () => {
   it('preserves aliases, applies crowd costs and blocks routes through security', () => {
     expect(mapNodeId('G10')).toBe('U_GATE_10');
     expect(mapNodeId('gate_2')).toBe('U_GATE_2');
-    expect(mapNodeId('check_in:1')).toBe('check_in:W6');
+    expect(mapNodeId('check_in:1')).toBe('check_in:1');
+    expect(mapNodeId('check_in:W6')).toBe('check_in:1');
     expect(route(plan, 'entrance', 'gate_2')?.totalSec).toBe(route(plan, 'G_DEPARTURES', 'U_GATE_2')?.totalSec);
     const free = route(plan, 'security', 'gate_2')!;
     expect(route(plan, 'security', 'gate_2', { security: 4 })!.totalSec).toBeGreaterThan(free.totalSec);
@@ -70,8 +71,10 @@ describe('D26 real map contract', () => {
     const assigned = Object.values(deskGroups).flat();
     expect(new Set(assigned).size).toBe(12);
     expect(assigned.every(id => points.some(p => p.id === id))).toBe(true);
-    expect(desksForAirline('w6')).toEqual(Array.from({ length: 6 }, (_, i) => `checkin_${i + 1}`));
-    expect(desksForAirline('ZZ')).toEqual(['checkin_11', 'checkin_12']);
+    // Marius: three physical groups of four desks, by time slot; airline names are only legacy aliases.
+    expect(desksForAirline('w6')).toEqual(['checkin_1', 'checkin_2', 'checkin_3', 'checkin_4']);
+    expect(Object.values(deskGroups).map(d => d.length)).toEqual([4, 4, 4]);
+    expect(desksForAirline('ZZ')).toEqual([]);
     expect(flowRow({ 'check_in:1': 12 }, 'check_in:W6')).toBe(12);
     expect(flowRow({ 'check_in:W6': 12 }, 'check_in:1')).toBe(12);
     expect(flowRow({ 'bag_drop:1': 99 }, 'check_in:W6')).toBeUndefined();

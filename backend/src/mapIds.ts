@@ -4,10 +4,18 @@ export type ZoneKind = 'entrance' | 'check_in' | 'bag_drop' | 'security' | 'airs
   | 'passport' | 'reclaim' | 'taxi_rank' | 'kerb' | 'arrivals_hall' | 'stairs' | 'lift'
   | 'circulation' | 'service' | 'waiting' | 'shops' | 'wc' | 'parking';
 const desks = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => `checkin_${a + i}`);
-export const deskGroups = { W6: desks(1, 6), RO: desks(7, 8), FR: desks(9, 10), OTHER: desks(11, 12) } as const;
-export function desksForAirline(airline: string): readonly string[] {
-  return deskGroups[airline.toUpperCase() as keyof typeof deskGroups] ?? deskGroups.OTHER;
+/** D26 (Marius, terminal.json): three physical groups of 4 desks, assigned per flight by time slot, not by airline. */
+export const deskGroups = { '1': desks(1, 4), '2': desks(5, 8), '3': desks(9, 12) } as const;
+/** Legacy per-airline aliases; `check_in:OTHER` has no desks. */
+export const groupAliases: Readonly<Record<string, string>> = { W6: '1', RO: '2', FR: '3' };
+const groupOf = (g: string) => g in deskGroups ? g : groupAliases[g.toUpperCase()] ?? null;
+/** Desks of a group id (`check_in:2`, `2`, or a legacy alias such as `check_in:RO`). */
+export function desksForGroup(group: string): readonly string[] {
+  const g = groupOf(group.replace(/^(?:check_in|bag_drop):/, ''));
+  return g ? deskGroups[g as keyof typeof deskGroups] : [];
 }
+/** @deprecated groups follow the flight's time slot; kept for old callers via the legacy alias. */
+export function desksForAirline(airline: string): readonly string[] { return desksForGroup(airline); }
 export const idAliases: Readonly<Record<string, string>> = {
   entrance: 'G_DEPARTURES', security: 'U_SECURITY_QUEUE', airside: 'U_CORRIDOR_EAST',
   check_in: 'G_CHECKIN_QUEUE', bag_drop: 'G_CHECKIN_DESKS',
@@ -19,7 +27,7 @@ export function mapNodeId(id: string): string {
   const gate = /^(?:G|gate_|U_GATE_)(10|[1-9])$/.exec(id);
   if (gate) return `U_GATE_${gate[1]}`;
   const group = /^(?:check_in|bag_drop):(.+)$/.exec(id);
-  if (group) return `check_in:${({ '1': 'W6', '2': 'RO', '3': 'FR', '4': 'OTHER' } as Record<string, string>)[group[1]!] ?? (group[1]!.toUpperCase() in deskGroups ? group[1]!.toUpperCase() : 'OTHER')}`;
+  if (group) { const g = groupOf(group[1]!); return g ? `check_in:${g}` : id; }
   return idAliases[id] ?? id;
 }
 export function logicalKind(id: string, fallback = 'circulation'): ZoneKind {
@@ -41,6 +49,21 @@ export function logicalKind(id: string, fallback = 'circulation'): ZoneKind {
 export function flowRow<T>(rows: Readonly<Record<string, T>>, id: string): T | undefined {
   if (rows[id] !== undefined) return rows[id];
   const canonical = mapNodeId(id);
-  if (rows[canonical] !== undefined) return rows[canonical];
+  // Desk groups: bag_drop:N and check_in:N share an anchor but are different queues; never read one as the other.
+  const sameKind = !id.includes(':') || canonical.split(':')[0] === id.split(':')[0];
+  if (sameKind && rows[canonical] !== undefined) return rows[canonical];
   return Object.entries(rows).find(([key]) => mapNodeId(key) === canonical && (!key.includes(':') || key.split(':')[0] === id.split(':')[0]))?.[1];
+}
+
+/**
+ * D12 lane counters live under one key per place (terminal.json `lanes`): `security` and `check_in:1..3`.
+ * Commands may name the zone (`U_SECURITY_QUEUE`) or an alias (`check_in:W6`); they all land on the same counter.
+ */
+export const laneZones: Readonly<Record<string, string>> = { security: 'U_SECURITY_QUEUE', 'check_in:1': 'G_CHECKIN_QUEUE', 'check_in:2': 'G_CHECKIN_QUEUE', 'check_in:3': 'G_CHECKIN_QUEUE' };
+export function laneKey(id: string): string {
+  if (id in laneZones) return id;
+  const canonical = mapNodeId(id);
+  if (canonical in laneZones) return canonical;
+  if (/^check_in:/.test(canonical)) return canonical;
+  return Object.entries(laneZones).find(([key, zone]) => !key.includes(':') && zone === canonical)?.[0] ?? id;
 }

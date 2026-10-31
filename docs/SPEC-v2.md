@@ -228,16 +228,17 @@ Sursa geometriei este acum `docs/contract/map/zones.json` / `points.json`; SVG-u
 | `ASSEMBLY_*`, puncte cu `evacuation_exit` | destinații de evacuare; `exit_1` → `door_exit_west`, `exit_2` → `door_exit_mid` |
 | `U_CORRIDOR_EAST`, `G_INFO` | aliasuri de rutare `airside`, respectiv `team_post` |
 
-| Companie | Grup D8 (alias numeric) | Ghișee reale |
+| Grup D8 | Alias vechi | Ghișee reale |
 |---|---|---|
-| W6 | `check_in:W6` (`check_in:1`) | `checkin_1`–`checkin_6` |
-| RO | `check_in:RO` (`check_in:2`) | `checkin_7`–`checkin_8` |
-| FR | `check_in:FR` (`check_in:3`) | `checkin_9`–`checkin_10` |
-| Altele | `check_in:OTHER` (`check_in:4`) | `checkin_11`–`checkin_12` |
+| `check_in:1` | `check_in:W6` | `checkin_1`–`checkin_4` |
+| `check_in:2` | `check_in:RO` | `checkin_5`–`checkin_8` |
+| `check_in:3` | `check_in:FR` | `checkin_9`–`checkin_12` |
+
+Grupurile sunt fizice și se alocă pe zbor după intervalul orar (din `flight.update`), nu pe companie; `check_in:OTHER` nu are ghișee. Liniile deschise au un singur contor pe loc (`terminal.json` → `lanes`): `security` (= `U_SECURITY_QUEUE`, 2 la start) și `check_in:1..3` (câte 3). Backend-ul normalizează orice id primit în comandă la acest contor, iar `/api/sim` expune și `U_SECURITY_QUEUE`.
 
 Aliasurile `bag_drop:<grup>` folosesc aceeași ancoră de rutare ca grupul check-in. Rândurile `flow.report` reale și vechi sunt acceptate simultan, fără însumare sau copiere între companii. O observație generală poate servi drept fallback, nu devine o observație pe companie. Orarul demo folosește Londra Luton → 2, Londra Stansted → 3, Milano → 4, București → 5, Dortmund → 6; sunt alocări demo, nu orarul real. Grupul explicit din `flight.update` are prioritate față de alocarea demo.
 
-Graful estimat este determinist: centre de zone și puncte de acces; poligoane la ≤2 m pe același etaj; punctele la zona cea mai apropiată; perechi `_G`/`_U` pentru scări, escalator și lift. Escalatorul permite doar G→U. Muchiile între componentele izolate folosesc distanța minimă dintre poligoane, cu departajare lexicografică; acestea și legăturile spre exterior sunt marcate `inferred`. `walkSec = distanță / 1.34`, incluzând diferența de înălțime G↔U; rutarea aplică apoi Weidmann din camere, niciodată din `truth.report` (D0). Traversările landside↔airside sunt permise prin `U_SECURITY`; celelalte sunt `evacuationOnly`. O securitate blocată oprește rutele normale către porți. Aproximarea nu este un navmesh verificat: traseele centru-la-centru și punțile trebuie confirmate de Marius; `provisional` rămâne `true`. Nu există în export inițializarea liniilor deschise; valorile reale rămân necunoscute până la confirmare.
+Graful estimat este determinist: centre de zone și puncte de acces; poligoane la ≤2 m pe același etaj; punctele la zona cea mai apropiată; perechi `_G`/`_U` pentru scări, escalator și lift. Escalatorul permite doar G→U. Muchiile între componentele izolate folosesc distanța minimă dintre poligoane, cu departajare lexicografică; acestea și legăturile spre exterior sunt marcate `inferred`. `walkSec = distanță / 1.34`, incluzând diferența de înălțime G↔U; rutarea aplică apoi Weidmann din camere, niciodată din `truth.report` (D0). Traversările landside↔airside sunt permise prin `U_SECURITY`; celelalte sunt `evacuationOnly`. O securitate blocată oprește rutele normale către porți. Aproximarea nu este un navmesh verificat: traseele centru-la-centru și punțile trebuie confirmate de Marius; `provisional` rămâne `true`. Liniile inițiale vin din `terminal.json` (`lanes`).
 
 `crowd.positions` acceptă acum `{x,z,level:"G"|"U"|"X"}` în metri Unity. Se păstrează `z` și `level`, cu `y=z` doar pentru compatibilitatea cititorilor vechi; `{x,y}` rămâne acceptat. Pixelii se calculează separat cu `worldToPx`: `px=(x-x0)*ppm`, `py=(z1-z)*ppm`. Cadrele G/U sunt 3000×1050 la 10 px/m, X este 2120×1280 la 4 px/m.
 
