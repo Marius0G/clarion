@@ -2,8 +2,8 @@
 import { clockLabel, clockText, findFlight, type Clock, type Flight } from './flights.js';
 
 export interface ZoneRow {
-  waiting: number; waitMin: number | null; peak?: number; staff?: number; capacity?: number | null;
-  forecast?: { inMin: number; waitMin: number }[];
+  waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
+  forecast?: { inMin: number; waitMin: number }[] | null;
 }
 /** What the agent may read from the Tower. Implemented in index.ts over the sim store; plain data in tests. */
 export interface AirportView {
