@@ -1,3 +1,4 @@
+import { Auth } from '../../../backend/src/auth.js';
 import { isNodeId, mapNodeId } from '../../../backend/src/mapIds.js';
 import { urgentBubbles } from './urgency.js';
 import { toBubbles } from './agent.js';
@@ -173,8 +174,14 @@ export class Messaging {
       evacuation: await this.deps.store.get<PassengerData['evacuation']>('msg:evacuation') ?? { active: false, zones: [] },
     };
   }
+  /** One-time site login, separate from the reusable personal map token. */
+  connectLink(phone: string) {
+    return new Auth(this.deps.store).createLink(phone.startsWith('+') ? phone : `+${phone}`, this.deps.appUrl ?? 'https://clarion-craiova.pages.dev');
+  }
   async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean) {
-    const link = await this.pageLink(sub);
+    const map = await this.pageLink(sub);
+    const link = sub.channel === 'whatsapp' && /^\+?\d{8,15}$/.test(sub.phone)
+      ? `${map}\nConectare: ${await this.connectLink(sub.phone)}` : map;
     return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag, (await this.subscriberProfile(sub))?.lang)}\n${link}`, estimate: this.estimate(f, hasCheckedBag) });
   }
 

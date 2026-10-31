@@ -127,3 +127,50 @@ demo reset is performed. The runner refuses to alter a gate that was already clo
 with mocked Graph/Wallet networking and a fixture web shell, and checks persisted
 cleanup. `app/tests/passenger.spec.ts` tests the browser join/Wallet flow and
 passenger flight/gate/queue rendering against mocked backend responses.
+
+## Passenger login (D3)
+
+`/join` uses phone ownership, with `Authorization: Bearer <session>` and browser
+storage `clarion.session` (separate from the operator token). No cookies are used
+between Pages and the Worker. Auth expiry uses real time, independent of simulation time.
+
+- `POST /api/auth/login-code` returns `{ code, waLink, pollToken }`. Send `LOGIN <code>`
+  to WhatsApp, then poll `GET /api/auth/login-code/:pollToken` every two seconds for
+  up to five minutes. The first sender owns the code; only the independent secret
+  poll token can claim the session. Claiming it consumes the pending login.
+- `POST /api/auth/otp { phone }` sends a six-digit code only inside the phone's 24h
+  window. `{ sent: false, reason: "window" }` steers the page to reverse login;
+  `reason: "delivery"` means Meta rejected the send, the allowlist blocked it, or
+  the transport is a dry run. A send acknowledgement does not prove handset delivery.
+  `POST /api/auth/verify { phone, code }` allows five attempts within five minutes.
+- Arrival messages retain the personal map link and add a single-use
+  `/join?login=<token>` link (15 minutes). `POST /api/auth/link { token }` consumes it.
+  The page strips the token after the exchange. Sessions last 90 days.
+- `GET /api/auth/me` returns `{ phone, role, flight? }`; `POST /api/auth/logout`
+  revokes the current session. Authenticated `POST /api/join` stores the selected
+  flight against the phone's existing WhatsApp profile without opening the 24h window.
+
+Deployment settings (no new secret is required for reverse login):
+
+- `APP_URL`: Pages origin for outgoing links; default `https://clarion-craiova.pages.dev`.
+- `STAFF_PHONES`: optional comma-separated E.164/RO numbers. Existing `STAFF_CODE`
+  registration also supplies the staff role. Staff phone membership applies to the agent too.
+- `DEMO_OTP=1`: **local development only**, returns the OTP in JSON even without an
+  open messaging window. Leave it unset in deployed environments.
+- Existing `WHATSAPP_APP_SECRET` is required to accept signed inbound webhooks.
+  Existing `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` enable sends. Meta's test
+  allowlist still limits delivery. `LOGIN` from outside `WA_ALLOWLIST` can prove
+  ownership; its confirmation is skipped when outbound is blocked by that allowlist.
+
+The Node server shares auth routes, signature verification and the WhatsApp agent;
+its auth/profile state persists in `<STATE_FILE>.auth.json` with private file permissions.
+After installing dependencies in `backend/` and `app/`, run from the repository root:
+
+```sh
+node app/scripts/smoke-auth.mjs
+```
+
+This launches isolated Node and Vite dev servers plus Chromium, sends a signed
+webhook with `curl`, and checks the browser's session, restored flight and logout.
+It uses temporary state, fake credentials and no real message delivery. Override
+`AUTH_BACKEND_PORT` / `AUTH_APP_PORT` if its local ports (18787 / 15173) are occupied.

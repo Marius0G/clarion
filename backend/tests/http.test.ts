@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { mkdtempSync,rmSync,readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -104,7 +105,12 @@ describe("WhatsApp webhook HTTP routes", () => {
     const good = await fetch(`${base}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-test&hub.challenge=1234`);
     expect(good.status).toBe(200); expect(await good.text()).toBe("1234");
     expect((await fetch(`${base}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=bad&hub.challenge=1234`)).status).toBe(403);
-    const post = (text: string) => fetch(`${base}/webhooks/whatsapp`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entry:[{changes:[{value:{messages:[{id:crypto.randomUUID(),from:"40700000000",text:{body:text}}]}}]}]})});
+    vi.stubEnv("WHATSAPP_APP_SECRET", "node-test-secret");
+    const post = (text: string) => {
+      const body = JSON.stringify({entry:[{changes:[{value:{messages:[{id:crypto.randomUUID(),from:"40700000000",text:{body:text}}]}}]}]});
+      return fetch(`${base}/webhooks/whatsapp`, {method:"POST", headers:{"Content-Type":"application/json",
+        "X-Hub-Signature-256": 'sha256=' + createHmac('sha256', 'node-test-secret').update(body).digest('hex')}, body});
+    };
     expect((await post("CLARION PASAGER W43831")).status).toBe(200);
     expect((await post("Sunt în terminal")).status).toBe(200);
     const state = await (await fetch(`${base}/api/state`)).json();

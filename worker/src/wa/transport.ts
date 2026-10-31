@@ -1,3 +1,5 @@
+import { normalizePhone } from '../../../backend/src/auth.js';
+export { normalizePhone } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
 // WhatsApp Cloud API transport, ported from Moni src/whatsapp.js + src/contracts.js (SPEC-v2 D2).
 // Without WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID every send is a dry-run log line. Logs never contain message text.
@@ -12,6 +14,7 @@ export interface WaEnv {
   CLAUDE_MODEL?: string;
   /** Code an employee sends as "STAFF <code>" to get the staff role (D11). Unset: DEFAULT_STAFF_CODE. */
   STAFF_CODE?: string;
+  STAFF_PHONES?: string;
 }
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -51,14 +54,6 @@ export function quickReaction(text: string) {
 // ---- Inbound parsing.
 export const MEDIA = new Set(['image', 'audio', 'video', 'document', 'sticker', 'location', 'contacts', 'voice']);
 export interface InboundMessage { id: string; phone: string; name: string; type: string; text: string | null; replyId: string | null; at: number }
-
-/** Accepts "07xx xxx xxx", "0040 7xx…" or "+407xx…" and returns E.164, or null (Moni auth.js). */
-export function normalizePhone(input: unknown) {
-  let p = String(input ?? '').replace(/[\s().-]/g, '');
-  if (p.startsWith('00')) p = '+' + p.slice(2);
-  else if (p.startsWith('0')) p = '+40' + p.slice(1);
-  return /^\+[1-9]\d{7,14}$/.test(p) ? p : null;
-}
 
 function textOf(m: any): string | null {
   if (m.type === 'text' || (m.type === undefined && m.text)) return m.text?.body ?? '';

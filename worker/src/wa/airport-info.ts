@@ -1,4 +1,4 @@
-import guide from './airport-guide.json';
+import guide from './airport-guide.json' with { type: 'json' };
 import { normalize } from './context.js';
 import type { Lang } from './texts.js';
 

@@ -1,3 +1,6 @@
+import { Auth, bearer } from '../../backend/src/auth.js';
+import { authRoute, type AuthEnv } from '../../backend/src/auth-routes.js';
+import { allowed } from './wa/transport.js';
 import { runLab, validateInput, labPhone } from './wa/lab.js';
 import { labPage } from './wa/labpage.js';
 import { WaEvents } from './wa/events.js';
@@ -17,7 +20,7 @@ import { findFlight } from './wa/flights.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
 import { airportView } from './wa/tower.js';
 
-export interface Env extends Secrets, WaEnv {
+export interface Env extends Secrets, WaEnv, AuthEnv {
   TOWER: DurableObjectNamespace<Tower>;
   DEMO_TOKEN?: string;
   WHATSAPP_NUMBER?: string;
@@ -260,6 +263,16 @@ export class Tower extends DurableObject<Env> {
       const url = new URL(request.url);
       const path = url.pathname;
       try {
+        if (path.startsWith('/api/auth/')) return authRoute(request, {
+          auth: new Auth(this.ctx.storage), env: this.env,
+          profile: phone => this.whatsapp.profile(phone),
+          withinWindow: phone => this.whatsapp.withinWindow(phone),
+          sendOtp: async (phone, code) => {
+            if (!allowed(this.env, phone)) return false;
+            const result = await this.whatsapp.wa.sendText(phone, `Cod Clarion: ${code}. Valabil 5 minute.`);
+            return result.ok && !result.dryRun;
+          },
+        });
         if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
@@ -313,6 +326,13 @@ export class Tower extends DurableObject<Env> {
             const link = waLink(flight.flight, token, this.env.WHATSAPP_NUMBER);
             const pass = boarding ? await this.wallet.boardingPass(token, boarding, new Date(pending.expiresAt).toISOString(), link) : undefined;
             await this.ctx.storage.put(joinKey(token), pending);
+            const phone = await new Auth(this.ctx.storage).currentPhone(bearer(request.headers));
+            if (phone && !demo) {
+              const key = `wa:profile:${phone}`;
+              await this.ctx.storage.put(key, { phone, role: 'passenger', ...await this.whatsapp.profile(phone),
+                flight: flight.flight, lang: pending.lang, token, verified: true });
+              await this.whatsapp.messaging.addPhone(phone);
+            }
             return json({ token, waLink: link, ...(boarding && { bcbp: boarding.bcbp, walletUrl: pass!.saveUrl }) }, 201);
           }
           if (path === '/api/wallet/pass') {

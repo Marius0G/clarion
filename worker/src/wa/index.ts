@@ -1,3 +1,4 @@
+import { Auth, normalizePhone, parseLogin } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
 import { extractFacts, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
@@ -83,7 +84,7 @@ export class WhatsAppAgent {
       console.error(JSON.stringify({ wa: 'delivery-failed', code: st.code, title: st.title, to: st.phone && masked(st.phone) }));
       await this.observe?.({ kind: 'send-failure', phone: st.phone ?? undefined, code: st.code, explanation: metaExplanation(st.code) });
     }
-    const msgs = parseWebhook(body, this.wa.phoneId).filter(m => allowed(this.env, m.phone));
+    const msgs = parseWebhook(body, this.wa.phoneId).filter(m => parseLogin(m.text) || allowed(this.env, m.phone));
     await Promise.all(msgs.map(m => this.receive(m)));
   }
 
@@ -120,9 +121,17 @@ export class WhatsAppAgent {
 
   private async turn(m: InboundMessage) {
     console.log(JSON.stringify({ wa: 'in', id: m.id, type: m.type, from: masked(m.phone) }));
+    const login = parseLogin(m.text);
+    if (login) {
+      const ok = await new Auth(this.store).bindLogin(login, m.phone);
+      await this.store.put(`wa:last:${m.phone}`, m.at);
+      if (allowed(this.env, m.phone)) await this.wa.sendText(m.phone, ok ? 'Gata, ești conectat pe site.' : 'Cod expirat sau folosit. Cere un cod nou pe site.');
+      return;
+    }
     await this.wa.markReadTyping(m.id);
     const key = `wa:profile:${m.phone}`;
     let profile: Profile = { phone: m.phone, role: 'passenger', lang: 'ro', ...(await this.store.get<Profile>(key)) };
+    if ((this.env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === m.phone)) profile.role = 'staff';
     // Check urgency before sending even a provisional reaction.
     const flight = profile.flight && findFlight(this.view.flights(), profile.flight);
     const flightAlert = flight && (flight.status === 'delayed' || flight.status === 'cancelled')
@@ -140,7 +149,7 @@ export class WhatsAppAgent {
     };
     // Every message the person sends opens the 24h window.
     await this.store.put(`wa:last:${m.phone}`, m.at);
-    await save({ lastInboundAt: m.at, ...(m.name && { name: m.name }) });
+    await save({ role: profile.role, lastInboundAt: m.at, ...(m.name && { name: m.name }) });
 
     if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;

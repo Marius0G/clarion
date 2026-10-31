@@ -1,3 +1,12 @@
+import { Auth, bearer } from './auth.js';
+import { authRoute } from './auth-routes.js';
+import { FileAuthStore } from './auth-store.js';
+import { WhatsAppAgent } from '../../worker/src/wa/index.js';
+import { allowed } from '../../worker/src/wa/transport.js';
+import { airportView } from '../../worker/src/wa/tower.js';
+import { validWhatsAppSignature } from '../../worker/src/channels.js';
+import { findFlight } from '../../worker/src/wa/flights.js';
+import { joinKey, JOIN_TTL_MS, waLink } from '../../worker/src/join.js';
 import { createHash,timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer,type IncomingMessage } from "node:http";
@@ -23,14 +32,15 @@ function integerEnv(name: string, fallback: number, min: number, max: number) {
   if (!Number.isInteger(n)) throw new Error(`Invalid ${name}: integer required`);
   return n;
 }
-async function jsonBody(req: IncomingMessage): Promise<any> {
+async function rawBody(req: IncomingMessage): Promise<string> {
   let body = "";
   for await (const chunk of req) {
     body += chunk;
     if (Buffer.byteLength(body) > 65536) throw new Error("Body exceeds 64 KiB");
   }
-  return JSON.parse(body);
+  return body;
 }
+async function jsonBody(req: IncomingMessage): Promise<any> { return JSON.parse(await rawBody(req)); }
 export function loadBackendEnv(
   file = fileURLToPath(new URL("../.env", import.meta.url)),
 ) {
@@ -59,20 +69,22 @@ export function createControlTower() {
       )
         ws.send(packet);
   };
+  const stateFile = process.env.STATE_FILE ?? resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    existsSync(new URL("../package.json", import.meta.url)) ? "../data/state.json" : "../../data/state.json",
+  );
   const engine = new Engine({
-    file:
-      process.env.STATE_FILE ??
-      resolve(
-        dirname(fileURLToPath(import.meta.url)),
-        existsSync(new URL("../package.json", import.meta.url))
-          ? "../data/state.json"
-          : "../../data/state.json",
-      ),
+    file: stateFile,
     emit,
     adapters: { whatsapp },
     simSpeed: numberEnv("SIM_SPEED", 60, 0.001),
     seed: process.env.SIM_SEED,
   });
+  const authStore = new FileAuthStore(`${stateFile}.auth.json`);
+  const auth = new Auth(authStore);
+  const view = airportView(engine.sim, () => [...clients.values()].includes('twin'));
+  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0 });
+  const webhookWork = new Set<Promise<void>>();
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
   let queue = Promise.resolve();
   function ordered<T>(work: () => Promise<T> | T): Promise<T> {
@@ -95,7 +107,7 @@ export function createControlTower() {
       try {
         const url = new URL(origin);
         allowed =
-          origin === "http://localhost:5173" ||
+          (["http:", "https:"].includes(url.protocol) && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) ||
           (url.protocol === "https:" && url.hostname.endsWith(".pages.dev"));
       } catch {}
       if (!allowed) {
@@ -119,6 +131,37 @@ export function createControlTower() {
     try {
       if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route", "/api/demo/reset"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
+      }
+      if (url.pathname.startsWith('/api/auth/')) {
+        const request = new Request(url, { method: req.method, headers: { Authorization: req.headers.authorization ?? '' },
+          ...(req.method === 'POST' && { body: await rawBody(req) }) });
+        const response = await authRoute(request, {
+          auth, env: process.env,
+          profile: phone => waAgent.profile(phone),
+          withinWindow: phone => waAgent.withinWindow(phone),
+          sendOtp: async (phone, code) => {
+            if (!allowed(process.env, phone)) return false;
+            const result = await waAgent.wa.sendText(phone, `Cod Clarion: ${code}. Valabil 5 minute.`);
+            return result.ok && !result.dryRun;
+          },
+        });
+        res.writeHead(response.status); res.end(await response.text()); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/join') {
+        const input = await jsonBody(req);
+        if (!input || typeof input.flight !== 'string' || input.flight.length > 20 ||
+          (input.lang !== undefined && !['ro', 'en'].includes(input.lang))) throw new Error('Invalid flight or language');
+        const flight = findFlight(view.flights(), input.flight);
+        if (!flight) { res.writeHead(404); res.end(JSON.stringify({ error: 'Unknown flight' })); return; }
+        const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+        await authStore.put(joinKey(token), { flight: flight.flight, lang: input.lang ?? 'ro', expiresAt: Date.now() + JOIN_TTL_MS });
+        const phone = await auth.currentPhone(bearer(new Headers({ Authorization: req.headers.authorization ?? '' })));
+        if (phone) {
+          await authStore.put(`wa:profile:${phone}`, { phone, role: 'passenger', ...await waAgent.profile(phone),
+            flight: flight.flight, lang: input.lang ?? 'ro', token, verified: true });
+          await waAgent.messaging.addPhone(phone);
+        }
+        res.writeHead(201); res.end(JSON.stringify({ token, waLink: waLink(flight.flight, token, process.env.WHATSAPP_NUMBER) })); return;
       }
       const open = (client: Client) => [...clients].filter(([ws, kind]) => kind === client && ws.readyState === WebSocket.OPEN);
       const twins = () => open("twin");
@@ -166,8 +209,30 @@ export function createControlTower() {
           res.end(challenge ?? "Forbidden"); return;
         }
         if (req.method === "POST") {
-          const body = await jsonBody(req);
-          await ordered(() => engine.whatsappWebhook(body));
+          if (!process.env.WHATSAPP_APP_SECRET) { res.writeHead(503); res.end(JSON.stringify({ error: 'WhatsApp app secret not configured' })); return; }
+          const raw = await rawBody(req);
+          if (!await validWhatsAppSignature(raw, String(req.headers['x-hub-signature-256'] ?? ''), process.env.WHATSAPP_APP_SECRET)) {
+            res.writeHead(403); res.end(JSON.stringify({ error: 'Invalid webhook signature' })); return;
+          }
+          const body = JSON.parse(raw);
+          await ordered(async () => {
+            const seen = await authStore.get<string[]>('whatsappIds') ?? [];
+            for (const entry of body.entry ?? []) for (const change of entry.changes ?? []) {
+              if (!Array.isArray(change.value?.messages)) continue;
+              const fresh = [];
+              for (const message of change.value.messages) {
+                if (typeof message.id !== 'string' || seen.includes(message.id)) continue;
+                seen.push(message.id);
+                fresh.push(message);
+              }
+              change.value.messages = fresh;
+            }
+            await authStore.put('whatsappIds', seen.slice(-2000));
+            await engine.whatsappWebhook(body);
+          });
+          const work = waAgent.inbound(body);
+          webhookWork.add(work);
+          void work.finally(() => webhookWork.delete(work));
           res.end(JSON.stringify({ok: true})); return;
         }
       }
@@ -303,6 +368,7 @@ export function createControlTower() {
     for (const ws of clients.keys()) ws.terminate();
     sockets.close();
     await queue;
+    await Promise.allSettled([...webhookWork]);
     engine.persist();
     await new Promise<void>((r) => http.close(() => r()));
   };
