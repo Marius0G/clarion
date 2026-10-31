@@ -84,13 +84,13 @@ it('clears the complete demo through real routes and sockets, persists deletion 
   vision.send('crowd.positions', { people: [{ x: 10, y: 12 }] });
   await expect.poll(sim).toMatchObject({ flights: [flight()], truth: { zones: { security: { waiting: 100 } } }, positions: { people: [{ x: 10, y: 12 }] } });
   const pending: any = await (await api('/api/join', { flight: 'W6 3751' })).json();
-  const consumed: any = await (await api('/api/join', { flight: 'W6 3751', name: 'OldName' })).json();
+  const consumed: any = await (await api('/api/join', { flight: 'W6 3751', name: 'OldName', lang: 'en' })).json();
   const subscribed: any = await (await api('/api/subscribe', { role: 'passenger_home', channel: 'whatsapp', lang: 'ro', consent: true })).json();
   expect((await api('/api/wallet/pass', { subscriptionId: subscribed.subscriptionId })).status).toBe(200);
   await whatsapp(`START W6 3751 ${consumed.token}`);
   await expect.poll(() => texts().some(t => t.includes('/m/'))).toBe(true);
   const oldPage = /\/m\/([a-f0-9-]+)/.exec(texts().find(t => t.includes('/m/'))!)![1];
-  twin.send('agent.register', { agentId: 'sim1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' });
+  twin.send('agent.register', { agentId: 'sim1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751', lang: 'en' });
   await expect.poll(() => twin.of('agent.message').length).toBe(1);
   const simPage = /\/m\/([a-f0-9-]+)/.exec(twin.of('agent.message')[0].text)![1];
   await whatsapp('STAFF echipa');
@@ -132,6 +132,7 @@ it('clears the complete demo through real routes and sockets, persists deletion 
   await expect.poll(() => toolResults.some(r => r.beAtEntranceAt), { timeout: 10000 }).toBe(true);
   const system = outbound.filter(o => o.url.startsWith('https://api.anthropic.com')).at(-1)!.body.system[1].text;
   expect(system).toContain('nevalidat');
+  expect(system).toContain('Passenger language: Romanian.');
   expect(system).not.toContain('OldName');
   expect(system).not.toContain('Bagaj de cală: da');
   const newPage = /\/m\/([a-f0-9-]+)/.exec(texts().filter(t => t.includes('/m/')).at(-1)!)![1];
