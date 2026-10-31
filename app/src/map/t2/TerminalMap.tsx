@@ -89,8 +89,15 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   const here = zones.filter(z => z.level === level)
   const interior = level !== 'X'
   const lit = new Set(highlight)
-  const [view, setView] = useState<[number, number, number, number]>([0, 0, fr.width, fr.height])
-  useEffect(() => setView([0, 0, fr.width, fr.height]), [fr.width, fr.height])
+  type Box = [number, number, number, number]
+  const full: Box = [0, 0, fr.width, fr.height]
+  // The view belongs to one floor; switching floors shows the whole new floor.
+  const [zoom, setZoom] = useState<{ level: Level; v: Box }>({ level, v: full })
+  const view = zoom.level === level ? zoom.v : full
+  const setView = (next: Box | ((v: Box) => Box)) => setZoom(z => {
+    const cur = z.level === level ? z.v : full
+    return { level, v: typeof next === 'function' ? next(cur) : next }
+  })
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ x: number; y: number; v: [number, number, number, number]; moved: boolean } | null>(null)
   const dragged = useRef(false)
@@ -113,17 +120,18 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const r = el.getBoundingClientRect()
-      setView(v => {
+      setZoom(z => {
+        const v: Box = z.level === level ? z.v : [0, 0, fr.width, fr.height]
         const cx = v[0] + ((e.clientX - r.left) / r.width) * v[2], cy = v[1] + ((e.clientY - r.top) / r.height) * v[3]
         const k = Math.exp(e.deltaY * 0.01)
         const nw = Math.min(fr.width, Math.max(fr.width / 8, v[2] * k)), nh = nw * (fr.height / fr.width)
         const nx = cx - ((cx - v[0]) * nw) / v[2], ny = cy - ((cy - v[1]) * nh) / v[3]
-        return [Math.min(Math.max(nx, 0), fr.width - nw), Math.min(Math.max(ny, 0), fr.height - nh), nw, nh]
+        return { level, v: [Math.min(Math.max(nx, 0), fr.width - nw), Math.min(Math.max(ny, 0), fr.height - nh), nw, nh] }
       })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [fr.width, fr.height])
+  }, [level, fr.width, fr.height])
   const zoomed = view[2] < fr.width - 1
 
   const zoneEls: ReactNode[] = []
