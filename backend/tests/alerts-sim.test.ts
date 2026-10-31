@@ -34,3 +34,12 @@ describe('shared runtime and D0 isolation', () => {
     expect(engine.snapshot().alerts[0]?.state).toBe('acked');
   });
 });
+
+it('never lets legacy twin fallback overwrite camera evidence or suppress camera loss', () => {
+  const sim = new SimStore(); status(sim);
+  sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }] }, 'vision', 100);
+  sim.flow({ zones: [{ zone: 'security', waiting: 0, waitMin: 0 }] }, 'twin', 5200);
+  const snapshot = sim.snapshot(true, {}, false, 5200);
+  expect(snapshot.flow.security?.source).toBe('twin');
+  expect(snapshot.alerts.find(a => a.kind === 'camera-loss')).toMatchObject({ active: true, priority: 'P3' });
+});

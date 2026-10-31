@@ -130,7 +130,7 @@ export class SimStore {
   reportSnapshot() { return structuredClone(this.staffReports); }
   alertSnapshot(now = Date.now()) {
     if (this.simTime === null) return this.alerts.snapshot();
-    return this.alerts.update({ simTime: this.simTime, flow: this.flowSnapshot(now), flights: this.flightRows, reports: this.staffReports });
+    return this.alerts.update({ simTime: this.simTime, flow: this.flowSnapshot(now, true), flights: this.flightRows, reports: this.staffReports });
   }
   alertCommand(data: unknown) {
     const command = alertCommand(data);
@@ -138,8 +138,8 @@ export class SimStore {
     this.alertSnapshot();
     return this.alerts.command(command, this.simTime);
   }
-  private flowSnapshot(now: number): Record<string, FlowRow> {
-    return Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]) => [zone, { ...row, stale: now - at > FLOW_STALE_MS }]));
+  private flowSnapshot(now: number, camerasOnly = false): Record<string, FlowRow> {
+    return Object.fromEntries([...(camerasOnly ? this.cameraRows : this.flowRows)].map(([zone, { at, ...row }]) => [zone, { ...row, stale: now - at > FLOW_STALE_MS }]));
   }
   private rows = new Map<string, SimAgent>();
   private run: { scenario: string; arm: 'A' | 'B'; coverage: number; seed: number } | null = null;
@@ -147,6 +147,8 @@ export class SimStore {
   private speed: number | null = null;
   private lastSeen: string | null = null;
   private flowRows = new Map<string, Omit<FlowRow, 'stale'> & { at: number }>();
+  // Retain the last camera observation independently: legacy fallbacks cannot clear camera alarms.
+  private cameraRows = new Map<string, Omit<FlowRow, 'stale'> & { at: number }>();
   private visionFlowMs = -Infinity;
   private laneRows = new Map<string, number>(Object.entries(initialLanes));
   private truthRows: { zones: Record<string, TruthRow>; at: string } | null = null;
@@ -165,7 +167,7 @@ export class SimStore {
       flights: this.flightRows.length, commands: this.ops.length, blockedZones: this.blockedZones.size };
     this.alerts.reset(); this.staffReports = [];
     this.rows.clear(); this.run = null; this.simTime = this.speed = null; this.lastSeen = null;
-    this.flowRows.clear(); this.flowHistory.clear(); this.visionFlowMs = -Infinity;
+    this.flowRows.clear(); this.cameraRows.clear(); this.flowHistory.clear(); this.visionFlowMs = -Infinity;
     this.laneRows = new Map(Object.entries(initialLanes));
     this.truthRows = null; this.truthMs = -Infinity;
     this.flightRows = []; this.flightsAt = null;
@@ -231,7 +233,9 @@ export class SimStore {
       const history = (this.flowHistory.get(zone) ?? []).filter(h => h.t <= t && h.t > t - PEAK_WINDOW_S).slice(-HISTORY_MAX + 1);
       history.push({ t, waiting: row.waiting });
       this.flowHistory.set(zone, history);
-      this.flowRows.set(zone, { ...row, peak: Math.max(...history.map(h => h.waiting)), updatedAt, source, at: now });
+      const observation = { ...row, peak: Math.max(...history.map(h => h.waiting)), updatedAt, source, at: now };
+      this.flowRows.set(zone, observation);
+      if (source === 'vision') this.cameraRows.set(zone, observation);
     }
     this.lastSeen = updatedAt;
     this.alertSnapshot(now);
