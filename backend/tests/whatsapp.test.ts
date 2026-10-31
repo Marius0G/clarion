@@ -144,7 +144,8 @@ describe("recorded FIDS", () => {
   it("preserves simulated suspension and diversion across schedule refreshes", async () => {
     const e = new Engine();
     e.state.phase = "suspended";
-    const mapped = mapFids(arrivals,"arr");
+    const later = new Date(Date.now()+3600000).toISOString();
+    const mapped = mapFids(arrivals,"arr").map(f=>({...f,sched:later,est:later}));
     e.updateFlights(mapped,"fids"); expect(e.state.flights[0]?.status).toBe("suspended");
     e.state.flights[0]!.status="diverted"; e.state.flights[0]!.divertedTo="OTP";
     e.updateFlights(mapped,"fids"); expect(e.state.flights[0]?.divertedTo).toBe("OTP");

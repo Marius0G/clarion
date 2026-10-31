@@ -19,7 +19,7 @@ import {
 import { buttonAction, parseStartCode, parseWhatsAppWebhook } from "./channels/whatsapp.js";
 import type { Flight } from "./types.js";
 import { render } from "./messages.js";
-import { fixtureSource, schedule } from "./data/flights.js";
+import { fixtureSource, schedule, settlePast } from "./data/flights.js";
 import { roalertDraft } from "./channels/roalert.js";
 import type { Adapter, Outbound } from "./channels/types.js";
 // Demo assumption: 10 drivers/minute while the simulated Waze closure is active.
@@ -491,7 +491,7 @@ export class Engine {
   }
   updateFlights(flights: Flight[], dataSource: "fids" | "fixture") {
     const previous = this.state.flights;
-    this.state.flights = flights.map(f => {
+    this.state.flights = flights.map((f) => settlePast(f)).map(f => {
       const old = previous.find(p => flightKey(p.flight) === flightKey(f.flight) && p.dir === f.dir);
       if (old?.status === "diverted") return {...f, status: old.status, divertedTo: old.divertedTo, est: old.est};
       return this.state.phase === "suspended" && f.status === "scheduled" ? {...f, status: "suspended"} : {...f};
@@ -553,6 +553,7 @@ export class Engine {
     this.requirePhase("detection");
     this.state.confirmedAt = iso();
     this.transition("suspended", "console.confirm_suspension");
+    this.state.flights = this.state.flights.map((f) => settlePast(f));
     this.state.flights.forEach((f) => {
       if (f.status === "scheduled") f.status = "suspended";
     });

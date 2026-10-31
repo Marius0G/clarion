@@ -1,6 +1,11 @@
 import type { Flight } from "../types.js";
 export const fixtureSource =
   "FIXTURE: Wizz winter 2026/27; 21 departures/week per team plan. Routes, flight numbers and times illustrative, not a verified airline timetable. craiova-airport.ro unavailable on 2026-10-31.";
+// A scheduled flight whose time has passed cannot be suspended any more.
+export function settlePast(f: Flight, now = new Date()): Flight {
+  if (f.status !== "scheduled" || new Date(f.est).getTime() >= now.getTime()) return f;
+  return { ...f, status: f.dir === "dep" ? "departed" : "landed" };
+}
 // One Bucharest operating day, including the following night before 02:00.
 // These are illustrative out-and-back rotations, not verified airline slots.
 export function schedule(now = new Date()): Flight[] {
@@ -84,7 +89,8 @@ export function schedule(now = new Date()): Flight[] {
         };
       }),
     )
-    .sort((a, b) => a.sched.localeCompare(b.sched));
+    .sort((a, b) => a.sched.localeCompare(b.sched))
+    .map((f) => settlePast(f, now));
 }
 export async function aircraftNearLrcv(): Promise<unknown[]> {
   try {
