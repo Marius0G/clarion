@@ -186,7 +186,7 @@ export class WhatsAppClient {
   }
   /** Replies in order: "[react]✈️" or a lone emoji goes as a reaction on replyTo; text bubbles 800 ms apart. */
   async sendReplies(phone: string, replies: string[], replyTo?: string) {
-    let sent = 0;
+    let sent = 0, delivered = true;
     for (const bubble of replies) {
       let text = String(bubble).trim();
       let emoji: string | null = null;
@@ -196,9 +196,11 @@ export class WhatsAppClient {
       if (!text) continue;
       for (const part of splitText(text, 4000)) {
         if (sent++) await sleep(this.pause);
-        await this.sendText(phone, part);
+        const result = await this.sendText(phone, part);
+        delivered &&= result.ok;
       }
     }
+    return delivered && sent > 0;
   }
 }
 

@@ -105,6 +105,7 @@ export class Messaging {
   async reset() {
     this.cancelPending();
     await this.chain;
+    await this.deliveryChain;
     await this.pageChain;
     this.planned.clear();
     const whatsappSubscribers = (await this.deps.store.get<string[]>('wa:subs') ?? []).length;
@@ -210,7 +211,19 @@ export class Messaging {
     }
     if (delivery === 'sent') await this.pageSerial(async () => {
       if (nonUrgent) await this.deps.store.put(lastKey, now);
-      if (estimate) await this.deps.store.put(`msg:estimate:${this.identity(sub)}`, estimate);
+      if (estimate) {
+        await this.deps.store.put(`msg:estimate:${this.identity(sub)}`, estimate);
+        if (sub.channel === 'whatsapp') {
+          const profileKey = `wa:profile:${sub.phone}`;
+          const p = await this.deps.store.get<Profile>(profileKey);
+          if (p) await this.deps.store.put(profileKey, { ...p, lastWaitEstimate: { at: clockText(this.deps.view.clock().now), totalMin: estimate.totalMin } });
+        }
+      }
+      if (m.kind === 'flight' || m.kind === 'evacuate') {
+        const urgentKey = `msg:urgent:${this.identity(sub)}`;
+        const received = await this.deps.store.get<{ at: string; kind: string; text: string }[]>(urgentKey) ?? [];
+        await this.deps.store.put(urgentKey, [...received, { at: new Date(now).toISOString(), ...m }].slice(-8));
+      }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
       await this.deps.store.put(key, [...alerts, { at: new Date(this.deps.now?.() ?? Date.now()).toISOString(), ...m }].slice(-5));
@@ -226,7 +239,7 @@ export class Messaging {
   async removePhone(phone: string) {
     const list = (await this.deps.store.get<string[]>('wa:subs')) ?? [];
     if (list.includes(phone)) await this.deps.store.put('wa:subs', list.filter(p => p !== phone));
-    for (const kind of ['alerts', 'last', 'estimate']) await this.deps.store.delete(`msg:${kind}:wa:${phone}`);
+    for (const kind of ['alerts', 'urgent', 'last', 'estimate']) await this.deps.store.delete(`msg:${kind}:wa:${phone}`);
   }
   private async sims() { return (await this.deps.store.get<Record<string, SimSubscriber>>('sim:subs')) ?? {}; }
   /** Everyone, with the flight each one is bound to (undefined for staff without one). */

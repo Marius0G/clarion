@@ -149,6 +149,10 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
   return {
     async airportInfo(input: { topic?: string; query?: string }) { return airportInfo(input, profile().lang); },
     async rememberFact(input: { key?: unknown; value?: unknown }) {
+      if (input?.key === 'flight' && typeof input.value === 'string') {
+        const r = await resolve(input.value);
+        return 'error' in r ? r : { remembered: true, key: 'flight', value: r.flight.flight };
+      }
       const patch = factPatch(input?.key, input?.value);
       if (!patch) return { error: 'invalid_fact' };
       if (patch.needs) patch.needs = { ...profile().needs, ...patch.needs };
@@ -167,7 +171,6 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
       if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: say(profile().lang, 'cancelledNote') };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: say(profile().lang, 'departedNote') };
       const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.());
-      await save({ lastWaitEstimate: { at: clockText(view.clock().now), totalMin: plan.totalMin } });
       return { ...plan, situation: situationText(plan, profile().lang), status: f.status, delayMin: f.delayMin };
     },
     async queues() {

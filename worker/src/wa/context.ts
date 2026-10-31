@@ -18,13 +18,13 @@ export const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u03
 export function extractFacts(text: string): Partial<Profile> {
   const t = normalize(text), patch: Partial<Profile> = {};
   if (/[?]/.test(t) || /\b(daca|if|what if)\b/.test(t)) return patch;
-  if (/\b(nu am|n-am|fara|no|without) (checked (bag|baggage)|bagaj(?:e)?(?: de cala)?)\b|\b(hand luggage only|only hand luggage)\b/.test(t)) patch.hasCheckedBag = false;
-  else if (/\b(am|i have|i've got|with) (?:un |a |some )?(?:checked (?:bag|baggage)|bagaj(?:e)? de cala)\b/.test(t)) patch.hasCheckedBag = true;
+  if (/\b(nu am|n-am|fara|no|without) (checked (bags?|baggage|luggage)|bagaj(?:e)?(?: de cala)?)\b|\bi (?:don't|do not) have checked (?:bags?|baggage|luggage)\b|\bi have no checked (?:bags?|baggage|luggage)\b|\b(hand luggage only|only hand luggage)\b/.test(t)) patch.hasCheckedBag = false;
+  else if (/\b(am|i have|i've got|with) (?:un |a |some )?(?:checked (?:bags?|baggage|luggage)|bagaj(?:e)? de cala)\b/.test(t)) patch.hasCheckedBag = true;
   const group = /\b(?:suntem|we are|party of|group of)\s+(\d{1,2})\b/.exec(t);
   if (group && +group[1]! > 0) patch.groupSize = +group[1]!;
   const needs: Record<string, boolean> = {};
-  if (/\b(?:sunt|calatoresc|vin|am venit) cu (?:un |doi |\d+ )?(?:copii|copil)|\b(?:i|we)(?: am| are|'m|'re)? (?:travelling |traveling )?with (?:a |\d+ )?(?:kids|children|child|baby)\b/.test(t)) needs.kids = true;
-  if (/\b(?:nu sunt|nu calatoresc|nu vin) cu copii|\b(?:no kids|without children)\b/.test(t)) needs.kids = false;
+  if (/\bam (?:un |doi |\d+ )?(?:copii|copil)\b|\b(?:sunt|calatoresc|vin|am venit) cu (?:un |doi |\d+ )?(?:copii|copil)|\b(?:i|we)(?: am| are|'m|'re)? (?:travelling |traveling )?with (?:a |my |our |one |two |three |\d+ )?(?:kids|children|child|baby)\b/.test(t)) needs.kids = true;
+  if (/\b(?:nu sunt|nu calatoresc|nu vin) cu copii|\b(?:nu am copii|fara copii|no kids|without children)\b/.test(t)) needs.kids = false;
   if (/\b(?:am mobilitate redusa|folosesc (?:un )?scaun rulant|i (?:use|need) a wheelchair|i have reduced mobility)\b/.test(t)) needs.reducedMobility = true;
   if (/\b(?:nu am mobilitate redusa|i do not have reduced mobility)\b/.test(t)) needs.reducedMobility = false;
   if (Object.keys(needs).length) patch.needs = needs;

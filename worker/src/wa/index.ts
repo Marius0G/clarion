@@ -110,7 +110,8 @@ export class WhatsAppAgent {
 
     const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
-      profile = { ...profile, ...patch, ...(patch.needs && { needs: { ...profile.needs, ...patch.needs } }) }; await this.store.put(key, profile);
+      const base = { ...profile, ...await this.store.get<Profile>(key) };
+      profile = { ...base, ...patch, ...(patch.needs && { needs: { ...base.needs, ...patch.needs } }) }; await this.store.put(key, profile);
       // Bound to a flight or staff: from now on part of the fan-out (flight changes, evacuation).
       if (patch.flight || patch.role === 'staff') await this.messaging.addPhone(m.phone);
     };
@@ -131,7 +132,8 @@ export class WhatsAppAgent {
     }
     const ctxKey = `wa:ctx:${m.phone}`;
     const ctx = (await this.store.get<PassengerContext>(ctxKey)) ?? { history: [] };
-    const alerts = await this.store.get<PassengerContext['alerts']>(`msg:alerts:wa:${m.phone}`) ?? [];
+    const alerts = await this.store.get<PassengerContext['alerts']>(`msg:urgent:wa:${m.phone}`)
+      ?? await this.store.get<PassengerContext['alerts']>(`msg:alerts:wa:${m.phone}`) ?? [];
     ctx.alerts = alerts.filter(a => a.kind === 'flight' || a.kind === 'evacuate');
     const remember = async (user: string, bubbles: string[]) => {
       const at = new Date().toISOString();
@@ -189,7 +191,7 @@ export class WhatsAppAgent {
     }
     const code = /\b([a-z][a-z0-9]|[0-9][a-z])\s?-?(\d{3,4})\b/i.exec(text)?.slice(1).join(' ').toUpperCase();
     const spokenFlight = code && findFlight(this.view.flights(), code);
-    if (spokenFlight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
+    if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
     const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r),
       pageLink: async () => {
@@ -198,15 +200,18 @@ export class WhatsAppAgent {
         if (stored?.pageToken) profile.pageToken = stored.pageToken;
         return link;
       } });
+    let waitEstimate: Profile['lastWaitEstimate'];
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
       const result = await fn(input);
+      if (name === 'whenToArrive' && typeof (result as any)?.totalMin === 'number') waitEstimate = { at: clockText(this.view.clock().now), totalMin: (result as any).totalMin };
       const note = lookupNote(name, result);
       if (note) ctx.notes = [...(ctx.notes ?? []), { at: `${new Date().toISOString()} (airport clock ${clockText(this.view.clock().now)})`, tool: name, note }].slice(-NOTES_MAX);
       return result;
     }]));
     const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools });
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
-    await this.wa.sendReplies(m.phone, bubbles, m.id);
+    const delivered = await this.wa.sendReplies(m.phone, bubbles, m.id);
+    if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
     if (!initiallyBound && profile.flight) {
       const flight = findFlight(this.view.flights(), profile.flight);
       if (flight) await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
