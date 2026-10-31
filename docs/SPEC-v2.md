@@ -209,6 +209,40 @@ Pe `/join` pasagerul alege limba (Română / English). Pe WhatsApp o poate schim
 ### D25. Emoji doar la ce nu e urgent
 Harness-ul WhatsApp din Moni rămâne (reacție cu emoji la ~2 din 3 mesaje, baloane scurte, typing). Mesajele urgente nu au nici reacție, nici emoji în text: evacuarea, zbor anulat sau întârziat, schimbare de poartă, rapoartele angajaților și confirmările lor. Restul (cozi, situația, informații despre zbor, salut, mulțumiri) păstrează emoji-urile.
 
+### D26. Real map ids
+Sursa geometriei este acum `docs/contract/map/zones.json` / `points.json`; SVG-urile folosesc aceleași coordonate. `backend/src/terminal.ts` exportă `zones` (inclusiv `level`, `kind`, `polygons_px`, `centre`), `points`, `frames`, `worldToPx(x,z,level)` și `plan`/`terminalGraph`. Frontend-ul le reexportă prin `app/src/console/terminal.ts` (`realPlan`, plus `floorAssets` pentru SVG). Randarea existentă rămâne neschimbată până la integrarea separată a `TerminalMap`; `displayPlan.ts` păstrează doar compatibilitatea ei.
+
+`backend/src/mapIds.ts` este unica configurație pentru aliasuri, tipuri logice și grupuri. Id-urile fizice sunt păstrate în telemetrie; tipul nativ (`queue`, `service` etc.) rămâne în `zones`, iar `plan.zones.kind` este tipul logic pentru D20.
+
+| Id fizic | Tip logic / alias vechi |
+|---|---|
+| `G_CHECKIN_QUEUE`, `G_CHECKIN_DESKS` | `check_in`; aliasuri generale `check_in`, respectiv `bag_drop` |
+| `U_SECURITY_QUEUE`, `U_SECURITY` | `security`; alias `security` → coadă |
+| `U_PASSPORT_DEP`, `G_ARRIVALS_PASSPORT` | `passport` |
+| `U_GATE_1` … `U_GATE_10` | `gate`; `gate_n` și `Gn` → `U_GATE_n` |
+| `G_RECLAIM_1`, `G_RECLAIM_2` | `reclaim` |
+| `G_DEPARTURES` | `entrance` |
+| `G_MEETING`, `G_ARRIVALS_EXIT` | `arrivals_hall` (alias general → `G_MEETING`) |
+| `X_TAXI_RANK` | `taxi_rank` |
+| `X_KERB_DEPARTURES`, `X_KERB_ARRIVALS`, `X_BOLT` | `kerb` (alias general → plecări) |
+| `ASSEMBLY_*`, puncte cu `evacuation_exit` | destinații de evacuare; `exit_1` → `door_exit_west`, `exit_2` → `door_exit_mid` |
+| `U_CORRIDOR_EAST`, `G_INFO` | aliasuri de rutare `airside`, respectiv `team_post` |
+
+| Companie | Grup D8 (alias numeric) | Ghișee reale |
+|---|---|---|
+| W6 | `check_in:W6` (`check_in:1`) | `checkin_1`–`checkin_6` |
+| RO | `check_in:RO` (`check_in:2`) | `checkin_7`–`checkin_8` |
+| FR | `check_in:FR` (`check_in:3`) | `checkin_9`–`checkin_10` |
+| Altele | `check_in:OTHER` (`check_in:4`) | `checkin_11`–`checkin_12` |
+
+Aliasurile `bag_drop:<grup>` folosesc aceeași ancoră de rutare ca grupul check-in. Rândurile `flow.report` reale și vechi sunt acceptate simultan, fără însumare sau copiere între companii. O observație generală poate servi drept fallback, nu devine o observație pe companie. Orarul demo folosește Londra Luton → 2, Londra Stansted → 3, Milano → 4, București → 5, Dortmund → 6; sunt alocări demo, nu orarul real. Grupul explicit din `flight.update` are prioritate față de alocarea demo.
+
+Graful estimat este determinist: centre de zone și puncte de acces; poligoane la ≤2 m pe același etaj; punctele la zona cea mai apropiată; perechi `_G`/`_U` pentru scări, escalator și lift. Escalatorul permite doar G→U. Muchiile între componentele izolate folosesc distanța minimă dintre poligoane, cu departajare lexicografică; acestea și legăturile spre exterior sunt marcate `inferred`. `walkSec = distanță / 1.34`, incluzând diferența de înălțime G↔U; rutarea aplică apoi Weidmann din camere, niciodată din `truth.report` (D0). Traversările landside↔airside sunt permise prin `U_SECURITY`; celelalte sunt `evacuationOnly`. O securitate blocată oprește rutele normale către porți. Aproximarea nu este un navmesh verificat: traseele centru-la-centru și punțile trebuie confirmate de Marius; `provisional` rămâne `true`. Nu există în export inițializarea liniilor deschise; valorile reale rămân necunoscute până la confirmare.
+
+`crowd.positions` acceptă acum `{x,z,level:"G"|"U"|"X"}` în metri Unity. Se păstrează `z` și `level`, cu `y=z` doar pentru compatibilitatea cititorilor vechi; `{x,y}` rămâne acceptat. Pixelii se calculează separat cu `worldToPx`: `px=(x-x0)*ppm`, `py=(z1-z)*ppm`. Cadrele G/U sunt 3000×1050 la 10 px/m, X este 2120×1280 la 4 px/m.
+
+Limitări ale pachetului primit: fundalurile `base_*.png` lipsesc; unele zone sunt aproximative și deconectate la pragul de 2 m (punți geometrice de aproximativ 9–121 m, 26 de muchii `inferred` în total); punctul `gate_5` este în afara poligonului `U_GATE_5`, deci este ancorat explicit la zona porții. Fișierele livrate nu sunt corectate manual. Geometria nu precizează pereți/navmesh, politici de acces Schengen/non-Schengen sau starea lifturilor; aceste reguli necesită confirmare înainte de utilizare operațională.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
@@ -253,7 +287,7 @@ Backend-ul trimite și serviciului de vision fiecare `ops.command`, ca să știe
 | `agent.message` | `{ agentId, text, kind: "arrive" \| "flight" \| "route" \| "evacuate" \| "admin" }`: mesajul primit de un abonat simulat (D17); Unity îl arată ca bulă deasupra agentului | nou |
 | `agent.notified` | ca acum: agentul cu telefon a primit sau a citit mesajul | există |
 
-**Fișier comun:** `docs/contract/terminal.json` (D7), făcut de Marius. Până apare, backend-ul folosește un plan provizoriu cu aceleași id-uri de zone.
+**Fișier comun:** pachetul `docs/contract/map/` (D26) înlocuiește planul provizoriu din D7; geometria este livrată, graful rămâne estimat.
 
 ## Pentru Marius: de completat de Claude-ul lui
 
