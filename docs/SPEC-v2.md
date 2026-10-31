@@ -194,6 +194,12 @@ Sub etichetă, un singur rând cu cifre și acțiunea: „22 min · țintă 10 �
 ### D21. Boarding pass demo în Google Wallet
 Pe `/join`, „Boarding pass demo” emite un boarding pass Clarion în Google Wallet (tipul de zbor, cu codul de bare BCBP real pentru zborul demo și link-ul de WhatsApp din D4). Scannerul de pe `/join` citește același cod. Dacă tipul de zbor nu e disponibil pe contul de Wallet, plan B: o pagină care desenează codul BCBP pe ecran, iar cardul generic din Wallet rămâne.
 
+### D22. Tonul mesajelor: situația și cum poate evolua, fără ordine
+Clarion nu îi spune pasagerului ce să facă („pleacă acum”, „fii la intrare la…”) și nu folosește cuvântul „abonare”. Îi prezintă situația și prognoza, iar el decide. Exemplu: „Securitate: 12 min acum, ~20 min la 14:30. Check-in grup 2: 5 min. Poarta G2 se închide la 15:05.”
+- **Mesaje automate:** prima stare după legarea zborului; o actualizare când prognoza pentru ora la care ajunge el se schimbă cu ≥ 10 min; schimbările de zbor; deciziile adminului care îl privesc (grupul lui mutat sau închis, evacuare). Cel mult un mesaj la 15 min, cu excepția evacuării și a schimbărilor de zbor.
+- **Evacuarea** rămâne directă: zona, ruta, ieșirea. Acolo instrucțiunea e necesară.
+- Pagina `/m/<token>` urmează același ton: cozi acum și prognoză, nu „fii la intrare la HH:MM”. Calculul din A6 rămâne în backend și poate apărea ca estimare („cu situația de acum, drumul de la intrare la poartă ia ~35 min”).
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
