@@ -9,11 +9,29 @@ export interface SimSnapshot {
   simTime: number | null
   counts: Record<string, Partial<Record<Where, number>>>
   phones: { unknown: number; notified: number; read: number; acting: number }
-  /** Unity flow.report queues; absent on older backends. */
-  flow?: Partial<Record<FlowZone, FlowRow>>
+  /** Unity flow.report queues; absent on older backends. Keys also include `check_in:<IATA>` / `bag_drop:<IATA>`. */
+  flow?: Partial<Record<FlowZone, FlowRow>> & Record<string, FlowRow | undefined>
+  /** Contract v2 (SPEC-v2): absent until the backend has them. */
+  flights?: TerminalFlight[]
+  positions?: { people: Person[]; at: string } | null
+  ops?: OpsRecord[]
 }
 export type FlowZone = 'check_in' | 'bag_drop' | 'security' | 'arrivals_hall' | 'taxi_rank' | 'kerb'
-export interface FlowRow { waiting: number; capacity: number | null; waitMin: number | null; peak: number; updatedAt: string }
+export interface FlowRow {
+  waiting: number; capacity: number | null; waitMin: number | null; peak: number; updatedAt: string
+  staff?: number | null; forecast?: { inMin: number; waitMin: number }[] | null
+}
+export interface Person { x: number; y: number; kind: 'pax' | 'staff' }
+export interface TerminalFlight {
+  flight: string; airline: string; destination: string; std: number | string; gate: string | null; checkInDesks: string[]
+  gateCloseAt: number | string | null; status: 'scheduled' | 'boarding' | 'delayed' | 'cancelled' | 'departed'; delayMin: number; pax: number | null
+}
+export type OpsCommand =
+  | { type: 'staff'; zone: string; delta: number }
+  | { type: 'redirect'; from: string; to: string }
+  | { type: 'evacuate'; zones: string[] }
+  | { type: 'close' | 'open'; zone: string }
+export type OpsRecord = OpsCommand & { id: string; status: 'sent' | 'acked'; sentAt: string; ackedAt: string | null }
 
 /** Unity telemetry from GET /api/sim (public, in-memory on the backend). Null until the first answer. */
 export function useSim(intervalMs = 2000): SimSnapshot | null {
