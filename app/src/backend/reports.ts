@@ -13,12 +13,13 @@ export function openReports(body: unknown): StaffReport[] {
     !closed.includes((r as StaffReport).status))
 }
 
-/** GET /api/reports, polled. Empty until the endpoint exists. */
+/** GET /api/reports, polled. Empty on 401/404 or a network error. Reports with no node have no pin. */
 export function useReports(intervalMs = 3000): StaffReport[] {
   const [reports, setReports] = useState<StaffReport[]>([])
   useEffect(() => {
     let alive = true
-    const load = () => fetch(`${backend.http}/api/reports`)
+    // The Worker guards /api/reports with the operator token.
+    const load = () => fetch(`${backend.http}/api/reports`, { headers: backend.token ? { Authorization: `Bearer ${backend.token}` } : {} })
       .then(r => r.ok ? r.json() : [])
       .then(body => { if (alive) setReports(openReports(body)) })
       .catch(() => { if (alive) setReports([]) })
