@@ -38,3 +38,30 @@ Set Meta's callback to `https://<worker>/webhooks/whatsapp`. GET verifies the to
 ## Google Wallet
 
 `POST /api/join { flight }` issues a single-use flight token. `POST /api/wallet/pass { subscriptionId }` accepts an active subscription; `{ joinToken }` creates a pending-flight pass with its WhatsApp link and QR code, returning `{ saveUrl, demo }`. All three credentials enable signed Clarion save JWTs; otherwise the result is `/join/wallet-demo?sub=<id>`. Pass registrations and per-pass UTC daily attempt counters persist. OAuth token caching, status PATCHes and the three-notification attempt budget remain. The removed incident lifecycle no longer triggers updates. Keep the Google Wallet demo issuer, service account and test users configured.
+
+## Full demo chain and live smoke
+
+`npm test` includes `test/e2e-chain.test.ts`: all four D18 beats run in an isolated
+Miniflare Tower with fake Unity/vision sockets, signed WhatsApp webhooks and mocked
+Meta/Anthropic HTTP calls. Tool calculations and notification fan-out use the real worker.
+
+The smoke script needs Node 22+ and no WhatsApp or Anthropic secrets. It mutates
+telemetry, creates a pending join token and records staff commands, so use an isolated
+backend with no other twin/vision connected. It refuses an already connected simulator.
+It restores security lanes and the previous flights, plus the previous security flow
+and simulation clock when available. There is no API to delete the pending join token,
+command history or newly introduced telemetry; fresh flow/clock values can remain until
+replaced or the Tower hibernates. Reset local storage for a pristine run.
+
+Run locally in two terminals from `worker/`:
+
+```sh
+# No .dev.vars with messaging credentials is needed. The script and server share this token.
+npm run dev -- --ip 127.0.0.1 --port 8788 --var DEMO_TOKEN:local-smoke
+CLARION_URL=http://127.0.0.1:8788 DEMO_TOKEN=local-smoke npm run e2e:live
+```
+
+For an intentional deployed smoke run, set `CLARION_URL` and `DEMO_TOKEN` to that
+backend's URL and operator token. With no URL override the script targets
+`https://clarion-backend.bogdan-c-2206.workers.dev`. Each step prints PASS/FAIL;
+any failed step (including cleanup) exits nonzero. It never calls the WhatsApp webhook.
