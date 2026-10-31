@@ -1,6 +1,6 @@
 # Clarion v2: crowd control pentru aeroport
 
-Status: în vigoare din 31 oct și înlocuiește `docs/SPEC.md` (pivot confirmat de Marius). Deciziile noi se adaugă aici.
+Status: în vigoare din 31 oct și înlocuiește vechiul spec al echipei, șters odată cu proiectul cu drone (pivot confirmat de Marius). Deciziile noi se adaugă aici.
 
 ## Produsul
 
@@ -16,13 +16,13 @@ Nu știi niciodată cu cât timp înainte să pleci spre aeroport. Clarion măso
 - **Bogdan:** backend, dashboard, WhatsApp, Wallet, login.
 - **Diana:** business și pitch.
 
-Cristiana nu mai e în echipă. Numărătorul T2, `app/public/panou.html` și `sim/personas.json` ies din demo.
+Cristiana nu mai e în echipă. Numărătorul T2, panoul public și persona simulării au fost șterse.
 
 ## Decizii
 
 ### D0. Unity e doar mediul, Clarion vede doar camerele
 Clarion lucrează ca în realitate. Intrările lui sunt doar camerele, orarul de zboruri (în realitate din sistemul aeroportului, în demo din Unity, D14) și deciziile adminului (liniile deschise, D12). Unity e mediul: oamenii, terminalul, camerele virtuale și felul în care oamenii reacționează la mesaje și decizii. Datele exacte din Unity servesc doar ca să măsurăm cât de corectă și de eficientă e soluția și s-o îmbunătățim.
-- Serviciul de vision al lui Marius (Python, pe PC-ul lui) citește camerele virtuale din Unity, numără oamenii pe zone, calculează timpul de așteptare și prognoza și le trimite backend-ului ca un client separat, `client=vision` (`flow.report`, `crowd.positions`). Unity nu mai trimite `flow.report`.
+- Serviciul de vision al lui Marius (Python, codul în `vision/` din acest repo, rulat pe PC-ul lui) citește camerele virtuale din Unity, numără oamenii pe zone, calculează timpul de așteptare și prognoza și le trimite backend-ului ca un client separat, `client=vision` (`flow.report`, `crowd.positions`). Unity nu mai trimite `flow.report`.
 - Live: YOLO pe 2–4 camere de ansamblu (coada de securitate, check-in, porți). Dacă nu merge live, Unity calculează ce vede fiecare cameră și adaugă zgomot calibrat pe rulările YOLO offline (detector simulat). Contractul cu backend-ul e același în ambele cazuri.
 - O zonă pe care nu o vede nicio cameră nu primește o valoare inventată: apare ca „necunoscut”.
 - Adevărul din Unity (cozile și timpii reali, etapa fiecărui agent) ajunge în backend doar prin `truth.report`. Backend-ul îl păstrează separat și îl arată doar în panoul de acuratețe (D16) și în A/B (D19). Nu intră în decizii, rute sau mesaje.
@@ -184,6 +184,18 @@ Lanțul: camere → oameni detectați → poziții pe podea → număr și flux 
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
+
+**Reguli comune** (preluate din vechiul `docs/SPEC.md` §5 și `app/PM/CONTRACT.md`, șterse odată cu proiectul vechi):
+- Orice mesaj: `{ "type": string, "ts": ISO-8601, "data": object }`. Unity și vision nu deschid porturi; se conectează ei la backend.
+- Conexiune: `ws://<host>:8787/ws?client=<twin|vision>&token=<DEMO_TOKEN>` local, `wss://<worker>/ws?...` pe Worker. Fără token corect, când e setat, conexiunea e refuzată. Comenzile HTTP cer `Authorization: Bearer <DEMO_TOKEN>`, altfel `401`.
+- Mesaj invalid: backend-ul răspunde `{ "type": "error", "data": { "message": ... } }` și nu aplică nimic din acel mesaj, nici rândurile valide dintr-un lot. Clienții loghează erorile.
+- `sim.status`: toate câmpurile obligatorii: `running` (bool), `scenario`, `arm` (`A` = fără Clarion, `B` = cu Clarion, D19), `coverage` (0–1, partea de abonați simulați, D17), `seed` (întreg), `simTime` (secunde, ≥ 0), `speed` (> 0), `agents` (întreg). Se trimite la 5 s și la orice schimbare.
+- `agent.register`: `agentId`, `role`, `channel` (`whatsapp`, `sim` etc.). Doar agenții înregistrați primesc mesaje.
+- `agent.batch`: `{ updates: [{ agentId, role, persona, location, phone, action, trigger?, lat?, lon?, thought?, stage? }] }`, cel mult o dată pe secundă, doar agenții schimbați, maximum 500 de rânduri pe mesaj și 5.000 de agenți în total. `action` și `trigger` până la 40 de caractere, `thought` până la 200.
+- `metric.report`: o metrică pe mesaj, `{ name, value }`, cu `value` ≥ 0.
+- `sim.command` (backend → Unity): `{ action: "start" | "stop" | "trigger", scenario?, arm?, coverage?, seed?, speed?, event? }`, cu doar câmpurile trimise. `POST /api/sim/command` cu același `data` dă `202` dacă Unity e conectat, `409` dacă nu.
+- `GET /api/sim` și `GET /api/sim/agents` dau ultima stare primită. Starea simulării stă în memorie și dispare la repornire; la reconectare, Unity retrimite `sim.status` și un `agent.batch` complet.
+- `SIM_SPEED` din backend trebuie să fie egal cu `speed` din Unity (D13).
 
 **Unity (`client=twin`) → backend**
 | Mesaj | Formă | Stare |
