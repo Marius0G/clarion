@@ -60,6 +60,10 @@ def test_ledger_counts_a_crossing_and_a_head_exit_not_a_lost_track(parts):
     ledger.step(5.0, [p(*away, track=2)], 1.0)
     ledger.step(6.0, [p(*away, track=2)], 1.0)
     assert ledger.step(20.0, [], 1.0) == (0, 0)                       # lost far from the head: occlusion, not service
+    for t in range(30, 40):
+        ledger.step(float(t), [p(*at_head, track=3)], 1.0)
+    assert ledger.step(200.0, [], 1.0) == (0, 0)                      # vanished at the head: still not seen leaving
+    assert ledger.exits_total == 1
 
 
 def test_reports_are_valid_and_only_what_cameras_see(parts):
@@ -96,11 +100,11 @@ def test_tracks_the_queue_and_measures_mu(parts):
 
 
 def test_idle_lanes_do_not_pull_the_rate_down(parts):
-    """A nearly empty queue with 3 desks: exits per lane-minute would read far below a desk's real speed if idle desks counted."""
-    air, chain, _ = world(parts, start_s=8.0 * 3600)
-    run(air, chain, 3600, dt=5.0)
-    assert air.served["checkin_group_1"], "the scenario must serve people"
-    assert chain.tracks["checkin_group_1"].head.mu > 0.4                   # the world's desk does 0.75/min
+    """A thin queue: exits per lane-minute would read far below a lane's real speed if idle lanes counted."""
+    air, chain, _ = world(parts, start_s=8.0 * 3600, load=0.6)
+    run(air, chain, 3000, dt=5.0)
+    assert air.served["security"], "the scenario must serve people"
+    assert chain.tracks["security"].head.mu > 1.5                          # the world's lane does 3.2/min
 
 
 def test_opening_a_lane_changes_the_wait_at_once(parts):
@@ -162,3 +166,29 @@ def test_zone_people_for_evacuation_only_what_is_seen(parts):
     people, density, unseen = chain.zone_people()
     assert people and density and all(z in parts[0].zones for z in people)
     assert not set(people) & set(unseen)
+
+
+def test_ledger_at_sparse_ticks_one_tick_outside_is_an_exit(parts):
+    """Live at x10 a tick is 5 sim-s apart: two ticks after leaving the head the person is past the camera."""
+    q = next(x for x in parts[2] if x.queue == "security")
+    ledger = TrackLedger(q)
+    p = lambda x, z: FloorPoint(float(x), float(z), "U", 1, 0.8, 80, "c")
+    xs, zs = ring_samples(q.ring)
+    at_head = (xs[np.hypot(xs - q.head[0], zs - q.head[1]).argmin()], zs[np.hypot(xs - q.head[0], zs - q.head[1]).argmin()])
+    far = q.ring.min(axis=0) - 30
+    for t in (0.0, 5.0, 10.0):
+        ledger.step(t, [p(*at_head)], 5.0)
+    assert ledger.step(15.0, [p(*far)], 5.0) == (0, 1)
+    assert ledger.step(20.0, [], 5.0) == (0, 0) and ledger.exits_total == 1
+
+
+def test_smoothing_eases_the_panel_but_a_lane_change_shows_at_once():
+    from types import SimpleNamespace
+    from clarion_vision.chain import Smoothing
+    track = SimpleNamespace(shown=None)
+    fc = lambda v: [{"inMin": h, "waitMin": v} for h in (30, 60, 90, 120)]
+    assert Smoothing.apply(track, 0.0, 2, 10.0, fc(10.0)) == (10.0, fc(10.0))
+    wait, forecast = Smoothing.apply(track, 10.0, 2, 20.0, fc(30.0))
+    assert 10.0 < wait < 12.0 and 10.0 < forecast[0]["waitMin"] < 12.0          # a jump of one report moves the panel a little
+    assert Smoothing.apply(track, 10.0, 2, 50.0, fc(50.0))[0] == wait             # same sim time: same numbers
+    assert Smoothing.apply(track, 15.0, 3, 6.0, fc(4.0)) == (6.0, fc(4.0))       # a new lane: at once

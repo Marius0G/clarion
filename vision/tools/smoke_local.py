@@ -1,6 +1,7 @@
 """End-to-end check against a running worker, with a fake Unity and the synthetic camera source. Prints what the worker accepted.
     (worker/) npm run dev -- --ip 127.0.0.1 --port 8799 --var DEMO_TOKEN:local-smoke --var SIM_SPEED:10
     (vision/) CLARION_URL=http://127.0.0.1:8799 DEMO_TOKEN=local-smoke python tools/smoke_local.py
+    SMOKE_SOURCE=replay SMOKE_RUN=<a ClarionRun folder> python tools/smoke_local.py   (Unity's own camera files, replayed)
 Exits nonzero when a check fails. Use an isolated worker: it mutates telemetry and the command history."""
 from __future__ import annotations
 
@@ -55,6 +56,12 @@ def main() -> int:
         tmp = tempfile.mkdtemp(prefix="cctv_live_")
         channel = subprocess.Popen([sys.executable, "tools/fake_cctv_live.py", tmp], cwd=VISION, env=env, stdout=subprocess.DEVNULL)
         arguments += ["--live-dir", tmp]
+    elif source == "replay":             # Unity's own camera files, from a recorded run (SMOKE_RUN), through --source live
+        tmp = tempfile.mkdtemp(prefix="cctv_replay_")
+        run = os.environ["SMOKE_RUN"]
+        channel = subprocess.Popen([sys.executable, "tools/replay_live.py", run, tmp, "--speed", "10", "--from-s", os.environ.get("SMOKE_FROM_S", "0")],
+                                   cwd=VISION, env=env, stdout=subprocess.DEVNULL)
+        arguments = ["--source", "live", "--live-dir", tmp]
     vision = subprocess.Popen([sys.executable, "-m", "clarion_vision.service", *arguments], cwd=VISION, env=env, stdout=vision_log, stderr=subprocess.STDOUT)
     try:
         with httpx.Client(base_url=URL, timeout=5.0, trust_env=False) as client:

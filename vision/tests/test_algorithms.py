@@ -65,6 +65,14 @@ def test_head_rate_measures_and_forgets():
     assert h.lane_min == pytest.approx(0.0, abs=1e-9)
 
 
+def test_head_rate_blind_at_the_head_does_not_read_as_stopped_lanes():
+    h = HeadRate(mu0=2.0)
+    for t in range(1200):                      # busy lanes, no exit seen for 20 minutes
+        h.add(float(t), 0.0, 1.0, 3, True)
+    assert h.mu == pytest.approx(0.5)
+    assert wait_minutes(30, h.mu, 3) == pytest.approx(20.0)
+
+
 def test_head_rate_is_per_lane():
     a, b = HeadRate(2.0), HeadRate(2.0)
     for t in range(300):
@@ -128,7 +136,7 @@ def test_live_scale_grows_with_what_the_cameras_saw():
     s.add(expected=100, seen=200)
     assert s.factor == pytest.approx(230 / 130)
     s.add(expected=0, seen=1000)
-    assert s.factor == 2.0
+    assert s.factor == 3.0                       # capped: rush brings 2.5x the seats
 
 
 # ---- A7

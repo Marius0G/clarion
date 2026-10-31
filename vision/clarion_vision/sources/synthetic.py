@@ -111,7 +111,7 @@ class SyntheticAirport:
             for _ in range(min(self.rng.poisson(rate * dt / 60.0), len(self.waiting[q.queue]))):
                 p = self.waiting[q.queue].pop(0)
                 self.served[q.queue].append((self.t, self.t - p["enter_t"]))
-                p["ticks"] = 2
+                p["ticks"] = 4
                 self.leaving[q.queue].append(p)
 
     def _positions(self):

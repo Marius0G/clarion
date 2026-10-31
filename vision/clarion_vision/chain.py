@@ -13,6 +13,7 @@ from .forecast import CURVES, ArrivalScale, Flight, arrival_rates, forecast_poin
 from .contract import flow_row
 from .geometry import ZoneIndex, in_ring, ring_samples
 from .kalman import CountFilter, count_variance
+from .mapids import is_whole_terminal, map_node_id
 from .queues import QueueSpec
 from .sources.base import CameraSpec, FloorPoint, Tick
 from .state import LaneBook
@@ -55,13 +56,18 @@ def merge_cameras(points: list[FloorPoint], radius: float = MERGE_RADIUS_M) -> l
 
 
 class TrackLedger:
-    """One camera, one queue: tracks that cross into its ring and tracks that leave at its head. A track lost elsewhere in
-    the ring is an occlusion or an id switch, not somebody served. Leaving needs two ticks outside and a metre from where it
-    was: feet jitter across the ring's edge at the queue's head, and that is nobody served either."""
+    """One camera, one queue: tracks that cross into its ring and tracks seen leaving at its head. A track that merely vanishes is
+    an occlusion or an id switch, not somebody served: in a dense queue that is most of them, and on Unity's first run counting
+    them read 5 times too many exits. Leaving needs two ticks outside and a metre from where it was, because feet jitter across
+    the ring's edge at the queue's head too. Live at x10 a tick is 5 sim-s apart, and two ticks later the person is past the
+    camera: there one tick outside is enough (sparse_dt_s), or mu reads several times too low and the wait twice too high."""
 
-    def __init__(self, spec: QueueSpec, head_radius_m: float = 4.0, min_ticks: int = 2, lost_after_s: float = 6.0, leave_m: float = 1.0):
+    def __init__(self, spec: QueueSpec, head_radius_m: float = 4.0, min_ticks: int = 2, lost_after_s: float = 60.0, leave_m: float = 1.0,
+                 sparse_dt_s: float = 2.0):
         self.ring, self.head, self.radius, self.min_ticks, self.lost_after, self.leave_m = spec.ring, spec.head, head_radius_m, min_ticks, lost_after_s, leave_m
+        self.sparse_dt = sparse_dt_s
         self.tracks: dict[int, dict] = {}
+        self.exits_total = 0
 
     def reset(self) -> None:
         self.tracks.clear()
@@ -71,6 +77,7 @@ class TrackLedger:
 
     def step(self, t: float, points: list[FloorPoint], dt: float) -> tuple[int, int]:
         entries = exits = 0
+        out_ticks = 1 if dt >= self.sparse_dt else 2
         if points:
             inside = in_ring(np.array([p.x for p in points]), np.array([p.z for p in points]), self.ring)
         else:
@@ -88,15 +95,14 @@ class TrackLedger:
                     s["counted"] = True
             elif s["in"]:
                 s["out"] += 1
-                if s["out"] >= 2 and math.hypot(p.x - s["x"], p.z - s["z"]) >= self.leave_m:
+                if s["out"] >= out_ticks and math.hypot(p.x - s["x"], p.z - s["z"]) >= self.leave_m:
                     if s["n"] >= self.min_ticks and self._at_head(s):
                         exits += 1
                     s.update({"in": False, "n": 0, "from_out": True, "counted": False, "out": 0})
             s["t"] = t
         for track in [k for k, s in self.tracks.items() if k not in seen and t - s["t"] > max(self.lost_after, 2.5 * dt)]:
-            s = self.tracks.pop(track)
-            if s["in"] and s["n"] >= self.min_ticks and self._at_head(s):
-                exits += 1
+            self.tracks.pop(track)
+        self.exits_total += exits
         return entries, exits
 
 
@@ -119,6 +125,32 @@ class QueueTrack:
     last_n: float | None = None
     features: dict = field(default_factory=dict)
     history: deque = field(default_factory=deque)
+    shown: tuple | None = None        # (t, lanes, wait, forecast values): what was reported, for Smoothing
+
+
+class Smoothing:
+    """What the panel shows, eased over sim time: the wait over WAIT_TAU_S, the forecast over FORECAST_TAU_S. The physics and its ML
+    move by a few minutes from one report to the next (mu over 5 min, the trend, the arrival scale), and the forecast's fluid queue
+    turns that into +60 jumping between 7 and 17 min every 10 sim-s on the live screen. A lane change resets it: a new lane shows at once."""
+    WAIT_TAU_S = 60.0
+    FORECAST_TAU_S = 180.0
+
+    @staticmethod
+    def apply(track: "QueueTrack", t: float, lanes: int, wait: float, forecast: list[dict] | None) -> tuple[float, list[dict] | None]:
+        values = [p["waitMin"] for p in forecast] if forecast else None
+        last = track.shown
+        if last is None or last[1] != lanes or t < last[0] or (values is None) != (last[3] is None) or (values and len(values) != len(last[3])):
+            track.shown = (t, lanes, wait, values)
+            return wait, forecast
+        dt = t - last[0]
+        if dt <= 0:
+            wait, values = last[2], last[3]
+        else:
+            aw, af = 1.0 - math.exp(-dt / Smoothing.WAIT_TAU_S), 1.0 - math.exp(-dt / Smoothing.FORECAST_TAU_S)
+            wait = last[2] + aw * (wait - last[2])
+            values = [old + af * (new - old) for old, new in zip(last[3], values)] if values else None
+            track.shown = (t, lanes, wait, values)
+        return wait, ([{"inMin": p["inMin"], "waitMin": round(v, 2)} for p, v in zip(forecast, values)] if forecast else None)
 
 
 @dataclass
@@ -242,18 +274,19 @@ class Chain:
                 mean_h = float(np.mean([p.box_h for p, ok in zip(points, inside) if ok]))
                 mean_conf = float(np.mean([p.conf for p, ok in zip(points, inside) if ok]))
 
-        # Flows: the working camera that sees the queue's head and most of the queue. Its tracks only, or one person counts
-        # twice. No such camera, or tracks that jumped: no flows this tick, and mu keeps its last measurement.
-        camera = max((c for c in self.active if c not in tick.invalid_tracks and self.sees_head[c].get(spec.queue) and "q:" + spec.queue in self.masks.get(c, {})),
-                     key=lambda c: self.masks[c]["q:" + spec.queue].sum(), default=None)
+        # Flows, from one camera or one person counts twice: of the working cameras that see the queue's head, the one that has
+        # seen the most people leave, since a camera misses exits but rarely invents them. No such camera, or tracks that
+        # jumped: no flows this tick, and mu keeps its last measurement.
+        watching = [c for c in self.active if "q:" + spec.queue in self.masks.get(c, {})]
+        candidates = [c for c in watching if c not in tick.invalid_tracks and self.sees_head[c].get(spec.queue)]
         entries = exits = 0
-        flows_seen = camera is not None and tick.tracks_valid and cov >= COVERAGE_MIN
+        flows_seen = bool(candidates) and tick.tracks_valid and cov >= COVERAGE_MIN
         for name, ledger in track.ledgers.items():
             if not tick.tracks_valid or name in tick.invalid_tracks:
                 ledger.reset()
         if flows_seen:
-            ledger = track.ledgers.setdefault(camera, TrackLedger(spec))
-            entries, exits = ledger.step(t, tick.cameras.get(camera, []), dt)
+            steps = {c: track.ledgers.setdefault(c, TrackLedger(spec)).step(t, tick.cameras.get(c, []), dt) for c in candidates}
+            entries, exits = steps[max(candidates, key=lambda c: track.ledgers[c].exits_total)]
 
         # A lane counts as working only when someone is there for it: with 1 person and 3 lanes, two stand idle.
         busy = track.filter.n >= 1.0
@@ -264,9 +297,9 @@ class Chain:
             track.filter.predict(dt, left=exits, left_var=0.25 * exits)
         else:
             track.filter.predict(dt, left=mu * lanes * dt / 60.0 if busy else 0.0)
-        n_cameras = sum(1 for c in self.active if "q:" + spec.queue in self.masks.get(c, {}))
+        per_camera = [int(in_ring(np.array([p.x for p in tick.cameras[c]]), np.array([p.z for p in tick.cameras[c]]), spec.ring).sum()) if tick.cameras.get(c) else 0 for c in watching]
         count_features = {"kind": KIND_CODE.get(spec.curve, 3), "count": count, "coverage": cov, "density_seen": count / max(spec.area_m2 * cov, 1.0),
-                          "mean_box_h": mean_h, "mean_conf": mean_conf, "n_cameras": n_cameras}
+                          "mean_box_h": mean_h, "mean_conf": mean_conf, "n_cameras": len(watching), "boxes_sum": sum(per_camera), "boxes_max": max(per_camera, default=0)}
         if cov >= COVERAGE_MIN:
             corrected = self.corrections.count(count_features) if self.corrections else None
             if corrected is None:
@@ -322,7 +355,9 @@ class Chain:
         # No schedule or no arrival model: no forecast, rather than a queue that only drains. The backend then uses its history (D5b).
         knows_arrivals = curve_spec is not None and bool(flights)
         adv = advise(queue, lam, mu, lanes, spec.target_min, spec.max_lanes, t) if knows_arrivals and spec.target_min and spec.lanes_key else None
-        return dict(queue=queue, sd=sd, mu=mu, lanes=lanes, wait=wait, p90=max(p90 + wait - raw_wait, wait), forecast=forecast_points(curve, correction) if knows_arrivals else None,
+        p90 = max(p90 + wait - raw_wait, wait) - wait
+        wait, forecast = Smoothing.apply(track, t, lanes, wait, forecast_points(curve, correction) if knows_arrivals else None)
+        return dict(queue=queue, sd=sd, mu=mu, lanes=lanes, wait=wait, p90=wait + p90, forecast=forecast,
                     advice=adv, lam=lam, raw_wait=raw_wait, raw_curve=curve, features=features)
 
     def report(self, flights: list[Flight]) -> Report | None:
@@ -384,12 +419,42 @@ class Chain:
                 density[zone_id] = track.filter.n / zone.area_m2
             elif zone.level in ("G", "U"):
                 unseen.append(zone_id)
+        # A queue's own filter has the count correction (A2), which the plain zone count has not: dense queues read about half.
+        checkin = 0.0
+        for track in self.tracks.values():
+            if not self._alive(track.seen_t, track.filter.sd, track.coverage, t):
+                continue
+            n = track.filter.n
+            if track.spec.zone in self.terminal.zones:
+                area = self.terminal.zones[track.spec.zone].area_m2
+                if n > people.get(track.spec.zone, 0.0):
+                    people[track.spec.zone], density[track.spec.zone] = n, n / area
+            elif track.spec.zone.startswith("check_in:"):
+                checkin += n
+        hall = self.terminal.zones.get("G_CHECKIN_QUEUE")
+        if hall is not None and checkin > people.get(hall.id, 0.0):
+            people[hall.id], density[hall.id] = checkin, checkin / hall.area_m2
         return people, density, unseen
 
-    def evacuation_sources(self, flights: list[Flight]) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
-        """For A9 only: people per zone seen, density where seen, and a low-confidence estimate for the zones no camera sees."""
+    def evacuation_sources(self, flights: list[Flight], blocked: list[str] | None = None) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+        """For A9 only: who has to leave, seen; density where seen; and a low-confidence estimate for those no camera sees.
+        Blocking zones evacuates the people in them, as Unity does; a whole-terminal id, or none given, evacuates everybody.
+        Density is for all that is seen: the others are still there, and slow the walk out."""
         people, density, unseen = self.zone_people()
         security = self.tracks.get("security")
         before = (security.filter.n if security else 0.0) + people.get("U_SECURITY", 0.0)
         estimated = estimate_unseen(self.terminal, people, unseen, flights, self.last_t or 0.0, CURVES["security"], security.scale.factor if security else 1.0, before)
-        return people, density, estimated
+        if not blocked or is_whole_terminal(blocked):
+            return people, density, estimated
+        seen_there, guessed_there = {}, {}
+        groups = {t.spec.zone: t.filter.n for t in self.tracks.values() if t.spec.zone.startswith("check_in:") and self._alive(t.seen_t, t.filter.sd, t.coverage, self.last_t or 0.0)}
+        for zone in {map_node_id(b) for b in blocked}:
+            if zone in groups:
+                seen_there[zone] = groups[zone]
+            elif zone in people:
+                seen_there[zone] = people[zone]
+            elif zone in estimated:
+                guessed_there[zone] = estimated[zone]
+        if "G_CHECKIN_QUEUE" in seen_there:
+            seen_there = {z: n for z, n in seen_there.items() if z not in groups}      # the hall already holds its groups
+        return seen_there, density, guessed_there

@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import websockets
 
 SPEED = float(os.environ.get("FAKE_TWIN_SPEED", "10"))
-START_S = 8.0 * 3600
+START_S = float(os.environ.get("FAKE_TWIN_START_S", 8.0 * 3600))
 FLIGHTS = [
     {"flight": "W6 3751", "airline": "W6", "destination": "Londra Luton", "std": "09:40", "gate": "gate_2", "checkIn": "check_in:1",
      "checkInDesks": ["checkin_1", "checkin_2", "checkin_3", "checkin_4"], "gateCloseAt": "09:10", "status": "scheduled", "delayMin": 0, "pax": 180},
@@ -33,7 +33,11 @@ async def main() -> None:
     p = urlsplit(url)
     ws_url = f"{'wss' if p.scheme == 'https' else 'ws'}://{p.netloc}/ws?client=twin" + (f"&token={token}" if token else "")
     async with websockets.connect(ws_url, max_size=8 * 1024 * 1024) as ws:
-        await ws.send(envelope("flight.update", {"flights": FLIGHTS}))
+        flights = FLIGHTS
+        if os.environ.get("FAKE_TWIN_FLIGHTS"):        # a recorded run's flights.jsonl, first line: the schedule that run had
+            with open(os.environ["FAKE_TWIN_FLIGHTS"], encoding="utf-8") as handle:
+                flights = json.loads(handle.readline())["flights"]
+        await ws.send(envelope("flight.update", {"flights": flights}))
         await ws.send(envelope("agent.register", {"agentId": "smoke-agent", "role": "passenger_terminal", "channel": "sim", "flight": "W6 3751"}))
         loop = asyncio.get_running_loop()
         t0 = loop.time()

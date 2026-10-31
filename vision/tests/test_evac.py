@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from clarion_vision import contract
-from clarion_vision.evac import DOOR_FLOW, blocked_nodes, plan_evacuation
+from clarion_vision.evac import DOOR_FLOW, REACTION_MEAN_S, _release_shares, blocked_nodes, plan_evacuation
 from clarion_vision.terminal import Edge, Node, Terminal, Zone, load_terminal
 
 
@@ -46,8 +46,19 @@ def test_the_flow_splits_over_doors_so_none_is_overloaded():
 
 
 def test_reaction_time_is_added():
-    a, b = plan_evacuation(small(), {"hall": 50}, []), plan_evacuation(small(), {"hall": 50}, [], reaction_s=0.0)
+    a, b = plan_evacuation(small(), {"hall": 50}, [], reaction_s=30.0), plan_evacuation(small(), {"hall": 50}, [], reaction_s=0.0)
     assert a.clear_s == pytest.approx(b.clear_s + 30.0)
+
+
+def test_people_start_moving_over_the_reaction_profile():
+    lone = plan_evacuation(small(), {"hall": 100}, [])
+    assert lone.clear_s == pytest.approx(120.0 + 10.0, abs=10.0)                 # the last to finish regrouping, then the walk
+    assert 15.0 < lone.t90_s <= lone.clear_s
+    shares = _release_shares(1000, 5.0)
+    assert sum(u for _, u in shares) == 1000 and shares[0][0] == 3 and shares[-1][0] == 23    # exactly the supply, from 15 s to 120 s
+    assert 45.0 < REACTION_MEAN_S < 65.0
+    jam = plan_evacuation(small(width_a=0.5, width_b=0.5), {"hall": 300}, [])
+    assert jam.clear_s > 200.0                                                    # at narrow doors the door sets the time, not the reaction
 
 
 def test_t90_before_the_last_one_out():
@@ -96,6 +107,22 @@ def test_real_terminal_in_time_and_valid(terminal):
             continue
         assert not (set(route["nodes"]) & closed), route     # from outside it, no route crosses the blocked zone
         assert route["nodes"][-1] == route["exit"] and route["exit"] in terminal.exits
+
+
+def test_each_side_keeps_its_own_doors(terminal):
+    sides = {n.id: terminal.zones[n.zone].side for n in terminal.nodes.values() if n.zone in terminal.zones}
+    plan = plan_evacuation(terminal, {"U_SECURITY_QUEUE": 80.0, "G_CHECKIN_QUEUE": 100.0, "U_GATE_2": 60.0, "U_GATE_6": 60.0}, ["T2"])
+    assert not plan.unreachable
+    for route in plan.routes:
+        if route["from"] in ("U_SECURITY_QUEUE", "G_CHECKIN_QUEUE", "U_GATE_2", "U_GATE_6"):
+            assert {sides[n] for n in route["nodes"]} == {sides[route["from"]]}, route
+
+
+def test_no_way_out_on_its_side_may_cross(terminal):
+    public_doors = [d for d in terminal.exits if terminal.zones[terminal.nodes[d].zone].side != "airside"]
+    closed_all = sorted({terminal.nodes[d].zone for d in public_doors} | {"U_ESCALATOR_TOP", "G_STAIRS_WEST"})
+    plan = plan_evacuation(terminal, {"U_CONCOURSE": 20.0}, closed_all)
+    assert not plan.unreachable and plan.people == pytest.approx(20.0)
 
 
 def test_block_more_recompute_routes_move(terminal):

@@ -73,13 +73,13 @@ class Service:
             self.chain = self._chain(self.source)
         elif kind == "live":
             from .sources.live_files import LiveFilesSource
-            self.source = LiveFilesSource(self.args.live_dir)
+            self.source = LiveFilesSource(self.args.live_dir, self.args.det_log)
             self.chain = self._chain(self.source, self.source.cctv)
         elif kind == "yolo":
             from .sources.yolo import YoloFramesSource
             self.source = YoloFramesSource(self.args.live_dir, weights=self.args.weights, device=self.args.device, hybrid=self.args.hybrid)
             self.chain = self._chain(self.source, self.source.cctv)
-        log.info("camera input: %s (%s)", kind, self.source.detector)
+        log.info("camera input: %s (%s)%s", kind, self.source.detector, f", det log {self.source.log.path} when it grows, else detections.json" if kind == "live" else "")
 
     # -------------------------------------------------------------- ops.command
     async def on_command(self, cmd: dict) -> None:
@@ -104,8 +104,8 @@ class Service:
     async def send_plan(self, command_id: str) -> None:
         """Answer within 2 s (A10). The solver runs in a thread, the socket stays alive."""
         started = time.perf_counter()
-        people, density, estimated = self.chain.evacuation_sources(self.backend.sim.flights)
         blocked = sorted(self.blocked)
+        people, density, estimated = self.chain.evacuation_sources(self.backend.sim.flights, blocked)
         result = await asyncio.to_thread(plan_evacuation, self.terminal, people, blocked, density, estimated=estimated)
         data = result.to_contract(command_id)
         ok = await self.backend.send(contract.evac_plan(data), "evac.plan")
@@ -175,6 +175,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--source", choices=["live", "yolo", "synthetic"], default="live")
     ap.add_argument("--live-dir", default=str(LIVE_DIR))
+    ap.add_argument("--det-log", default=None, help="live only: the det log Unity appends to (default <live dir>/detlog_live.jsonl when it exists)")
     ap.add_argument("--weights", default=None)
     ap.add_argument("--device", default="auto", help="yolo only: 0, cpu, or auto (the GPU only when Unity leaves room)")
     ap.add_argument("--hybrid", action="store_true", help="yolo only: the other cameras keep the simulated detector")

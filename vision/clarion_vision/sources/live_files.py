@@ -54,9 +54,73 @@ def load_calibs(root: Path, camera_ids: list[str]) -> dict[str, Calib]:
     return out
 
 
+LIVE_LOG = "detlog_live.jsonl"     # CctvLive.Begin(dir, "<dir>/detlog_live.jsonl") or the exe's -cctv-det-log: a tick every sim second
+BACKLOG_MAX = 600                    # ticks; past this the service is behind and jumps to the newest
+
+
+class LogTail:
+    """Follows the det log Unity appends to (one JSON line per sim second, whatever the speed), so live sees every tick as the
+    training runs did. detections.json alone is a tick per real half second: 5 sim-s apart at x10, and the queue-head exits then
+    read low. A log already there when first seen is from an earlier run: reading starts at its end. Partial lines wait."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.handle = None
+        self.buffer = b""
+        self.pending: list[bytes] = []
+        self.first_look = True
+        self.dropped = 0
+
+    def next_line(self) -> bytes | None:
+        if not self.pending:
+            self._fill()
+        return self.pending.pop(0) if self.pending else None
+
+    def _fill(self) -> None:
+        if self.handle is None:
+            exists = self.path.exists()
+            if not exists:
+                self.first_look = False
+                return
+            try:
+                self.handle = open(self.path, "rb")
+            except OSError:
+                return
+            if self.first_look:
+                self.handle.seek(0, 2)
+            self.first_look = False
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return
+        if size < self.handle.tell():            # a new log under the same name: from its start
+            self.handle.close()
+            self.handle = open(self.path, "rb")
+            self.buffer = b""
+        chunk = self.handle.read(8 << 20)
+        if not chunk:
+            return
+        data = self.buffer + chunk
+        cut = data.rfind(b"\n")
+        if cut < 0:
+            self.buffer = data
+            return
+        self.buffer = data[cut + 1:]
+        self.pending.extend(line for line in data[:cut].split(b"\n") if line.strip())
+        if len(self.pending) > BACKLOG_MAX:
+            self.dropped += len(self.pending) - BACKLOG_MAX
+            self.pending = self.pending[-BACKLOG_MAX:]
+
+    def close(self) -> None:
+        if self.handle:
+            self.handle.close()
+
+
 class LiveFilesSource:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, det_log: Path | None = None):
         self.root = Path(root)
+        self.log = LogTail(det_log or self.root / LIVE_LOG)
+        self.log_wall: float | None = None
         manifest = read_json(self.root / "manifest.json")
         if manifest is None:
             raise FileNotFoundError(f"no manifest.json in {self.root}: is Unity running with -cctv-live?")
@@ -74,6 +138,16 @@ class LiveFilesSource:
         return self.specs
 
     def read(self, sim: SimView) -> Tick | None:
+        """The det log when Unity writes one (every tick), else detections.json (the newest tick only)."""
+        line = self.log.next_line()
+        if line is not None:
+            self.log_wall = time.monotonic()
+            try:
+                return tick_from_json(json.loads(line), self.calibs)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                return None
+        if self.log_wall is not None and time.monotonic() - self.log_wall < 5.0:
+            return None                          # the log is the input: detections.json only repeats its ticks
         row = read_json(self.root / "detections.json")
         if not row or row.get("seq") == self.last_seq:
             return None
@@ -81,7 +155,7 @@ class LiveFilesSource:
         return tick_from_json(row, self.calibs)
 
     def close(self) -> None:
-        pass
+        self.log.close()
 
 
 class JsonlReplaySource:

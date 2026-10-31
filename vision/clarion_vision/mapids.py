@@ -14,6 +14,11 @@ GROUP_ALIASES = {"W6": "1", "RO": "2", "FR": "3"}         # legacy per-airline n
 NODE_ID = re.compile(r"^(?:[a-z][a-z0-9_]{0,39}(?:_[GU])?(:[A-Za-z0-9_-]{1,16})?|[A-Z][A-Z0-9_]{0,39})$")
 
 
+def is_whole_terminal(ids) -> bool:
+    """Unity evacuates everybody for these ids (ClarionBridge.IsWhole); any other zone list evacuates only the people in those zones."""
+    return any(i in ("T2", "ALL", "TERMINAL") for i in ids)
+
+
 def is_node_id(value) -> bool:
     return isinstance(value, str) and NODE_ID.match(value) is not None
 

@@ -24,6 +24,7 @@ class QueueSpec:
     default_lanes: int
     max_lanes: int
     curve: str                # presentation curve, forecast.CURVES
+    capacity: int = 0         # people the queue's path holds; past this they stand where no camera counts them
 
 
 # Priors in people/min per lane, replaced by measurement within minutes (wait.HeadRate). From one simulated run: security
@@ -64,5 +65,7 @@ def load_queues(cctv: dict | Path | None = None, nav_queues: Path | None = None,
         ring = np.asarray(q["ring"], dtype=float)
         polyline = info.get("polyline")
         head = polyline[int(info.get("head", 0))] if polyline else ring.mean(axis=0).tolist()
-        out.append(QueueSpec(queue=q["id"], level=q["level"], ring=ring, head=(float(head[0]), float(head[1])), area_m2=float(q["area_m2"]), **params))
+        path_m = float(np.linalg.norm(np.diff(np.asarray(polyline, dtype=float), axis=0), axis=1).sum()) if polyline else 0.0
+        capacity = int(path_m / float(info.get("spacing") or 0.7))
+        out.append(QueueSpec(queue=q["id"], level=q["level"], ring=ring, head=(float(head[0]), float(head[1])), area_m2=float(q["area_m2"]), capacity=capacity, **params))
     return out

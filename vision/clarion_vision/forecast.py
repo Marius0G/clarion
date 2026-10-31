@@ -122,9 +122,10 @@ def forecast_points(curve: np.ndarray, correction=None) -> list[dict]:
 
 class ArrivalScale:
     """Live adjustment: when the cameras have seen more arrivals than the curves expected, the rest grows in proportion.
-    There is no identity, so this is one factor per queue, not per flight. Arrivals seen = queue growth + exits."""
+    There is no identity, so this is one factor per queue, not per flight. Arrivals seen = queue growth + exits. Up to 3x: under
+    `rush` Unity brings 2.5x the passengers while flight.update keeps `pax` at the seats, and a cap at 2 left the forecast 20 % low."""
 
-    def __init__(self, pseudo: float = 30.0, lo: float = 0.5, hi: float = 2.0):
+    def __init__(self, pseudo: float = 30.0, lo: float = 0.5, hi: float = 3.0):
         self.pseudo, self.lo, self.hi = pseudo, lo, hi
         self.expected = 0.0
         self.seen = 0.0

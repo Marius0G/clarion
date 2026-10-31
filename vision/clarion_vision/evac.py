@@ -19,7 +19,7 @@ from scipy.optimize import linprog
 from scipy.sparse import coo_array, csr_array
 from scipy.sparse.csgraph import maximum_flow
 
-from .mapids import map_node_id
+from .mapids import is_whole_terminal, map_node_id
 from .terminal import Terminal
 
 DOOR_FLOW = 1.3        # people / s / m, SFPE (A9)
@@ -29,6 +29,10 @@ FREE_SPEED = 1.34
 MIN_SPEED = 0.2
 HORIZON_MAX_S = 3600.0
 INDOOR = ("G", "U")
+# Pre-movement, (from s, to s, share of people), read from Unity's rules (EvacReaction): calm 15-35 s, grabbing bags 30-60 s, filming 50-100 s,
+# regrouping 60-120 s, which every party of 3 or more does. The shares are a first reading, to re-fit on the evacuation runs.
+REACTION_PROFILE = ((15.0, 35.0, 0.40), (30.0, 60.0, 0.15), (50.0, 100.0, 0.10), (60.0, 120.0, 0.35))
+REACTION_MEAN_S = sum(w * (a + b) / 2.0 for a, b, w in REACTION_PROFILE)
 
 
 def walking_speed(density: float | None) -> float:
@@ -64,7 +68,10 @@ class EvacPlanResult:
 
 
 def blocked_nodes(terminal: Terminal, blocked: list[str]) -> set[str]:
-    """Nodes inside the blocked zones. A desk group blocks its group node and desks, not the whole check-in hall."""
+    """Nodes inside the blocked zones. A desk group blocks its group node and desks, not the whole check-in hall. A whole-terminal
+    alarm blocks nothing in particular: everybody leaves, by any door."""
+    if is_whole_terminal(blocked):
+        return set()
     canon = {map_node_id(b) for b in blocked} | set(blocked)
     out = {n.id for n in terminal.nodes.values() if n.id in canon or (n.zone in canon)}
     for e in terminal.edges:
@@ -75,9 +82,10 @@ def blocked_nodes(terminal: Terminal, blocked: list[str]) -> set[str]:
 
 
 class Graph:
-    """Directed walkable arcs for evacuation: no lifts, nothing outdoors, no leaving an open exit."""
+    """Directed walkable arcs for evacuation: no lifts, nothing outdoors, no leaving an open exit. Each side keeps its own doors, as
+    in Unity: the public side does not leave through the checkpoint and across the apron, unless that is the only way out."""
 
-    def __init__(self, terminal: Terminal, blocked: set[str], density: dict[str, float] | None, open_blocked_doors: bool = False):
+    def __init__(self, terminal: Terminal, blocked: set[str], density: dict[str, float] | None, open_blocked_doors: bool = False, cross_sides: bool = False):
         density = density or {}
         self.terminal = terminal
         self.blocked = blocked
@@ -90,6 +98,8 @@ class Graph:
             a, b = nodes[e.a], nodes[e.b]
             if a.level not in INDOOR or b.level not in INDOOR or a.kind == "lift" or b.kind == "lift":
                 continue
+            if not cross_sides and self._side(a) != self._side(b):
+                continue
             seconds = e.walk_s * FREE_SPEED / min(speed_at(a), speed_at(b))
             capacity = self._capacity(e, a, b)
             for u, v in ((e.a, e.b),) if e.one_way else ((e.a, e.b), (e.b, e.a)):
@@ -98,6 +108,10 @@ class Graph:
                 if v in blocked and u not in blocked:
                     continue                                   # nobody walks into a blocked zone
                 self.arcs.append((u, v, seconds, capacity))
+
+    def _side(self, node) -> str:
+        zone = self.terminal.zones.get(node.zone or "")
+        return zone.side if zone else ""
 
     def _capacity(self, e, a, b) -> float:
         t = self.terminal
@@ -141,7 +155,22 @@ class _Expanded:
     sink: int
 
 
-def _expand(graph: Graph, ids: dict[str, int], supplies: dict[str, int], steps: int, step_s: float) -> _Expanded:
+def _release_shares(supply: int, step_s: float) -> list[tuple[int, int]]:
+    """When a zone's people start to move: (time step, units), summing exactly to the supply. Uniform inside each reaction's range."""
+    edges = {}
+    for lo, hi, weight in REACTION_PROFILE:
+        for k in range(int(lo // step_s), int(math.ceil(hi / step_s))):
+            overlap = max(0.0, min(hi, (k + 1) * step_s) - max(lo, k * step_s))
+            edges[k] = edges.get(k, 0.0) + weight * overlap / (hi - lo)
+    steps = sorted(edges)
+    exact = np.array([edges[k] for k in steps]) * supply / sum(edges.values())
+    units = np.floor(exact).astype(int)
+    for i in np.argsort(units - exact)[: supply - int(units.sum())]:
+        units[i] += 1
+    return [(k, int(u)) for k, u in zip(steps, units) if u > 0]
+
+
+def _expand(graph: Graph, ids: dict[str, int], supplies: dict[str, int], steps: int, step_s: float, staged: bool = True) -> _Expanded:
     n, layer = len(ids), steps + 1
     total = sum(supplies.values()) + 1
     source, sink = n * layer, n * layer + 1
@@ -175,33 +204,34 @@ def _expand(graph: Graph, ids: dict[str, int], supplies: dict[str, int], steps: 
         caps.append(np.full(t.size, cap))
         costs.append(t.astype(float))                           # min-sum: the cost is the time of leaving
     for node, supply in supplies.items():
-        tails.append(np.array([source]))
-        heads.append(np.array([ids[node] * layer]))
-        caps.append(np.array([supply]))
-        costs.append(np.zeros(1))
+        for k, units in (_release_shares(supply, step_s) if staged else [(0, supply)]):
+            tails.append(np.array([source]))
+            heads.append(np.array([ids[node] * layer + min(k, steps)]))
+            caps.append(np.array([units]))
+            costs.append(np.zeros(1))
     tails, heads, caps, costs = map(np.concatenate, (tails, heads, caps, costs))
     size = n * layer + 2
     matrix = coo_array((caps.astype(np.int32), (tails.astype(np.int32), heads.astype(np.int32))), shape=(size, size)).tocsr()
     return _Expanded(matrix, tails, heads, caps, costs, size, source, sink)
 
 
-def _max_flow_value(graph, ids, supplies, steps, step_s) -> int:
-    e = _expand(graph, ids, supplies, steps, step_s)
+def _max_flow_value(graph, ids, supplies, steps, step_s, staged) -> int:
+    e = _expand(graph, ids, supplies, steps, step_s, staged)
     return int(maximum_flow(e.capacity, e.source, e.sink, method="dinic").flow_value)
 
 
-def _min_steps(graph, ids, supplies, step_s, lower: int) -> int | None:
+def _min_steps(graph, ids, supplies, step_s, lower: int, staged: bool = True) -> int | None:
     """The smallest horizon whose max flow carries everyone: doubling, then bisection."""
     want = sum(supplies.values())
     limit = int(HORIZON_MAX_S / step_s)
     lo, hi = max(lower - 1, 0), max(lower, 1)
-    while _max_flow_value(graph, ids, supplies, hi, step_s) < want:
+    while _max_flow_value(graph, ids, supplies, hi, step_s, staged) < want:
         lo, hi = hi, hi * 2
         if hi > limit:
             return None
     while hi - lo > 1:
         mid = (lo + hi) // 2
-        if _max_flow_value(graph, ids, supplies, mid, step_s) >= want:
+        if _max_flow_value(graph, ids, supplies, mid, step_s, staged) >= want:
             hi = mid
         else:
             lo = mid
@@ -212,7 +242,6 @@ def _min_sum(e: _Expanded, supplies: dict[str, int], ids: dict[str, int], layer:
     """Min-sum flow on the expanded graph (HiGHS). None when it runs out of time."""
     from scipy.sparse import csr_array as csr
     m = e.tails.size
-    keep = np.ones(e.n_vertices, bool)
     arcs = np.arange(m)
     rows = np.concatenate((e.tails, e.heads))
     cols = np.concatenate((arcs, arcs))
@@ -259,14 +288,14 @@ def _peel(e: _Expanded, flows: np.ndarray, ids: dict[str, int], layer: int):
                 arc[1] -= amount
             remaining -= amount
             prev = start
-            left_at = 0
+            left_at = None
             for arc in path:
-                if arc[0] != e.sink and arc[0] // layer != prev // layer and left_at == 0:
+                if arc[0] != e.sink and arc[0] // layer != prev // layer and left_at is None:
                     left_at = prev % layer
                 if arc[0] == e.sink:
                     exit_vertex = prev
                 prev = arc[0]
-            paths.append((node_name, names[exit_vertex // layer], amount, exit_vertex % layer, left_at))
+            paths.append((node_name, names[exit_vertex // layer], amount, exit_vertex % layer, left_at or 0))
     return paths
 
 
@@ -291,9 +320,13 @@ def _greedy(graph: Graph, sources: dict[str, float], trees: dict[str, dict[str, 
 
 
 def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[str], density: dict[str, float] | None = None,
-                    reaction_s: float = 30.0, step_s: float = 5.0, min_sum_limit_s: float = 1.0, estimated: dict[str, float] | None = None) -> EvacPlanResult:
-    """`people`: seen by the cameras. `estimated`: the zones they cannot see, kept apart so the plan can say how much of it is a guess."""
+                    reaction_s: float | None = None, step_s: float = 5.0, min_sum_limit_s: float = 1.0, estimated: dict[str, float] | None = None) -> EvacPlanResult:
+    """`people`: who has to leave, seen by the cameras. `estimated`: the same where they cannot see, kept apart so the plan can say how much of it
+    is a guess. Routes are for every node all the same: anyone may ask. People start moving over REACTION_PROFILE; a fixed `reaction_s`
+    instead moves everybody at once that many seconds after the alarm."""
     started = time.perf_counter()
+    staged = reaction_s is None
+    reaction_s = reaction_s or 0.0
     estimated = {z: n for z, n in (estimated or {}).items() if n > 0 and z in terminal.nodes and terminal.nodes[z].level in INDOOR and z not in people}
     people = {**people, **estimated}
     closed = blocked_nodes(terminal, blocked)
@@ -303,9 +336,11 @@ def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[
 
     # A blocked source that no free exit can reach may use the doors of its own blocked zone (the only way out it has).
     sources = {z: float(n) for z, n in people.items() if n > 0 and z in terminal.nodes and terminal.nodes[z].level in INDOOR}
-    stuck = [z for z in sources if z in closed and not any(z in reachable[d] for d in graph.exits)]
-    if stuck:
-        graph = Graph(terminal, closed, density, open_blocked_doors=True)
+    # With no way out left on its own side, a source may cross; a blocked one may also use the doors of its own zone.
+    for relaxed in ({"cross_sides": True}, {"cross_sides": True, "open_blocked_doors": True}):
+        if all(any(z in reachable[d] for d in graph.exits) for z in sources):
+            break
+        graph = Graph(terminal, closed, density, **relaxed)
         trees = {d: graph.reverse_tree(d) for d in graph.exits}
         reachable = {d: t[0] for d, t in trees.items()}
     unreachable = {z: n for z, n in sources.items() if not any(z in reachable[d] for d in graph.exits)}
@@ -332,12 +367,12 @@ def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[
         supplies = {z: max(1, int(round(n * UNITS))) for z, n in sources.items()}
         door_rate = sum(DOOR_FLOW * terminal.door_width_m.get(d, 1.8) for d in graph.exits if d in ids) or 1.0
         lower = int(max(total_people / door_rate, max(min(reachable[d].get(z, math.inf) for d in graph.exits) for z in sources)) / step_s)
-        steps = _min_steps(graph, ids, supplies, step_s, max(lower, 1))
+        steps = _min_steps(graph, ids, supplies, step_s, max(lower, 1), staged)
         if steps is None:
             steps = int(HORIZON_MAX_S / step_s)
         clear_s = reaction_s + steps * step_s
         layer = steps + 1
-        expanded = _expand(graph, ids, supplies, steps, step_s)
+        expanded = _expand(graph, ids, supplies, steps, step_s, staged)
         remaining = min_sum_limit_s - (time.perf_counter() - started)
         flows = _min_sum(expanded, supplies, ids, layer, max(remaining, 0.2))
         if flows is not None:
@@ -369,7 +404,7 @@ def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[
                     row["people"] += n
             for door, row in exits_out.items():
                 walk = max(reachable[door].get(z, 0.0) for z, ds in alloc.items() if door in ds)
-                row["clear_s"] = reaction_s + walk + row["people"] / (DOOR_FLOW * terminal.door_width_m.get(door, 1.8))
+                row["clear_s"] = (REACTION_MEAN_S if staged else reaction_s) + walk + row["people"] / (DOOR_FLOW * terminal.door_width_m.get(door, 1.8))
             clear_s = max(clear_s, max(r["clear_s"] for r in exits_out.values()))
             t90_s = clear_s
 

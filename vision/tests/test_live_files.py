@@ -142,3 +142,21 @@ def test_real_calib_puts_feet_near_the_security_queue():
     # a box whose foot point is the centre of the queue's picture lands inside or close to the queue on the floor
     pt = calib.feet_to_floor(np.array([[centre[0] - 10, centre[1] - 60, 20, 60]]))[0]
     assert in_ring(np.array([pt[0]]), np.array([pt[1]]), floor)[0] or np.linalg.norm(pt - floor.mean(axis=0)) < 8
+
+
+def test_live_source_follows_the_det_log_from_its_end(tmp_path):
+    root = live_dir(tmp_path)
+    log = root / "detlog_live.jsonl"
+    log.write_text(json.dumps(detections(1, [[10, 10, 20, 50, 0.9, 1]])) + "\n")          # an earlier run's lines
+    (root / "detections.json").write_text(json.dumps(detections(1, [[10, 10, 20, 50, 0.9, 1]])))
+    src = LiveFilesSource(root)
+    assert src.read(None) is not None and src.read(None) is None                         # detections.json while the log is quiet
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(detections(2, [[10, 10, 20, 50, 0.9, 1]])) + "\n" + json.dumps(detections(3, []))[:20])
+    tick = src.read(None)
+    assert tick is not None and tick.t_s == 25202.0 and src.read(None) is None           # a partial line waits
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(detections(3, []))[20:] + "\n")
+    assert src.read(None).t_s == 25203.0
+    (root / "detections.json").write_text(json.dumps(detections(9, [])))
+    assert src.read(None) is None                                                        # the log is the input now

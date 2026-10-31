@@ -8,7 +8,7 @@ import pytest
 from clarion_vision.chain import Chain
 from clarion_vision.forecast import CURVES
 from clarion_vision.ml.calibrate import calibrate, fit_curve, fit_detector, lane_rate, load_calibration, recall_sigmoids
-from clarion_vision.ml.dataset import Timeline, read_jsonl, replay, start_lanes
+from clarion_vision.ml.dataset import JoinWaits, Timeline, read_jsonl, replay, start_lanes
 from clarion_vision.ml.runtime import Corrections
 from clarion_vision.ml.train import evaluate, split_seeds, train_from_rows
 from clarion_vision.queues import load_queues
@@ -60,6 +60,19 @@ def test_rows_pair_the_chain_with_truth_and_future_labels(parts):
     assert any(30 in r["true_future"] for r in rows)
     last = rows[-1]["t"]
     assert all(r["t"] + 30 * 60 <= last + 30 for r in rows if 30 in r["true_future"])   # a label from within the same run
+
+
+def test_the_wait_label_is_what_those_joining_then_really_waited(tmp_path):
+    header = "person,group,visit,stage,where,begin_s,end_s,duration_s,begin,end\n"
+    rows = ["1,1,1,SecurityQueue,security,100.00,700.00,600.00,a,b", "2,2,1,SecurityQueue,security,120.00,840.00,720.00,a,b",
+            "3,3,1,SecurityService,security_lane_1,700.00,790.00,90.00,a,b", "4,4,1,BagDropQueue,checkin_group_1,100.00,160.00,60.00,a,b"]
+    (tmp_path / "stages.csv").write_text(header + "\n".join(rows) + "\n")
+    waits = JoinWaits.of(tmp_path)
+    assert waits.at("security", 110.0, 5) == pytest.approx(11.0)                # mean of the two who joined around then, in minutes
+    assert waits.at("checkin_group_1", 100.0, 1) == pytest.approx(1.0)
+    assert waits.at("security", 5000.0, 0) == 0.0                                # nobody joined and nobody waiting: no wait
+    assert waits.at("security", 5000.0, 12) is None                              # still queued when the run ended: unknown
+    assert JoinWaits.of(tmp_path / "none") is None
 
 
 def test_start_lanes_come_from_the_runs_plan(parts):

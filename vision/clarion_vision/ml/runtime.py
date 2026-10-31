@@ -3,6 +3,7 @@ No models on disk means no corrections, and the chain runs on the physics alone.
 outside what it has seen moves the estimate little."""
 from __future__ import annotations
 
+import bisect
 import json
 from pathlib import Path
 
@@ -12,10 +13,11 @@ from ..config import VISION_DIR
 from ..forecast import HORIZONS_MIN
 
 MODEL_DIR = VISION_DIR / "models"
-COUNT_FEATURES = ["kind", "count", "coverage", "density_seen", "mean_box_h", "mean_conf", "n_cameras"]
+COUNT_FEATURES = ["kind", "count", "coverage", "density_seen", "mean_box_h", "mean_conf", "n_cameras", "boxes_sum", "boxes_max"]
 WAIT_FEATURES = ["kind", "wait", "queue", "sd", "mu", "lanes", "lam_now", "lam_filter", "trend", "scale", "departures_next_hour"]
 FORECAST_FEATURES = WAIT_FEATURES + ["raw_at_horizon", "lam_at_horizon"]
 WAIT_MAX_MIN = 240.0
+COUNT_SD_EDGES = [0.0, 5.0, 15.0, 30.0, 60.0, 110.0, 1e9]
 
 
 def _vector(features: dict, names: list[str]) -> np.ndarray:
@@ -32,6 +34,7 @@ class Corrections:
         self.wait_model = load("wait")
         self.forecast_models = {h: load(f"forecast_{h}") for h in HORIZONS_MIN}
         self.count_sd = float(self.meta.get("count_residual_sd", 3.0))
+        self.count_sd_by_size = self.meta.get("count_sd_by_size") or []
 
     @staticmethod
     def maybe(model_dir: Path = MODEL_DIR) -> "Corrections | None":
@@ -42,9 +45,15 @@ class Corrections:
         if self.count_model is None:
             return None
         raw = features["count"] / max(features["coverage"], 1e-3)
-        value = raw + float(self.count_model.predict(_vector(features, COUNT_FEATURES))[0])
-        spread = self.count_sd * (1.0 + (1.0 - min(features["coverage"], 1.0)))
-        return max(float(features["count"]), value), spread ** 2
+        value = max(float(features["count"]), raw + float(self.count_model.predict(_vector(features, COUNT_FEATURES))[0]))
+        spread = self._spread(value) * (1.0 + (1.0 - min(features["coverage"], 1.0)))
+        return value, max(spread, 1.0) ** 2
+
+    def _spread(self, value: float) -> float:
+        """How far A2 missed on estimates of this size, in training. Falls back on the overall figure for a size never seen."""
+        i = bisect.bisect_right(COUNT_SD_EDGES, value) - 1
+        sd = self.count_sd_by_size[i] if 0 <= i < len(self.count_sd_by_size) else None
+        return self.count_sd if sd is None else sd
 
     def wait(self, features: dict) -> float:
         if self.wait_model is None:
