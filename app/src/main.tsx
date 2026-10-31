@@ -1,10 +1,17 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App'
-import './styles.css'
+import { lazy, StrictMode, Suspense } from "react";
+import { createRoot } from "react-dom/client";
+import "./styles.css";
 
-createRoot(document.getElementById('root')!).render(
+const Page =
+  window.location.pathname === "/join" ||
+  window.location.pathname.startsWith("/join/")
+    ? lazy(() => import("./join/Join"))
+    : lazy(() => import("./App"));
+
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={null}>
+      <Page />
+    </Suspense>
   </StrictMode>,
-)
+);
