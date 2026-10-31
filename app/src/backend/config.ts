@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 const storageKey = 'clarion.backend'
 export function backendConfig(
   location: Pick<Location, 'protocol' | 'search'> = typeof window === 'undefined' ? { protocol: 'http:', search: '' } : window.location,

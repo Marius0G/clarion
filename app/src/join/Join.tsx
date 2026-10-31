@@ -24,7 +24,6 @@ interface Flight {
   city?: string;
   sched?: string;
 }
-type Channel = "telegram" | "sms" | "whatsapp";
 function publicJoin() {
   const url = new URL("/join", publicBase);
   if (backendConfig.override) url.searchParams.set("backend", backendConfig.override);
@@ -82,14 +81,12 @@ export default function Join() {
   );
   const [flight, setFlight] = useState(query.get("flight") || "");
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [channel, setChannel] = useState<Channel>("whatsapp");
-  const enabled = { whatsapp: true, telegram: true, sms: false };
   const [consent, setConsent] = useState(false);
   const [scan, setScan] = useState<BoardingFlight | null>(null);
   const [loading, setLoading] = useState(false);
   const [stateError, setStateError] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{ telegramLink?: string; subscriptionId?: string; token?: string; waLink?: string } | null>(
+  const [success, setSuccess] = useState<{ subscriptionId?: string; token?: string; waLink?: string } | null>(
     null,
   );
   const [shareStatus, setShareStatus] = useState("");
@@ -121,16 +118,12 @@ export default function Join() {
   }, []);
   async function subscribe(event: React.FormEvent) {
     event.preventDefault();
-    if (!role || !consent || submitting.current || !enabled[channel]) return;
+    if (!role || !consent || submitting.current) return;
     submitting.current = true;
     setLoading(true);
     setError("");
-    // Reserve a tab during the user gesture; keep the share screen on this phone.
-    const telegramTab =
-      channel === "telegram" ? window.open("about:blank", "_blank") : null;
-    if (telegramTab) telegramTab.opener = null;
     try {
-      if (channel === "whatsapp") {
+      {
         const response = await fetch(`${backend}/api/join`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ flight: flight.trim().toUpperCase() }),
@@ -145,34 +138,7 @@ export default function Join() {
         setSuccess({ token: result.token, waLink: target.href });
         return;
       }
-      const response = await fetch(`${backend}/api/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role,
-          ...(flight.trim() ? { flight: flight.trim().toUpperCase() } : {}),
-          ...(scan?.date ? { date: scan.date } : {}),
-          channel,
-          lang: en ? "en" : "ro",
-          consent: true,
-        }),
-        signal: AbortSignal.timeout(12000),
-      });
-      if (!response.ok) throw new Error("Subscribe failed");
-      const result = await response.json();
-      if (!result.subscriptionId) throw new Error("Invalid response");
-      let link: string | undefined;
-      if (result.telegramLink) {
-        const target = new URL(result.telegramLink);
-        if (target.protocol !== "https:" || target.hostname !== "t.me")
-          throw new Error("Invalid Telegram link");
-        link = target.href;
-      }
-      setSuccess({ telegramLink: link, subscriptionId: result.subscriptionId });
-      if (link && telegramTab) telegramTab.location.replace(link);
-      else telegramTab?.close();
     } catch (cause) {
-      telegramTab?.close();
       setError(
         cause instanceof Error && cause.message === "unknown-flight"
           ? "Zborul nu este în orarul de azi. Verifică numărul și încearcă din nou."
@@ -232,37 +198,9 @@ export default function Join() {
         ) : success ? (
           <section className="join-success" aria-live="polite">
             <div className="join-success-mark">✓</div>
-            <h1>
-              {channel === "telegram"
-                ? t("Mai ai un pas.", "One more step.")
-                : t("Trimite mesajul în WhatsApp.", "Send the message in WhatsApp.")}
-            </h1>
-            <p>
-              {channel === "telegram"
-                ? t(
-                    "În Telegram, apasă Start pentru a activa alertele.",
-                    "In Telegram, tap Start to activate alerts.",
-                  )
-                : t(
-                    "Apasă Trimite în WhatsApp pentru a activa alertele. Ne scrii primul, apoi putem răspunde în următoarele 24 h.",
-                    "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.",
-                  )}
-            </p>
-            {channel === "whatsapp" && <a className="join-primary" href={success.waLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>}
-            {success.telegramLink ? (
-              <a className="join-primary" href={success.telegramLink}>
-                {t("Deschide Telegram", "Open Telegram")}
-              </a>
-            ) : (
-              channel === "telegram" && (
-                <p role="alert">
-                  {t(
-                    "Botul Telegram nu este configurat. Cere echipei linkul de activare.",
-                    "The Telegram bot is not configured. Ask the team for the activation link.",
-                  )}
-                </p>
-              )
-            )}
+            <h1>{t("Trimite mesajul în WhatsApp.", "Send the message in WhatsApp.")}</h1>
+            <p>{t("Apasă Trimite în WhatsApp pentru a activa alertele. Ne scrii primul, apoi putem răspunde în următoarele 24 h.", "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.")}</p>
+            <a className="join-primary" href={success.waLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>
             {(success.subscriptionId || success.token) && <WalletButton subscriptionId={success.subscriptionId} joinToken={success.token} />}
             {role.startsWith("passenger") && (
               <button className="join-share" onClick={() => void share()}>
@@ -324,6 +262,7 @@ export default function Join() {
                       </span>
                     </button>
                   ))}
+                  <button type="button" aria-pressed="true">WhatsApp</button>
                 </div>
               </fieldset>
               <div className="join-flight">
@@ -389,27 +328,7 @@ export default function Join() {
                   )}
                 </legend>
                 <div>
-                  {(["whatsapp", "telegram", "sms"] as const).map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      disabled={!enabled[value]}
-                      aria-pressed={channel === value}
-                      onClick={() => {
-                        setChannel(value);
-                        setConsent(false);
-                      }}
-                    >
-                      {value === "telegram"
-                        ? "Telegram"
-                        : value === "sms"
-                          ? "SMS"
-                          : "WhatsApp"}
-                      {!enabled[value] && (
-                        <small>{t("în curând", "coming soon")}</small>
-                      )}
-                    </button>
-                  ))}
+                  <button type="button" aria-pressed="true">WhatsApp</button>
                 </div>
               </fieldset>
               <label className="join-consent">
@@ -423,12 +342,7 @@ export default function Join() {
                     "Sunt de acord să primesc alerte pe",
                     "I agree to receive alerts on",
                   )}{" "}
-                  {channel === "telegram"
-                    ? "Telegram"
-                    : channel === "sms"
-                      ? "SMS"
-                      : "WhatsApp"}
-                  .{" "}
+                  WhatsApp.{" "}
                   <span>
                     {t(
                       "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem doar zborul. Datele abonării se șterg la 48 h după zbor.",
@@ -449,9 +363,7 @@ export default function Join() {
               >
                 {loading
                   ? t("Se conectează…", "Connecting…")
-                  : channel === "telegram"
-                    ? t("Continuă în Telegram", "Continue in Telegram")
-                    : t("Continuă în WhatsApp", "Continue in WhatsApp")}
+                  : t("Continuă în WhatsApp", "Continue in WhatsApp")}
               </button>
               <p className="join-footer">
                 {t(
