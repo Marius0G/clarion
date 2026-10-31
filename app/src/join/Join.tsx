@@ -268,13 +268,13 @@ export default function Join() {
               <div className="join-flight">
                 <label htmlFor="join-flight">
                   {t("Număr zbor", "Flight number")}{" "}
-                  <small>{channel === "whatsapp" ? t("obligatoriu", "required") : t("opțional", "optional")}</small>
+                  <small>{t("obligatoriu", "required")}</small>
                 </label>
                 <input
                   id="join-flight"
                   list="join-flights"
                   placeholder="W6 3412"
-                  required={channel === "whatsapp"}
+                  required
                   maxLength={12}
                   pattern="[A-Za-z0-9 ]{2,12}"
                   value={flight}

@@ -9,7 +9,7 @@ test("jury role, consent, WhatsApp and passenger share", async ({ page, context 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: undefined, configurable: true }));
   await page.route("**/api/state", route => route.fulfill({ json: state }));
-  await context.route("https://wa.me/**", route => route.fulfill({ contentType: "text/html", body: "WhatsApp" }));
+  await page.route("**/api/join", route => route.fulfill({ json: { token: "share-token", waLink: "https://wa.me/15556318672?text=START%20W6%203412%20share-token" } }));
   await page.goto("/join?src=jury");
   await expect(page.getByRole("button", { name: "Continuă în WhatsApp" })).toBeDisabled();
   await page.getByRole("button", { name: "Pasager", exact: true }).click();
@@ -17,11 +17,7 @@ test("jury role, consent, WhatsApp and passenger share", async ({ page, context 
   await expect(page.locator("#join-flights option")).toHaveAttribute("value", "W6 3412");
   await expect(page.getByRole("button", { name: "Continuă în WhatsApp" })).toBeDisabled();
   await page.getByRole("checkbox").check();
-  const pending = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Continuă în WhatsApp" }).click();
-  const popup = await pending;
-  await expect(popup).toHaveURL(/https:\/\/wa.me\//);
-  await popup.close();
   await expect(page.getByRole("link", { name: "Deschide WhatsApp" })).toBeVisible();
   await page.getByRole("button", { name: "Trimite celui care te așteaptă" }).click();
   await expect(page.getByRole("status")).toHaveText("Mesaj copiat.");
@@ -104,9 +100,11 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
     });
   });
   await page.route("**/api/state", (route) => route.fulfill({ json: state }));
-  await page.route("**/api/subscribe", (route) =>
-    route.fulfill({ json: { subscriptionId: "scanned" } }),
-  );
+  let requestBody: unknown;
+  await page.route("**/api/join", route => {
+    requestBody = route.request().postDataJSON();
+    return route.fulfill({ json: { token: "scan-token", waLink: "https://wa.me/15556318672?text=START%20W6%203412%20scan-token" } });
+  });
   await page.goto("/join");
   await page.getByRole("button", { name: "Pasager", exact: true }).click();
   await page.getByRole("button", { name: "Scanează boarding pass" }).click();
@@ -120,13 +118,12 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
   await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
   await expect(page.getByLabel("Data zborului")).toBeVisible();
   await page.getByRole("checkbox").check();
-  const pending = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Continuă în WhatsApp" }).click();
-  const popup = await pending;
   const href = await page.getByRole("link", { name: "Deschide WhatsApp" }).getAttribute("href");
-  expect(new URL(href!).searchParams.get("text")).toBe("CLARION PASAGER W63412");
+  expect(new URL(href!).searchParams.get("text")).toBe("START W6 3412 scan-token");
+  expect(requestBody).toEqual({ flight: "W6 3412" });
+  expect(JSON.stringify(requestBody)).not.toMatch(/PRIVATE|PASSENGER|SECRET7/);
   expect(href).not.toMatch(/PRIVATE|PASSENGER|SECRET7/);
-  await popup.close();
 });
 
 test('WhatsApp join uses the public token endpoint and shows the WhatsApp and Wallet buttons', async ({ page }) => {
