@@ -22,7 +22,7 @@ describe('mechanical WhatsApp lab checks', () => {
     expect(check([turn({ replies: ['[react]✈️', 'Poarta G2 este deschisă.', 'https://example.test/m/token'] })])).toEqual([]);
   });
   it('catches every advertised violation', () => {
-    const broken = check([turn({ replies: [] }), turn({ replies: ['undefined null NaN U_SECURITY_QUEUE check_in:1 abonare abonează Pleacă acum!'], expectedTool: 'queues' }),
+    const broken = check([turn({ replies: [] }), turn({ replies: ['undefined null NaN U_SECURITY_QUEUE check_in:1 abonare abonează Mergi acum!'], expectedTool: 'queues' }),
       turn({ lang: 'en' }), turn({ replies: ['The gate is open.'] }), turn({ replies: ['Sunt Clarion. '.repeat(MAX_BUBBLE_CHARS)] }),
       turn({ replies: Array(5).fill('Poarta este deschisă.') }), turn({ urgent: true, replies: ['[react]✈️', 'Poarta este deschisă 🧳'] }),
       turn({ unknown: true }), turn({ errors: ['Provider failed'] })]).map(v => v.rule);

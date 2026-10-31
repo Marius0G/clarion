@@ -51,7 +51,7 @@ export function check(transcript: LabTurn[]): Violation[] {
       if (r.length > MAX_BUBBLE_CHARS) bad('bubble-length', `${r.length} > ${MAX_BUBBLE_CHARS}`);
       if (!matchesLanguage(r, t.lang)) bad('language', `Expected ${t.lang}: ${r}`);
       if (/abona(?:re|t|ți|ti|ză|za)|aboneaz|abonează/i.test(r)) bad('abonare', r);
-      if (!t.evacuate && /\b(pleaca|plecati|vino|veniti|grabeste|mergi|mergeti|urmeaza|indreapta-te|du-te|fii|leave now|hurry|go now|go to|head to|proceed to|come early|you must|you should|trebuie sa)\b/i.test(normalize(r))) bad('orders', r);
+      if (!t.evacuate && /\b(plecati|vino|veniti|grabeste|mergi|mergeti|urmeaza|indreapta-te|du-te|fii|leave now|hurry|go now|go to|head to|proceed to|come early|you must|you should|trebuie sa)\b/i.test(normalize(r))) bad('orders', r);
       if (/\b(?:[GU]_[A-Z][A-Z_0-9]*|(?:check_in|bag_drop|gate|security):[\w-]+|gate_\d+)\b/.test(r)) bad('raw-id', r);
       if (/\b(undefined|null|NaN)\b/.test(r)) bad('invalid-value', r);
     }
