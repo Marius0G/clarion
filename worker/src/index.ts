@@ -1,6 +1,7 @@
 import { Auth, bearer } from '../../backend/src/auth.js';
 import { authRoute, type AuthEnv } from '../../backend/src/auth-routes.js';
 import { allowed } from './wa/transport.js';
+import { closeSocket } from './websocket-close.js';
 import { runLab, validateInput, labPhone } from './wa/lab.js';
 import { labPage } from './wa/labpage.js';
 import { WaEvents } from './wa/events.js';
@@ -426,6 +427,6 @@ export class Tower extends DurableObject<Env> {
       }
     });
   }
-  webSocketClose(ws: WebSocket, code: number) { ws.close(code === 1005 ? 1000 : code); }
+  webSocketClose(ws: WebSocket, code: number) { closeSocket(ws, code); }
   webSocketError(ws: WebSocket) { ws.close(1011, 'WebSocket error'); }
 }
