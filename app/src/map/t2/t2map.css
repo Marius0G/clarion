@@ -126,3 +126,6 @@
 .t2-legend .ic.i-exit { background: #16a34a; }
 .t2-legend .ic.i-vert { background: #a855f7; border-radius: 50%; }
 .t2-legend .ic.i-info { background: #2563eb; border-radius: 50%; }
+.t2-pin path { fill: #ef4444; stroke: #fff; stroke-width: 2; } .t2-pin circle { fill: #fff; }
+.t2-pin { animation: t2-drop .4s ease-out; } @keyframes t2-drop { from { opacity: 0; } }
+.t2-dots, .t2-route, .t2-shell, .t2-tiles, .t2-base { pointer-events: none; }

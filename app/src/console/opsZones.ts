@@ -1,4 +1,4 @@
-import { logicalKind, flowRow } from '../../../backend/src/mapIds'
+import { logicalKind, flowRow, mapNodeId } from '../../../backend/src/mapIds'
 import type { FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
 import type { FlowState } from './flow'
 import { staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
@@ -75,14 +75,25 @@ export function liveDots(sim: SimSnapshot | null): Person[] {
   return sim && sim.vision ? sim.positions?.people ?? [] : []
 }
 
+/**
+ * Key the backend keeps this zone's open lanes under (D12). Real map ids reuse a legacy key when
+ * the backend already has one for the same place (`U_SECURITY_QUEUE` -> `security`); desk groups stay distinct.
+ */
+export function laneKey(sim: SimSnapshot | null, id: string): string {
+  const lanes = sim?.lanes ?? {}
+  if (Object.hasOwn(lanes, id)) return id
+  const canonical = mapNodeId(id)
+  return Object.keys(lanes).find(k => !k.includes(':') && mapNodeId(k) === canonical) ?? id
+}
+
 export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat[] {
   return plan.zones.map(zone => {
     const row = liveRow(sim, zone.id)
     return {
       id: zone.id, name: zone.name, kind: zone.kind, closed: sim?.blocked?.includes(zone.id) ?? false, staffed: staffedKinds.includes(zone.kind),
-      people: row ? row.waiting : null, lanes: sim?.lanes?.[zone.id] ?? null,
+      people: row ? row.waiting : null, lanes: sim?.lanes?.[laneKey(sim, zone.id)] ?? null,
       waitMin: row?.waitMin ?? null, state: loadState(zone.id, row),
-      line: zoneLine(zone.id, row, sim?.lanes?.[zone.id] ?? null, sim?.simTime ?? null),
+      line: zoneLine(zone.id, row, sim?.lanes?.[laneKey(sim, zone.id)] ?? null, sim?.simTime ?? null),
     }
   })
 }
@@ -94,7 +105,7 @@ export const commandStatusLabels: Record<CommandStatus, string> = {
 
 /** Short noun label for a D12 command, with zone names from the plan. */
 export function commandLabel(command: OpsCommand, plan: TerminalPlan) {
-  const name = (id: string) => plan.zones.find(z => z.id === id)?.name ?? id
+  const name = (id: string) => (plan.zones.find(z => z.id === id) ?? plan.zones.find(z => z.id === mapNodeId(id)))?.name ?? id
   switch (command.type) {
     case 'staff': return `${name(command.zone)} ${command.delta > 0 ? '+' : '−'}${Math.abs(command.delta)} ${Math.abs(command.delta) === 1 ? 'linie' : 'linii'}`
     case 'evacuate': return `Evacuare ${command.zones.map(name).join(', ')}`
@@ -130,8 +141,11 @@ export function redirectTargets(zones: ZoneStat[], source: ZoneStat): ZoneStat[]
   return zones.filter(z => z.id !== source.id && z.kind === source.kind && !z.closed)
 }
 
+/** Same place, allowing legacy ids (`security` = `U_SECURITY_QUEUE`); desk groups only match themselves. */
+const samePlace = (a: string, b: string) => a === b || (!a.includes(':') && !b.includes(':') && mapNodeId(a) === mapNodeId(b))
+
 export function commandTouchesZone(command: OpsCommand, id: string): boolean {
-  if (command.type === 'redirect') return command.from === id || command.to === id
-  if (command.type === 'evacuate') return command.zones.includes(id)
-  return command.zone === id
+  if (command.type === 'redirect') return samePlace(command.from, id) || samePlace(command.to, id)
+  if (command.type === 'evacuate') return command.zones.some(z => samePlace(z, id))
+  return samePlace(command.zone, id)
 }

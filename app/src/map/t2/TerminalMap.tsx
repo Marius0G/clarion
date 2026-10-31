@@ -25,6 +25,10 @@ interface Props {
   base?: boolean
   lang?: 'ro' | 'en'
   className?: string
+  /** Report pins, in pixels of this level. */
+  markers?: { id: string; at: Pt; label: string }[]
+  /** data-testid prefix for zones (`t2-zone-` by default). */
+  testIdPrefix?: string
 }
 
 const shortName = (z: MapZone, lang: 'ro' | 'en') =>
@@ -81,7 +85,7 @@ function PointIcon({ p, s, cameras }: { p: MapPoint; s: number; cameras: boolean
   }
 }
 
-export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = true, lang = 'ro', className }: Props) {
+export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = true, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-' }: Props) {
   const fr = frames[level]
   const m = fr.ppm
   const fs = fr.width / 125
@@ -142,7 +146,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     const { frame: f, pts } = zoneGeo(z)
     const d = z.polygons_px.map(ringPath).join('')
     const cls = ['t2-zone', `k-${z.kind}`, state ? `s-${state}` : 's-none', z.approx ? 'approx' : '', selected === z.id ? 'sel' : '', lit.has(z.id) ? 'lit' : '', v?.closed ? 'closed' : '', onZone ? 'click' : ''].filter(Boolean).join(' ')
-    zoneEls.push(<g key={z.id} className={cls} data-zone={z.id} data-testid={`t2-zone-${z.id}`}
+    zoneEls.push(<g key={z.id} className={cls} data-zone={z.id} data-testid={`${testIdPrefix}${z.id}`} aria-pressed={onZone ? selected === z.id : undefined}
       role={onZone ? 'button' : undefined} tabIndex={onZone ? 0 : undefined} aria-label={`${z.code} ${shortName(z, lang)}`}
       onClick={onZone ? () => click(z.id) : undefined}
       onKeyDown={onZone ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); click(z.id) } } : undefined}>
@@ -228,6 +232,12 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(Math.max(0.35 * m, 2.2))} /> })}
     </g>
     <g className="t2-labels">{labels}</g>
+    <g className="t2-pins">
+      {markers.map(mk => <g key={mk.id} className="t2-pin" transform={`translate(${fmt(mk.at[0])} ${fmt(mk.at[1])}) scale(${fmt(fs / 10)})`} data-testid="report-pin" role="img" aria-label={`Raport: ${mk.label}`}>
+        <title>{mk.label}</title>
+        <path d="M0 0 L-7 -13 A8 8 0 1 1 7 -13 Z" /><circle cy={-17} r={3} />
+      </g>)}
+    </g>
     {!zoomed && <><g className="t2-north" transform={`translate(${fr.width - fs * 2} ${fs * 2.2})`} aria-hidden="true">
       <path d={`M0,${-fs * 1.2}L${fs * 0.55},${fs * 0.5}L0,${fs * 0.15}L${-fs * 0.55},${fs * 0.5}Z`} /><text y={fs * 1.6} fontSize={fs * 0.8}>N</text>
     </g>

@@ -133,3 +133,8 @@
 .ops-state { margin-left: auto; color: var(--o-muted); font-size: 12px; }
 .ops-zone-line { grid-column: 1 / -1; grid-row: 3; color: var(--o-muted); font-size: 12px; }
 .ops-zone-line button { white-space: normal; text-align: left; padding: 2px 4px; font-size: 12px; color: var(--o-text); }
+.ops-floors { display: flex; gap: 6px; margin-bottom: 8px; }
+.ops .ops-floors button { display: inline-flex; align-items: center; gap: 6px; }
+.ops .ops-floors button.on { background: var(--o-text); color: var(--o-bg); border-color: var(--o-text); }
+.ops-floor-pins { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--o-full-line); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.ops-map .t2map { border-radius: 10px; }

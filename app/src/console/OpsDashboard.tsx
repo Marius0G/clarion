@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useSim, type OpsCommand } from '../backend/sim'
 import { sendOps } from '../backend/ops'
 import { useReports } from '../backend/reports'
-import { zoneStateLabels, accuracyRows, commandLabel, commandStatusLabels, commandTouchesZone, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
-import { plan } from './terminal'
+import { zoneStateLabels, accuracyRows, commandLabel, commandStatusLabels, commandTouchesZone, laneKey, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
+import { realPlan, type TerminalPlan, type ZoneKind } from './terminal'
+import { mapNodeId } from '../../../backend/src/mapIds'
+import type { SimSnapshot } from '../backend/sim'
+import { TerminalMap, type ZoneView } from '../map/t2/TerminalMap'
+import { levelNames, levels, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
 import './ops.css'
 
 /** D16: the admin's single screen. Terminal map, people seen by the cameras, load per zone and the D12 decisions. */
@@ -11,20 +15,31 @@ interface Sent { command: OpsCommand; key: string; label: string; status: Comman
 const UNKNOWN = 'necunoscut'
 const number = (value: number | null) => value == null ? '—' : value.toLocaleString('ro-RO')
 const minutes = (value: number | null) => value == null ? '—' : `${Math.round(value)} min`
-const box = (polygon: [number, number][]) => {
-  const xs = polygon.map(p => p[0]), ys = polygon.map(p => p[1])
-  const x = Math.min(...xs), y = Math.min(...ys)
-  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+/** D8 desk groups (`check_in:1`, `bag_drop:W6`...) are list rows of their own; on the map they sit in the shared check-in zones. */
+const GROUP = /^(check_in|bag_drop):(.+)$/
+const groupZone = (id: string) => GROUP.exec(id)?.[1] === 'bag_drop' ? 'G_CHECKIN_DESKS' : 'G_CHECKIN_QUEUE'
+function groupName(id: string) {
+  const [, kind, group] = GROUP.exec(id)!
+  const airline = mapNodeId(`check_in:${group}`).split(':')[1] ?? group
+  return `${kind === 'check_in' ? 'Check-in' : 'Bagaje'} ${airline === 'OTHER' ? 'alte companii' : airline}`
 }
-/** A report pin sits on its node, else the centre of a zone with that id. */
-function pinAt(node: string): [number, number] | null {
-  const n = plan.nodes.find(p => p.id === node)
-  if (n) return [n.x, n.y]
-  const zone = plan.zones.find(z => z.id === node)
-  if (!zone) return null
-  const b = box(zone.polygon)
-  return [b.x + b.w / 2, b.y + b.h / 2]
+/** Real T2 zones plus whatever desk groups the backend or the cameras know about. */
+function dashboardPlan(sim: SimSnapshot | null): TerminalPlan {
+  const keys = new Set([...Object.keys(sim?.flow ?? {}), ...Object.keys(sim?.lanes ?? {})].filter(k => GROUP.test(k)))
+  const groups = [...keys].sort().map(id => ({ id, kind: GROUP.exec(id)![1] as ZoneKind, name: groupName(id), polygon: [] as [number, number][], level: 'G' }))
+  return { ...realPlan, zones: [...realPlan.zones.map(z => ({ ...z, name: z.name.replace(/\s*\*$/, '') })), ...groups] }
 }
+const levelOf = (id: string): Level => GROUP.test(id) ? 'G' : (mapZones.get(id)?.level ?? mapZones.get(mapNodeId(id))?.level ?? 'G')
+/** A report pin sits on its zone (any id alias) or map point. */
+function pinAt(node: string): { level: Level; at: Pt } | null {
+  const zone = mapZones.get(node) ?? mapZones.get(mapNodeId(node)) ?? (GROUP.test(node) ? mapZones.get(groupZone(node)) : undefined)
+  if (zone) return { level: zone.level, at: worldToPx(zone.centre[0], zone.centre[1], zone.level) }
+  const point = mapPoints.find(p => p.id === node || p.id === mapNodeId(node))
+  return point ? { level: point.level, at: point.px } : null
+}
+const rank = { normal: 1, near: 2, full: 3 } as const
+/** Queues always listed, even before any camera data. */
+const CORE = ['U_SECURITY_QUEUE', 'U_PASSPORT_DEP']
 
 export function OpsDashboard() {
   const sim = useSim(1000)
@@ -38,17 +53,31 @@ export function OpsDashboard() {
   }, [active])
   const [local, setLocal] = useState<Sent[]>([])
   const [busy, setBusy] = useState(false)
+  const [floor, setFloor] = useState<Level>('U')
+  const plan = dashboardPlan(sim)
   const stats = zoneStats(plan, sim)
   const byId = new Map(stats.map(s => [s.id, s]))
   const zone = active ? byId.get(active) : undefined
-  const targets = zone ? redirectTargets(stats, zone) : []
-  const destination = targets.some(z => z.id === target) ? target : targets[0]?.id ?? ''
-  const openZone = (id: string) => { setActive(id); setTarget('') }
+  const openZone = (id: string) => { setActive(id); setTarget(''); setFloor(levelOf(id)) }
   const unity = sim?.connected ?? false
   const cameras = sim?.vision ?? false
   const people = liveDots(sim)
   const accuracy = accuracyRows(plan, sim)
-  const pins = reports.flatMap(r => { const at = pinAt(r.node); return at ? [{ ...r, at }] : [] })
+  const pins = reports.flatMap(r => { const at = pinAt(r.node); return at ? [{ ...r, ...at }] : [] })
+  // Map colours: a zone's own row; the shared check-in zones also show their worst desk group. Never summed.
+  const views: Record<string, ZoneView> = {}
+  for (const s of stats) {
+    const target = GROUP.test(s.id) ? groupZone(s.id) : s.id
+    const v = views[target] ?? (views[target] = {})
+    if (target === s.id) { v.people = s.people; v.waitMin = s.waitMin; v.closed = s.closed }
+    if (s.state && (!v.state || rank[s.state] > rank[v.state])) v.state = s.state
+  }
+  const mapSelected = active && GROUP.test(active) ? groupZone(active) : active
+  const shown = stats.filter(s => s.kind !== 'exit' && (GROUP.test(s.id) || CORE.includes(s.id) || s.staffed && s.lanes != null || s.state != null || s.people != null || s.closed || s.id === active))
+  const targets = zone ? redirectTargets(shown, zone) : []
+  const destination = targets.some(z => z.id === target) ? target : targets[0]?.id ?? ''
+  const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level }] : [])
+  const perFloor = (l: Level) => pins.filter(p => p.level === l).length
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(z => z !== id) : [...current, id])
 
   async function send(command: OpsCommand) {
@@ -80,35 +109,15 @@ export function OpsDashboard() {
     </header>
     <main className="ops-main">
       <section className="ops-map" aria-label="Terminal">
-        <svg viewBox={`-1 -1 ${plan.width + 2} ${plan.height + 2}`} role="group" aria-label="Harta terminalului" data-testid="terminal-map">
-          <rect x={-1} y={-1} width={plan.width + 2} height={plan.height + 2} className="ops-floor" />
-          {plan.zones.map(zone => {
-            const stat = byId.get(zone.id)!
-            const b = box(zone.polygon)
-            const small = b.h < 8
-            const on = active === zone.id
-            const unknown = stat.state == null && zone.kind !== 'exit'
-            return <g key={zone.id} className={`ops-zone ops-${stat.state ?? (unknown ? 'unknown' : 'none')} ops-kind-${zone.kind}${on ? ' ops-selected' : ''}${stat.closed ? ' ops-closed' : ''}`}
-              role="button" tabIndex={0} aria-pressed={on} aria-label={zone.name} data-testid={`zone-${zone.id}`}
-              onClick={() => openZone(zone.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openZone(zone.id) } }}>
-              <polygon points={zone.polygon.map(p => p.join(',')).join(' ')} />
-              <text x={b.x + b.w / 2} y={small ? b.y + b.h / 2 + 0.7 : b.y + 3.6} className="ops-zone-name">{zone.name}</text>
-              {!small && (stat.people != null
-                ? <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 2} className="ops-zone-count">{number(stat.people)}</text>
-                : unknown && <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 1} className="ops-zone-unknown">{UNKNOWN}</text>)}
-            </g>
-          })}
-          <g className="ops-dots" aria-hidden="true">
-            {people.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={0.4} />)}
-          </g>
-          <g className="ops-pins">
-            {pins.map(r => <g key={r.id} className="ops-pin" transform={`translate(${r.at[0]} ${r.at[1]})`} data-testid="report-pin" role="img" aria-label={`Raport: ${r.text}`}>
-              <title>{r.text}</title>
-              <path d="M0 0 L-1.4 -2.6 A1.6 1.6 0 1 1 1.4 -2.6 Z" />
-              <circle cx={0} cy={-3.4} r={0.6} className="ops-pin-dot" />
-            </g>)}
-          </g>
-        </svg>
+        <div className="ops-floors" role="group" aria-label="Etaj">
+          {levels.map(l => <button key={l} aria-pressed={floor === l} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
+            {levelNames[l].ro}{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
+          </button>)}
+        </div>
+        <div data-testid="terminal-map">
+          <TerminalMap level={floor} views={views} selected={mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
+            markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
+        </div>
         <ul className="ops-legend" aria-label="Legendă">
           <li><i className="ops-sw ops-normal" />Normal</li>
           <li><i className="ops-sw ops-near" />Ocupat</li>
@@ -116,7 +125,7 @@ export function OpsDashboard() {
           <li><i className="ops-sw ops-unknown" />Necunoscut</li>
           <li><i className="ops-sw ops-closed" />Închis</li>
           {pins.length > 0 && <li><i className="ops-sw ops-sw-pin" />Raport</li>}
-          <li className="ops-plan">Plan provizoriu</li>
+          <li className="ops-plan">Linie punctată: poziție aproximativă</li>
         </ul>
       </section>
       <aside className="ops-side">
@@ -125,8 +134,8 @@ export function OpsDashboard() {
           <p className="ops-note">{zone.closed ? 'Închis' : 'Deschis'}{zone.staffed ? ` · Linii: ${number(zone.lanes)}` : ''}</p>
           <div className="ops-panel-actions">
             {zone.staffed && <>
-              <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: zone.id, delta: -1 })}>−1 linie</button>
-              <button disabled={busy} onClick={() => send({ type: 'staff', zone: zone.id, delta: 1 })}>+1 linie</button>
+              <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: -1 })}>−1 linie</button>
+              <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: 1 })}>+1 linie</button>
             </>}
             <button disabled={busy} onClick={() => send({ type: zone.closed ? 'open' : 'close', zone: zone.id })}>{zone.closed ? 'Deschide' : 'Închide'}</button>
             <button className="ops-danger" disabled={busy} onClick={() => send({ type: 'evacuate', zones: [zone.id] })}>Evacuează</button>
@@ -152,7 +161,7 @@ export function OpsDashboard() {
         </div>
         <ol className="ops-zones" aria-label="Zone">
           <li className="ops-zones-head" aria-hidden="true"><span>Zonă</span><span>Oameni</span><span>Linii</span><span>Așteptare</span></li>
-          {stats.filter(s => s.kind !== 'exit').map(s => <li key={s.id} data-testid={`row-${s.id}`} className={active === s.id ? 'ops-selected' : undefined}>
+          {shown.map(s => <li key={s.id} data-testid={`row-${s.id}`} className={active === s.id ? 'ops-selected' : undefined}>
             <button className="ops-zone-label" aria-pressed={active === s.id} onClick={() => openZone(s.id)}>
               <i className={`ops-sw ops-${s.closed ? 'closed' : s.state ?? 'unknown'}`} title={s.closed ? 'Închis' : s.state ? zoneStateLabels[s.state] : 'Necunoscut'} />
               <b>{s.name}</b><span className="ops-state" data-testid="state">{s.state ? zoneStateLabels[s.state] : 'Necunoscut'}</span>
@@ -162,7 +171,7 @@ export function OpsDashboard() {
             <span data-testid="wait">{minutes(s.waitMin)}</span>
             <div className="ops-zone-line" data-testid="zone-line">
               <span>{s.line.numbers}</span>
-              {s.line.action && <><span aria-hidden="true"> · </span><button disabled={busy || s.closed} onClick={() => send({ type: 'staff', zone: s.id, delta: s.line.action!.delta })}>{s.line.action.label}</button></>}
+              {s.line.action && <><span aria-hidden="true"> · </span><button disabled={busy || s.closed} onClick={() => send({ type: 'staff', zone: laneKey(sim, s.id), delta: s.line.action!.delta })}>{s.line.action.label}</button></>}
             </div>
           </li>)}
         </ol>

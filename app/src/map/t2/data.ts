@@ -3,8 +3,8 @@
  * World metres: x east, z north, level G (parter) / U (etaj 1) / X (exterior).
  * Pixels per floor image: px = (x - x0) * ppm, py = (z1 - z) * ppm.
  */
-import zonesJson from './zones.json'
-import pointsJson from './points.json'
+import zonesJson from './zones.json' with { type: 'json' }
+import pointsJson from './points.json' with { type: 'json' }
 
 export type Level = 'G' | 'U' | 'X'
 export type Pt = [number, number]
