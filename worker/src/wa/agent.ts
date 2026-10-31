@@ -51,10 +51,10 @@ const STYLE = `<style>
 - Cozi, aglomerație, „e lume la securitate?”: queues. Coada companiei lui e cea cu yours=true. Dacă are prognoză,
   spune și cum arată peste o oră.
 - Nu știi zborul lui (no_flight): cere-i numărul zborului (ex: W6 3751), apoi cheamă myFlight cu el.
-- Traseu spre poartă, ghișeu sau ieșire: routeTo.
+- Traseu spre poartă, ghișeu sau ieșire: routeTo. Spune pașii, minutele, că pleacă de la intrare și include link-ul primit.
 - Rol angajat (vezi <context>): orice incident descris („bagaj abandonat lângă check-in 2”, „bătaie la poarta 3”, cineva
   leșinat, aglomerare) îl trimiți imediat cu reportIssue: text = mesajul lui, kind = tipul, location = locul cum l-a spus.
-  Dacă nu spune unde, întreabă o dată. După trimitere confirmi scurt: tipul, locul și că e pe harta din dashboard.
+  Dacă nu spune unde, întreabă o dată. După trimitere confirmi scurt: tipul, locul, că e pe harta din dashboard și „Echipa ajunge în ~N min” din ETA. Dacă ETA e indisponibil, spune asta.
 - Dacă rezultatul are note despre orar provizoriu, nu insista pe asta decât dacă întreabă.
 </how_you_help>
 
@@ -101,7 +101,7 @@ export const TOOL_SPECS = [
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada companiei lui.', input_schema: NONE },
-  { name: 'routeTo', description: 'Traseul spre poartă, ghișeu sau ieșire (în curând).', input_schema: { type: 'object', properties: { to: { type: 'string', enum: ['gate', 'check_in', 'exit'] } } } },
+  { name: 'routeTo', description: 'Traseul de la intrare spre poartă, ghișeu sau cea mai apropiată ieșire liberă, cu pași, minute și link.', input_schema: { type: 'object', properties: { to: { type: 'string', enum: ['gate', 'check_in', 'exit'] } } } },
   {
     name: 'reportIssue',
     description: 'Doar pentru angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
@@ -251,7 +251,12 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     if (noFlight(r)) return [askFlight];
     return [`${r.flight} spre ${r.destination}: poarta ${r.gate}, plecare ${r.departure}, poarta se închide la ${r.gateCloseAt} (${r.clock}).${r.status === 'delayed' ? ` Întârziat ${r.delayMin} min.` : r.status === 'cancelled' ? ' Zborul e anulat.' : ''}`];
   };
-  // "de la ce poartă plec?" is about the flight, not the arrival time.
+  if (/(trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire)/.test(t)) {
+    const r = await call('routeTo', { to: /ieșire|iesire/.test(t) ? 'exit' : /check|ghișeu|ghiseu/.test(t) ? 'check_in' : 'gate', ...(code && { flight: code }) });
+    if (noFlight(r)) return [askFlight];
+    return [r.note ?? FALLBACK, ...(r.link ? [r.link] : [])];
+  }
+  // Flight information follows routing requests.
   if (/(poart|gate|întârzi|intarzi|anulat|status)/.test(t)) return flightInfo();
   if (/(când|cand|ora |oră|plec|ajung|vin\b|să fiu|sa fiu)/.test(t)) {
     const r = await call('whenToArrive', code ? { flight: code } : {});

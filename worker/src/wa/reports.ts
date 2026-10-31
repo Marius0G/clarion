@@ -9,7 +9,7 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
   bagaj_abandonat: 'bagaj abandonat', medical: 'urgență medicală', securitate: 'problemă de securitate', aglomerare: 'aglomerare', altele: 'incident',
 };
 /** The exact shape the dashboard pins read. */
-export interface Report { id: string; at: string; kind: IssueKind; node: string | null; text: string; status: 'open' | 'closed' }
+export interface Report { id: string; at: string; kind: IssueKind; node: string | null; text: string; status: 'open' | 'closed'; etaMin?: number | null }
 
 const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ş/g, 's').replace(/ţ/g, 't');
 
@@ -59,11 +59,11 @@ const KEEP = 200;
 /** Reports in Durable Object storage, newest last. */
 export class Reports {
   constructor(private store: WaStore) {}
-  async list(): Promise<Report[]> { return (await this.store.get<Report[]>(KEY)) ?? []; }
-  async add(input: { kind: IssueKind; node: string | null; text: string }, now = Date.now()): Promise<Report> {
+  async list(): Promise<Report[]> { return ((await this.store.get<Report[]>(KEY)) ?? []).map(r => ({ ...r, etaMin: r.etaMin ?? null })); }
+  async add(input: { kind: IssueKind; node: string | null; text: string; etaMin?: number | null }, now = Date.now()): Promise<Report> {
     const all = await this.list();
     const n = all.reduce((m, r) => Math.max(m, Number(r.id.replace(/^R/, '')) || 0), 0) + 1;
-    const report: Report = { id: `R${n}`, at: new Date(now).toISOString(), kind: input.kind, node: input.node, text: input.text.slice(0, 500), status: 'open' };
+    const report: Report = { id: `R${n}`, at: new Date(now).toISOString(), kind: input.kind, node: input.node, text: input.text.slice(0, 500), status: 'open', etaMin: input.etaMin ?? null };
     await this.store.put(KEY, [...all, report].slice(-KEEP));
     return report;
   }

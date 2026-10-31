@@ -27,6 +27,20 @@ afterEach(() => vi.restoreAllMocks());
 const quiet = () => { vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); };
 
 describe('passenger page profiles', () => {
+  it('sends route steps and a working passenger link, preserving its token on subsequent turns', async () => {
+    quiet();
+    const h = harness(fakeSim().view);
+    await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751' });
+    await h.inbound('cum ajung la poarta?');
+    const p = await h.agent.profile('+40712345678');
+    expect(p?.pageToken).toBeTruthy();
+    expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~2 min'))).toBe(true);
+    expect(h.texts().some(m => m.text.includes(`/m/${p!.pageToken}`))).toBe(true);
+    expect(await h.m.passenger(p!.pageToken!)).toBeDefined();
+    await h.inbound('când să fiu la aeroport?');
+    expect((await h.agent.profile('+40712345678'))?.pageToken).toBe(p!.pageToken);
+  });
+
   it('keeps tokens across restarts and rebindings, respects bag choice, and revokes on deletion', async () => {
     quiet();
     const { view } = fakeSim([row(), row({ flight: 'W6 3401' })]);
@@ -127,7 +141,7 @@ describe('agent.register for simulated subscribers (D17)', () => {
     const h = harness(view);
     expect(await h.m.registerSims([{ agentId: 'a1', role: 'passenger_terminal', flight: 'W6 3751' }, { agentId: 'a2', role: 'p', flight: 'XX 1' }])).toBe(2);
     expect(await h.m.registerSims([{ agentId: 'a1', role: 'passenger_terminal', flight: 'W6 3751' }])).toBe(0);
-    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'arrive', text: expect.stringMatching(/^Fii la intrarea în terminal la 08:\d5 \(ora simulării\)\. Zborul W6 3751 .*poarta 2 se închide la 09:10/) } }]);
+    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'arrive', text: expect.stringMatching(/^Fii la intrarea în terminal la 08:30 \(ora simulării\)\. Zborul W6 3751 .*poarta 2 se închide la 09:10/) } }]);
   });
 });
 
@@ -199,9 +213,9 @@ describe('staff reports (D11, D18 beat 4)', () => {
     expect((await h.store.get<Profile>('wa:profile:+40712345678'))!.role).toBe('staff');
     await h.inbound('Bagaj abandonat lângă check-in Wizz');
     const [r] = await h.agent.reports.list();
-    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open' });
-    expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status']);
-    expect(h.texts().at(-1)!.text).toBe('Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată.');
+    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 1 });
+    expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status', 'etaMin']);
+    expect(h.texts().at(-1)!.text).toBe('Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~1 min');
     expect((await h.agent.reports.close('R1'))!.status).toBe('closed');
     expect(await h.agent.reports.close('R9')).toBeUndefined();
   });

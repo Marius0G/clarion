@@ -128,7 +128,7 @@ export class Messaging {
     if (!f) return;
     const clock = this.deps.view.clock();
     // Unknown bag choice uses the same conservative assumption as WhatsApp.
-    const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag);
+    const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag, this.deps.view.blocked?.());
     return {
       simTime: clock.sim ? clock.now : null,
       flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
@@ -198,7 +198,7 @@ export class Messaging {
   arriveText(f: Flight, hasCheckedBag?: boolean) {
     const clock = this.deps.view.clock();
     if (f.status === 'cancelled') return `Zborul ${f.flight} spre ${f.destination} e anulat. Ia legătura cu compania aeriană pentru alt zbor.`;
-    const p = arrivalPlan(f, this.deps.view.flow(), clock, hasCheckedBag);
+    const p = arrivalPlan(f, this.deps.view.flow(), clock, hasCheckedBag, this.deps.view.blocked?.());
     return `Fii la intrarea în terminal la ${p.beAtEntranceAt} (${p.clock}). Zborul ${f.flight} spre ${f.destination}, poarta ${p.gate} se închide la ${p.gateCloseAt}.`;
   }
 
@@ -223,7 +223,7 @@ export class Messaging {
   flightText(f: Flight, hasCheckedBag?: boolean) {
     const label = clockLabel(this.deps.view.clock());
     if (f.status === 'cancelled') return `✈️ Zborul ${f.flight} spre ${f.destination} a fost anulat. Nu mai e nevoie să vii la aeroport pentru el; ia legătura cu compania aeriană pentru alt zbor.`;
-    const arrive = arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag).beAtEntranceAt;
+    const arrive = arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()).beAtEntranceAt;
     if (f.delayMin > 0) return `✈️ Zborul ${f.flight} spre ${f.destination} are o întârziere de ${f.delayMin} min. Pleacă la ${clockText(etd(f))} în loc de ${clockText(f.std)}, poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
     return `✈️ Zborul ${f.flight} spre ${f.destination} pleacă la ora programată, ${clockText(etd(f))}; poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
   }

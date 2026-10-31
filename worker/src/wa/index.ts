@@ -155,7 +155,13 @@ export class WhatsAppAgent {
     }
 
     const started = Date.now();
-    const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r) });
+    const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r),
+      pageLink: async () => {
+        const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
+        const stored = await this.profile(m.phone);
+        if (stored?.pageToken) profile.pageToken = stored.pageToken;
+        return link;
+      } });
     const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, text: redact(text), tools });
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
     await this.wa.sendReplies(m.phone, bubbles, m.id);

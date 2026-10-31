@@ -1,9 +1,11 @@
+import { route, zoneDensities } from '../../../backend/src/routing.js';
+import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
 import { ISSUE_LABELS, classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
 
 export interface ZoneRow {
-  waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
+  density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
   forecast?: { inMin: number; waitMin: number }[] | null;
 }
 /** What the agent may read from the Tower. Implemented in index.ts over the sim store; plain data in tests. */
@@ -12,6 +14,7 @@ export interface AirportView {
   flow(): Record<string, ZoneRow>;
   flights(): readonly Flight[];
   provisional(): boolean;
+  blocked?(): readonly string[];
 }
 export interface Profile {
   phone: string; role: 'passenger' | 'staff';
@@ -20,7 +23,7 @@ export interface Profile {
 }
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
 
-// Walk from security to the gate, minutes. Constant per gate until terminal.json (D7) gives the real edges.
+// Legacy fallback in minutes, used only when no security-to-gate route is available.
 export const GATE_WALK_MIN: Record<string, number> = { gate_1: 3, gate_2: 4, gate_3: 5, gate_4: 6, G1: 3, G2: 4, G3: 5, G4: 6 };
 const DEFAULT_WALK_MIN = 5;
 export const MARGIN_MIN = 10;
@@ -82,17 +85,18 @@ function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight)
  * D5: be at the terminal entrance at gateCloseAt − (bag drop if checked bag + security + walk to gate + margin),
  * each wait taken for the time he gets there. Two passes: the first estimate picks which forecast point applies.
  */
-export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined) {
+export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined, blocked: readonly string[] = []) {
   const bag = hasCheckedBag !== false;
   const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight);
   const secZone = { key: 'security', row: flow.security };
   const close = closeAt(flight);
+  const walk = route(terminalGraph, 'security', flight.gate, zoneDensities(flow, zoneAreas), blocked);
   const steps = (inMin: number) => {
     const out: { zone: string; step: string; min: number; source: string }[] = [];
     if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ zone: bagZone.key, step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
     const s = waitAt(secZone.row, 'security', inMin);
     out.push({ zone: secZone.key, step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
-    out.push({ zone: 'walk', step: `Drum până la poarta ${gateName(flight.gate)}`, min: GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: 'constantă' });
+    out.push({ zone: 'walk', step: `Drum până la poarta ${gateName(flight.gate)}`, min: walk ? Math.ceil(walk.totalSec / 60) : GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: walk ? 'traseu live' : 'constantă' });
     out.push({ zone: 'margin', step: 'Marjă', min: MARGIN_MIN, source: 'constantă' });
     return out;
   };
@@ -126,11 +130,12 @@ export interface ToolDeps {
   profile: () => Profile;
   save: (patch: Partial<Profile>) => Promise<void>;
   /** Stores a staff report (D11); absent in read-only contexts. */
-  report?: (input: { kind: IssueKind; node: string | null; text: string }) => Promise<Report>;
+  report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null }) => Promise<Report>;
+  pageLink?: () => Promise<string>;
 }
 
-/** The five D15 tools for one person. routeTo is a stub until terminal.json (D7) lands. */
-export function toolsFor({ view, profile, save, report }: ToolDeps): Tools {
+/** The five D15 tools for one person, using the shared provisional terminal graph. */
+export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -153,7 +158,7 @@ export function toolsFor({ view, profile, save, report }: ToolDeps): Tools {
       const f = r.flight;
       if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: 'Zborul e anulat. Pasagerul ia legătura cu compania aeriană.' };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: 'Zborul a plecat deja.' };
-      return { ...arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag), status: f.status, delayMin: f.delayMin };
+      return { ...arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.()), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
       const flow = view.flow(), clock = view.clock(), p = profile();
@@ -166,8 +171,25 @@ export function toolsFor({ view, profile, save, report }: ToolDeps): Tools {
       if (!zones.length) return { available: false, note: 'Nu am date live despre cozi acum.', now: clockText(clock.now), clock: clockLabel(clock) };
       return { available: true, zones, now: clockText(clock.now), clock: clockLabel(clock) };
     },
-    async routeTo(input: { to?: string }) {
-      return { status: 'coming_soon', to: input?.to ?? null, note: 'Hărțile cu traseul până la poartă vin în curând. Până atunci, urmează indicatoarele din terminal.' };
+    async routeTo(input: { to?: string; flight?: string }) {
+      const to = input?.to ?? 'gate';
+      if (!['gate', 'check_in', 'exit'].includes(to)) return { error: 'invalid_destination' };
+      const density = zoneDensities(view.flow(), zoneAreas), blocked = view.blocked?.() ?? [];
+      // No passenger position is available on WhatsApp: explicitly start at the entrance.
+      let targets: string[];
+      if (to === 'exit') targets = terminalGraph.nodes.filter(n => n.kind === 'exit').map(n => n.id);
+      else {
+        const r = await resolve(input?.flight);
+        if ('error' in r) return r;
+        targets = to === 'gate' ? [r.flight.gate] : r.flight.checkIn ? [r.flight.checkIn] : r.flight.checkInDesks;
+      }
+      const best = targets.map(id => route(terminalGraph, 'entrance', id, density, blocked))
+        .filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
+      if (!best) return { status: 'unavailable', note: 'Nu există un traseu liber cunoscut. Cere ajutorul personalului.' };
+      const minutes = Math.ceil(best.totalSec / 60);
+      return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1),
+        steps: best.nodes.map(nodeName), note: `De la intrare: ${best.nodes.map(nodeName).join(' → ')}. ~${minutes} min.`,
+        ...(pageLink && { link: await pageLink() }), provisional: terminalGraph.provisional };
     },
     async reportIssue(input: { text?: string; kind?: string; location?: string }) {
       if (profile().role !== 'staff') return { error: 'staff_only', note: 'Doar angajații aeroportului pot raporta incidente aici.' };
@@ -176,10 +198,11 @@ export function toolsFor({ view, profile, save, report }: ToolDeps): Tools {
       if (!report) return { error: 'unavailable', note: 'Nu pot trimite raportul acum. Sună la dispecerat.' };
       const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
       const node = matchNode(`${input?.location ?? ''} ${text}`, view.flights());
-      const r = await report({ kind, node, text: input?.location ? `${text} (loc: ${input.location})` : text });
-      // TODO(D11, terminal.json): add the intervention team's ETA = route from team_post to node, penalised by crowding.
-      return { status: 'sent', id: r.id, kind: ISSUE_LABELS[kind], place: node ? nodeName(node) : 'loc neprecizat',
-        note: 'Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată.' };
+      const path = node ? route(terminalGraph, 'team_post', node, zoneDensities(view.flow(), zoneAreas), view.blocked?.()) : null;
+      const etaMin = path ? Math.ceil(path.totalSec / 60) : null;
+      const r = await report({ kind, node, etaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
+      return { status: 'sent', id: r.id, etaMin, kind: ISSUE_LABELS[kind], place: node ? nodeName(node) : 'loc neprecizat',
+        note: `Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. ${etaMin === null ? 'ETA indisponibil: loc necunoscut sau traseu blocat.' : `Echipa ajunge în ~${etaMin} min`}` };
     },
   };
 }
