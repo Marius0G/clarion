@@ -6,7 +6,7 @@ const Page =
   window.location.pathname === "/join" ||
   window.location.pathname.startsWith("/join/")
     ? lazy(() => import("./join/Join"))
-    : lazy(() => import("./App"));
+    : window.location.pathname === "/twin" ? lazy(() => import("./twin/Twin")) : lazy(() => import("./App"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
