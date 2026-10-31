@@ -323,3 +323,8 @@
     font-size: 27px;
   }
 }
+.join-demo { margin-bottom: 24px; background: white; }
+.join-demo h2 { font-size: 20px; margin: 20px 0 8px; }
+.join-demo p { font-size: 14px; }
+.join-demo canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.join-demo .join-primary { margin-top: 10px; }

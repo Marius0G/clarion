@@ -1,3 +1,4 @@
+import { boardingFromSchedule } from './demo.js';
 import { DurableObject } from 'cloudflare:workers';
 import { createWhatsApp,verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
 import { aircraftNearLrcv,FidsAdapter } from '../../backend/src/data/flights.js';
@@ -227,19 +228,26 @@ export class Tower extends DurableObject<Env> {
           }
         }
         if (request.method === 'POST') {
-          if (path === '/api/join') {
+          if (path === '/api/join' || path === '/api/join/demo') {
+            const demo = path === '/api/join/demo';
             const input = JSON.parse(await bodyText(request, 1024));
-            if (typeof input?.flight !== 'string' || input.flight.length > 20 ||
+            if (!input || typeof input !== 'object' || Array.isArray(input) ||
+              ((!demo || input.flight !== undefined) && (typeof input.flight !== 'string' || input.flight.length > 20)) ||
               (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 80)))
               return json({ error: 'Flight and optional first name required' }, 400);
             const view = airportView(this.engine.sim, () => this.twins().length > 0);
-            const flight = findFlight(view.flights(), input.flight);
+            const flight = demo && input.flight === undefined
+              ? view.flights().filter(f => f.status === 'scheduled').slice().sort((a, b) => a.std - b.std)[0]
+              : findFlight(view.flights(), input.flight);
             if (!flight) return json({ error: 'Unknown flight' }, 404);
+            const boarding = demo ? boardingFromSchedule(flight, input.name) : undefined;
             const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
             const pending: PendingJoin = { flight: flight.flight, expiresAt: Date.now() + JOIN_TTL_MS,
               ...(input.name?.trim() && { name: input.name.trim().split(/\s+/)[0] }) };
+            const link = waLink(flight.flight, token, this.env.WHATSAPP_NUMBER);
+            const pass = boarding ? await this.wallet.boardingPass(token, boarding, new Date(pending.expiresAt).toISOString(), link) : undefined;
             await this.ctx.storage.put(joinKey(token), pending);
-            return json({ token, waLink: waLink(flight.flight, token, this.env.WHATSAPP_NUMBER) }, 201);
+            return json({ token, waLink: link, ...(boarding && { bcbp: boarding.bcbp, walletUrl: pass!.saveUrl }) }, 201);
           }
           if (path === '/api/wallet/pass') {
             const input = JSON.parse(await bodyText(request));

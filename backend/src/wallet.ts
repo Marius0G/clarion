@@ -1,8 +1,10 @@
+import type { BoardingPass } from './bcbp.js';
 import { dryRun,type Delivery,type Outbound } from './channels/types.js';
 import type { Engine } from './engine.js';
 import type { Client,Envelope,Subscription } from './types.js';
 
 export interface WalletEnv {
+  WALLET_PASS_KIND?: 'flight' | 'generic';
   GOOGLE_WALLET_ISSUER_ID?: string;
   GOOGLE_WALLET_SA_EMAIL?: string;
   GOOGLE_WALLET_SA_KEY?: string;
@@ -84,6 +86,34 @@ export class Wallet {
   /** Pending web join: no phone subscription exists until START arrives. */
   async joinPass(id: string, flight: string, expiresAt: string, waLink: string) {
     return this.createPass({ id, flight, expiresAt, role: 'passenger_home' }, 'Deschide WhatsApp pentru alerte', waLink);
+  }
+  /** Flight data is available for the demo; older subscriptions retain their generic pass. */
+  async boardingPass(id: string, pass: BoardingPass, expiresAt: string, waLink: string) {
+    if (this.enabled && this.env.WALLET_PASS_KIND !== 'generic') {
+      try {
+        if (pass.carrier.length !== 2) throw new Error('Flight pass requires an IATA carrier');
+        const classId = `${this.env.GOOGLE_WALLET_ISSUER_ID}.clarion_flight_${pass.carrier}${pass.flightNumber}_${pass.localDeparture.slice(0, 10).replace(/-/g, '')}`;
+        const jwt = await this.sign({ iss: this.env.GOOGLE_WALLET_SA_EMAIL, aud: 'google',
+          typ: 'savetowallet', iat: Math.floor(this.now() / 1000), payload: {
+            flightClasses: [{ id: classId, issuerName: 'Clarion', reviewStatus: 'UNDER_REVIEW',
+              flightHeader: { carrier: { carrierIataCode: pass.carrier }, flightNumber: pass.flightNumber },
+              origin: { airportIataCode: 'CRA' }, destination: { airportIataCode: pass.destination },
+              localScheduledDepartureDateTime: pass.localDeparture }],
+            flightObjects: [{ id: `${this.env.GOOGLE_WALLET_ISSUER_ID}.clarion_flight_${id}`, classId, state: 'ACTIVE',
+              passengerName: pass.passengerName, reservationInfo: { confirmationCode: pass.confirmationCode },
+              boardingAndSeatingInfo: { seatNumber: pass.seat, boardingGroup: pass.boardingGroup },
+              barcode: { type: 'PDF_417', value: pass.bcbp },
+              linksModuleData: { uris: [{ uri: waLink, description: 'Clarion pe WhatsApp' }] },
+              textModulesData: [{ id: 'demo', header: 'SIMULARE', body: 'Boarding pass demo · Nu este un bilet de călătorie.' },
+                ...(pass.entryTime ? [{ id: 'entry', header: 'Intrare', body: `Fii la intrare la ${pass.entryTime}` }] : [])],
+            }],
+          } });
+        return { saveUrl: `https://pay.google.com/gp/v/save/${jwt}`, demo: false };
+      } catch {
+        // Local build/sign failure only. Google save-time rejections require WALLET_PASS_KIND=generic.
+      }
+    }
+    return this.joinPass(id, `${pass.carrier} ${pass.flightNumber}`, expiresAt, waLink);
   }
   private async createPass(sub: Pick<Subscription, 'id' | 'flight' | 'expiresAt' | 'role'>, status: string, waLink?: string) {
     let saveUrl = `/join/wallet-demo?sub=${encodeURIComponent(sub.id)}`;

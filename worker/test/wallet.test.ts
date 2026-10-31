@@ -65,3 +65,21 @@ it('signs a verifiable Wallet pass in workerd', async () => {
   expect(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, new Uint8Array(Buffer.from(signature, 'base64url')), new TextEncoder().encode(`${header}.${body}`))).toBe(true);
   expect(JSON.parse(Buffer.from(body, 'base64url').toString()).payload.genericObjects[0].header.defaultValue.value).toBe('Clarion');
 });
+
+it('issues a flight JWT and usable join token for the default demo schedule', async () => {
+  dir = await mkdtemp(join(tmpdir(), 'wallet-worker-'));
+  mf = start(true);
+  const response = await post('/api/join/demo', {});
+  expect(response.status).toBe(201);
+  const result = await response.json() as { bcbp: string; token: string; waLink: string; walletUrl: string };
+  expect(result.bcbp).toHaveLength(60);
+  expect(result.bcbp.slice(30, 44)).toBe('CRALTNW6 03751');
+  expect(result.token).toMatch(/^[a-f0-9]{48}$/);
+  expect(new URL(result.waLink).searchParams.get('text')).toBe(`START W6 3751 ${result.token}`);
+  const [, body] = result.walletUrl.split('/save/')[1]!.split('.');
+  const payload = JSON.parse(Buffer.from(body!, 'base64url').toString()).payload;
+  expect(payload.flightObjects[0].barcode).toEqual({ type: 'PDF_417', value: result.bcbp });
+  expect(payload.flightObjects[0].linksModuleData.uris[0].uri).toBe(result.waLink);
+  expect(payload.flightClasses[0].localScheduledDepartureDateTime).toMatch(/^\d{4}-\d{2}-\d{2}T09:40:00$/);
+  expect((await post('/api/wallet/pass', { joinToken: result.token })).status).toBe(200);
+});

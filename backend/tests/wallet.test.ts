@@ -106,3 +106,32 @@ describe('shared Wallet', () => {
     await expect(new Wallet({ ...env, GOOGLE_WALLET_SA_KEY: 'bad-pem-secret' }).pass(engine, sub.id)).rejects.toThrow('Wallet signing failed');
   });
 });
+
+it('signs the documented flight class/object with the BCBP and WhatsApp link', async () => {
+  const { demoBoardingPass } = await import('../src/bcbp.js');
+  const pass = demoBoardingPass({ flight: 'W6 3751', destination: 'LTN', localDeparture: '2026-10-31T09:40:00', entryTime: '08:10' });
+  const link = 'https://wa.me/15556318672?text=START';
+  const result = await new Wallet(env).boardingPass('demo', pass, '2026-11-01T12:00:00Z', link);
+  const p = parts(result.saveUrl.split('/save/')[1]!);
+  expect(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, p.signature, p.input)).toBe(true);
+  expect(p.body.payload).toEqual({ flightClasses: [{ id: '123456.clarion_flight_W63751_20261031', issuerName: 'Clarion', reviewStatus: 'UNDER_REVIEW',
+    flightHeader: { carrier: { carrierIataCode: 'W6' }, flightNumber: '3751' }, origin: { airportIataCode: 'CRA' },
+    destination: { airportIataCode: 'LTN' }, localScheduledDepartureDateTime: '2026-10-31T09:40:00' }],
+    flightObjects: [{ id: '123456.clarion_flight_demo', classId: '123456.clarion_flight_W63751_20261031', state: 'ACTIVE',
+      passengerName: 'POPESCU/ION', reservationInfo: { confirmationCode: 'ABC123' }, boardingAndSeatingInfo: { seatNumber: '12A', boardingGroup: '1' },
+      barcode: { type: 'PDF_417', value: pass.bcbp }, linksModuleData: { uris: [{ uri: link, description: 'Clarion pe WhatsApp' }] },
+      textModulesData: [{ id: 'demo', header: 'SIMULARE', body: 'Boarding pass demo · Nu este un bilet de călătorie.' },
+        { id: 'entry', header: 'Intrare', body: 'Fii la intrare la 08:10' }] }] });
+});
+it('uses generic on explicit opt-out or a flight signing failure', async () => {
+  const { demoBoardingPass } = await import('../src/bcbp.js');
+  const pass = demoBoardingPass({ flight: 'W6 3751', destination: 'LTN', localDeparture: '2026-10-31T09:40:00' });
+  for (const forced of [true, false]) {
+    const wallet = new Wallet({ ...env, ...(forced && { WALLET_PASS_KIND: 'generic' as const }) });
+    if (!forced) vi.spyOn(wallet as unknown as { sign: (claims: Record<string, unknown>) => Promise<string> }, 'sign').mockRejectedValueOnce(new Error('flight failed'));
+    const result = await wallet.boardingPass('demo', pass, '2026-11-01T12:00:00Z', 'https://wa.me/123');
+    const payload = parts(result.saveUrl.split('/save/')[1]!).body.payload;
+    expect(payload.genericObjects[0].classId).toBe('123456.clarion');
+    expect(payload.flightClasses).toBeUndefined();
+  }
+});

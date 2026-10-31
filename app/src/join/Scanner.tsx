@@ -12,6 +12,23 @@ interface DetectorConstructor {
 const DetectorAPI = (
   globalThis as typeof globalThis & { BarcodeDetector?: DetectorConstructor }
 ).BarcodeDetector;
+async function makeDetector(formats: string[]): Promise<Detector> {
+  if (DetectorAPI && formats.includes('pdf417')) return new DetectorAPI({ formats });
+  const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+    import('@zxing/browser'), import('@zxing/library'),
+  ]);
+  const reader = new BrowserMultiFormatReader(new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417, BarcodeFormat.AZTEC]]]));
+  return { async detect(source) {
+    const canvas = document.createElement('canvas');
+    canvas.width = source instanceof HTMLVideoElement ? source.videoWidth : source.width;
+    canvas.height = source instanceof HTMLVideoElement ? source.videoHeight : source.height;
+    const context = canvas.getContext('2d');
+    if (!context || !canvas.width || !canvas.height) return [];
+    context.drawImage(source, 0, 0);
+    try { return [{ rawValue: reader.decodeFromCanvas(canvas).getText() }]; }
+    catch { return []; }
+  } };
+}
 export default function Scanner({
   en,
   onFlight,
@@ -31,7 +48,7 @@ export default function Scanner({
       .catch(() => {});
   }, []);
   useEffect(() => {
-    if (!open || !DetectorAPI) return;
+    if (!open) return;
     let stopped = false,
       stream: MediaStream | undefined,
       timer: ReturnType<typeof setTimeout>;
@@ -39,12 +56,14 @@ export default function Scanner({
       stream?.getTracks().forEach((track) => track.stop());
       if (video.current) video.current.srcObject = null;
     };
-    const detector = new DetectorAPI({ formats });
+    let detector: Promise<Detector> | undefined;
     async function scan() {
       if (stopped || !video.current) return;
       try {
         if (video.current.readyState >= 2) {
-          const results = await detector.detect(video.current);
+          detector ??= makeDetector(formats);
+          const results = await (await detector).detect(video.current);
+          if (stopped) return;
           for (const result of results) {
             const flight = parseBCBP(result.rawValue);
             result.rawValue = "";
@@ -61,8 +80,10 @@ export default function Scanner({
       }
       if (!stopped) timer = setTimeout(scan, 300);
     }
-    navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+    Promise.resolve().then(() => {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera unavailable");
+      return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    })
       .then(async (media) => {
         stream = media;
         if (stopped) {
@@ -76,6 +97,7 @@ export default function Scanner({
         void scan();
       })
       .catch(() => {
+        if (stopped) return;
         stop();
         setError(
           en
@@ -89,7 +111,6 @@ export default function Scanner({
       stop();
     };
   }, [open, formats, en, onFlight]);
-  if (!formats.length) return null;
   return (
     <div className="join-scanner">
       <button
@@ -124,13 +145,11 @@ export default function Scanner({
               onChange={async (event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                if (!file || !DetectorAPI) return;
+                if (!file) return;
                 let bitmap: ImageBitmap | undefined;
                 try {
                   bitmap = await createImageBitmap(file);
-                  const results = await new DetectorAPI({ formats }).detect(
-                    bitmap,
-                  );
+                  const results = await (await makeDetector(formats)).detect(bitmap);
                   let found: BoardingFlight | null = null;
                   for (const result of results) {
                     found ??= parseBCBP(result.rawValue);

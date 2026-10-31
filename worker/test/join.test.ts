@@ -45,3 +45,24 @@ it('validates against Unity flights once the current schedule arrives', async ()
     expect((await post('/api/join', { flight: 'W6 3751' })).status).toBe(404);
   } finally { ws.close(); }
 });
+
+it('validates demo inputs and emits a BCBP even without Wallet credentials', async () => {
+  for (const input of [null, [], { flight: 123 }, { name: 123 }, { name: '1'.repeat(81) }])
+    expect((await post('/api/join/demo', input)).status).toBe(400);
+  expect((await post('/api/join/demo', { flight: 'XX 9999' })).status).toBe(404);
+  // This suite may have received a Unity schedule from a prior test; use an isolated tower name.
+  const fresh = new Miniflare(convertV4MiniflareOptions({
+    name: 'demo-join-test', modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-10-30',
+    durableObjects: { TOWER: { className: 'Tower', useSQLite: true } }, outboundService: async () => Response.json([]),
+  }));
+  try {
+    const response = await fresh.dispatchFetch('https://worker.example/api/join/demo', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flight: 'w63401', name: 'Ionescu/Ana' }) });
+    expect(response.status).toBe(201);
+    const demo = await response.json() as { bcbp: string; token: string; waLink: string; walletUrl: string };
+    expect(demo.bcbp.slice(2, 22).trim()).toBe('IONESCU/ANA');
+    expect(demo.bcbp.slice(30, 44)).toBe('CRABGYW6 03401');
+    expect(new URL(demo.walletUrl, 'https://app.example').pathname).toBe('/join/wallet-demo');
+    expect(new URL(demo.walletUrl, 'https://app.example').searchParams.get('waLink')).toBe(demo.waLink);
+  } finally { await fresh.dispose(); }
+});

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import DemoBoardingPass from "./DemoBoardingPass";
 import WalletButton from "./WalletButton";
 import QRCode from "qrcode";
 import Scanner from "./Scanner";
@@ -242,6 +243,7 @@ export default function Join() {
                 )}
               </p>
             </section>
+            <DemoBoardingPass />
             <form onSubmit={(event) => void subscribe(event)}>
               <fieldset className="join-roles">
                 <legend>

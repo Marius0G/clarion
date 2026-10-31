@@ -33,7 +33,7 @@ test("relative prefill, English and consent", async ({ page }) => {
   await page.getByRole("checkbox").check();
   await expect(page.getByRole("button", { name: "Continue in WhatsApp" })).toBeEnabled();
 });
-test("QR and unsupported scanner", async ({ page }) => {
+test("QR and scanner fallback", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "BarcodeDetector", {
       value: undefined,
@@ -52,7 +52,7 @@ test("QR and unsupported scanner", async ({ page }) => {
   await page.goto("/join");
   await expect(
     page.getByRole("button", { name: "Scanează boarding pass" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
