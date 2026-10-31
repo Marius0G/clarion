@@ -244,6 +244,40 @@ Graful estimat este determinist: centre de zone și puncte de acces; poligoane l
 
 Limitări ale pachetului primit: fundalurile `base_*.png` lipsesc; unele zone sunt aproximative și deconectate la pragul de 2 m (punți geometrice de aproximativ 9–121 m, 26 de muchii `inferred` în total); punctul `gate_5` este în afara poligonului `U_GATE_5`, deci este ancorat explicit la zona porții. Fișierele livrate nu sunt corectate manual. Geometria nu precizează pereți/navmesh, politici de acces Schengen/non-Schengen sau starea lifturilor; aceste reguli necesită confirmare înainte de utilizare operațională.
 
+### D27. Harta: ambele etaje stivuite, legate prin conexiunile reale
+Research 1 nov (brief: (a private research brief)). Ca la Mappedin (multi-floor view): parterul și etajul 1 se desenează împreună, oblic, unul peste altul, cu etajul activ plin și celălalt la ~25% opacitate, gri, fără etichete. Alertele rămân la opacitate completă pe ambele etaje.
+- Proiecție SVG: `matrix(1, 0, 0.35, 0.42, 0, −i·G)` pe placa fiecărui etaj (i = 0 parter, 1 etaj), G ≥ 52 ca plăcile să nu se suprapună. Etichetele se calculează în JS cu aceeași matrice și se desenează nedeformate, deasupra.
+- Cele 15 perechi scări/escalator/lift din `points.json` au aceleași x,z pe ambele etaje, deci fiecare legătură e o linie verticală de lungime G: plină pentru scări și lift, cu săgeată pentru escalator (doar G→U).
+- Exteriorul (kerb, taxi) e marginea plăcii parterului, mai deschis. Butonul „Ext” dispare.
+- Două moduri: „Stivă” (implicit) și „Plan” (un etaj plat, pentru detaliu), cu trecere animată.
+- Densitatea se arată prin umplerea zonei, nu prin heatmap. Punctele cu oameni rămân strat opțional.
+
+### D28. Ecranul: hartă plus listă, prognoza în față
+Înlocuiește partea de layout din D16. Harta ocupă cea mai mare parte. O coloană îngustă în dreapta e legată de ea (hover și click în ambele sensuri).
+- **Banda de sus**, ~5 cifre, fără controale: cel mai rău timp acum, prima depășire prognozată (ora), % din timp sub țintă azi, zboruri în pericol (pasageri încă înainte de securitate față de închiderea porții), densitatea maximă.
+- **Lista de zone** are un rând de tip bullet pentru fiecare zonă: bară = așteptarea acum, liniuță = ținta (D20), bandă deschisă = interval normal, cercuri = prognoza +30/+60, plus textul „> țintă la 14:20”. Lista e ordonată după cea mai apropiată depășire, apoi după mărime. Zonele OK se strâng într-un singur rând. Ordinea rămâne stabilă 60–90 s.
+- **Sfatul (A7)** apare ca un card fixat sus, nu ca toast: verb, resursă, termen, consecință, efect cu și fără acțiune, cine execută, apoi Trimite / Respinge.
+- **Zborurile**, ca la FIDS: oră, zbor, destinație, poartă, status. Culoarea apare doar pentru excepții.
+- **Un singur jurnal** pentru rapoartele angajaților și comenzi, cu evidențiere pe ce n-a fost confirmat.
+
+### D29. Stil de cameră de control (ISA-101)
+Gri deschis, plat, o culoare = un singur sens. Normalul e o rampă de gri, nu verde. Culoarea apare doar peste prag, mereu cu formă și număr: P1 ■ `#D40000`, P2 ▲ `#E07800`, P3 ● `#E6B800`. Valorile live și prognoza sunt `#0E2F57`, intervalul normal `#B9C6D3`, fundalul `#D4D4D4`, iar podeaua hărții `#C4C4C4`.
+- Fără carduri plutitoare rotunjite, umbre, pastel, galben pe negru sau puls. Clipește doar o alarmă P1/P2 neconfirmată.
+- Colțuri de maxim 2 px, separatoare de 1 px, grilă de 8 px. Un singur sans cu cifre tabulare, minim 14 px.
+- Tema e deschisă, pentru proiector.
+
+### D30. Deciziile devin sarcini; contractul cu Unity rămâne același
+În interfață, fiecare decizie e o sarcină: recomandare → Trimite → trimis / confirmat / făcut → efectul măsurat de camere față de prognoza fără acțiune. Fiecare sarcină spune cine o execută în realitate:
+- linie: supervizorul de securitate;
+- redirecționare: agent pe hol, ecrane și mesaj către zborurile afectate;
+- evacuare: incident commander, cu o listă de pași (alarmă, anunț, verificare, numărătoare la punctul de adunare).
+**În spate nu se schimbă nimic:** se trimite tot `ops.command` din D12 către Unity (`staff`, `redirect`, `evacuate`, `close`, `open`), cu efectele scrise de Marius (secțiunea „Pentru Marius”, punctul 4). „Confirmat” = `ops.ack`. „Făcut” = efectul văzut în `flow.report`.
+
+### D31. Bug-uri cunoscute pe partea backend (din d600f1a)
+- `Messaging.plan` trimite ruta de evacuare tuturor abonaților. La o evacuare parțială trebuie să plece doar celor estimați în zonele blocate sau care le traversează.
+- `webSocketClose` din `worker/src/index.ts` aruncă eroare la codul 1006. Trebuie tratat ca 1005, cu `ws.close(1000)`.
+- `SIM_SPEED` în `worker/wrangler.toml` e 60, iar demo-ul cere 10.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
