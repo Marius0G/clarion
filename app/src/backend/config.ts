@@ -1,7 +1,7 @@
 const storageKey = 'clarion.backend'
 export function backendConfig(
   location: Pick<Location, 'protocol' | 'search'> = typeof window === 'undefined' ? { protocol: 'http:', search: '' } : window.location,
-  env: { VITE_BACKEND_URL?: string; VITE_BACKEND_HTTP?: string } = { VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL, VITE_BACKEND_HTTP: import.meta.env.VITE_BACKEND_HTTP },
+  env: { VITE_BACKEND_URL?: string; VITE_BACKEND_HTTP?: string; VITE_DEMO_TOKEN?: string } = { VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL, VITE_BACKEND_HTTP: import.meta.env.VITE_BACKEND_HTTP, VITE_DEMO_TOKEN: import.meta.env.VITE_DEMO_TOKEN },
   storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = undefined,
 ) {
   const parse = (value: string) => {
@@ -16,10 +16,12 @@ export function backendConfig(
   try {
     const local = storage ?? window.localStorage
     if (token !== null) local.setItem('clarion.token', token)
-    else token = local.getItem('clarion.token')
+    else token = env.VITE_DEMO_TOKEN || local.getItem('clarion.token')
     if (override) local.setItem(storageKey, override.origin)
     else override = parse(local.getItem(storageKey) || '')
   } catch { /* Private mode/storage denial must not block connections. */ }
+  // Demo build: the operator token is baked in on purpose (hackathon only, see deploy.yml).
+  token ||= env.VITE_DEMO_TOKEN || null
   const ws = new URL(env.VITE_BACKEND_URL || env.VITE_BACKEND_HTTP || 'ws://localhost:8787/ws?client=console')
   const http = new URL(env.VITE_BACKEND_HTTP || env.VITE_BACKEND_URL || 'http://localhost:8787')
   if (override) {
