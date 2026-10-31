@@ -71,6 +71,7 @@ Fără credențiale, canalele reale rulează în mod dry-run. Configurarea e în
 | `app/` | Frontend React: ecranul adminului, `/join`, harta |
 | `backend/` | Backend Node pentru rulare locală, cu același motor ca Worker-ul |
 | `worker/` | Backend-ul public pe Cloudflare (Worker + Durable Object) |
+| `vision/` | Serviciul de vision (Python): camere, cozi, prognoză, evacuare |
 | `whatsapp/` | Template-urile WhatsApp |
 | `docs/` | Specul, algoritmii și materialele de pitch |
 
