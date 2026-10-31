@@ -128,6 +128,8 @@ test('alarms acknowledge, shelve and remain in the single journal', async ({ pag
   const current = page.getByTestId(`alert-${alarm.id}`)
   const cleared = page.getByTestId('alert-density:U_GATE_1')
   await expect(current.locator('.ops-alarm')).toHaveCSS('animation-name', 'ops-alarm-blink')
+  await expect(page.getByTestId('zone-U_SECURITY_QUEUE')).toHaveClass(/a-2/)
+  await expect(page.getByTestId('zone-U_GATE_1')).toHaveClass(/a-1/)
   await expect(page.getByTestId('alert-forecast-target:U_SECURITY_QUEUE').locator('.ops-alarm')).toHaveCSS('animation-name', 'none')
   await current.getByRole('button', { name: 'Confirmă', exact: true }).click()
   await expect(current).toContainText('Confirmată')

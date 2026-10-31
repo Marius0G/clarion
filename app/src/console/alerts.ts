@@ -1,3 +1,4 @@
+import type { ZoneView } from '../map/t2/TerminalMap'
 import type { Alert, AlertCommand } from '../../../backend/src/alerts'
 import { mapNodeId } from '../../../backend/src/mapIds'
 import { backend } from '../backend/config'
@@ -18,9 +19,8 @@ export function alertPresentation(alert: Alert, simTime: number | null) {
   }
 }
 
-/** Console adapter ready for the map's optional alarm badge. */
-// Matches ZoneView.alert in the incoming flat-map branch: the numeric priority 1 | 2 | 3.
-export type ZoneAlertView = 1 | 2 | 3
+/** D32 priority for the map badge, using the map-owned type. */
+export type ZoneAlertView = NonNullable<ZoneView['alert']>
 export function toZoneAlert(alert: Alert): ZoneAlertView {
   return ({ P1: 1, P2: 2, P3: 3 } as const)[alert.priority]
 }

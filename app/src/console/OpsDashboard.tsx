@@ -11,7 +11,7 @@ import { backend } from '../backend/config'
 import { levelNames, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
 import { breach, bulletScale, executor, flightTime, noActionWait, orderZones, taskState, topMetrics, waitTarget, type TaskEvidence, type ZoneOrder } from './screen'
 import { AlertList } from './AlertList'
-import { alertMapZone, alertNumbers, alertPresentation, alertSymbols, sendAlertCommand, type Alert, type AlertCommand } from './alerts'
+import { alertMapZone, alertNumbers, alertPresentation, alertSymbols, sendAlertCommand, topZoneAlerts, type Alert, type AlertCommand } from './alerts'
 import './ops.css'
 
 /** D16: the admin's single screen. Terminal map, people seen by the cameras, load per zone and the D12 decisions. */
@@ -109,6 +109,10 @@ export function OpsDashboard() {
     if (target === s.id) { v.people = s.people; v.waitMin = s.waitMin; v.closed = s.closed }
     if (s.state && (!v.state || rank[s.state] > rank[v.state])) v.state = s.state
   }
+  for (const [id, alert] of Object.entries(topZoneAlerts(alerts))) {
+    const view = views[id] ?? (views[id] = {})
+    view.alert = alert
+  }
   const mapSelected = active && GROUP.test(active) ? groupZone(active) : active
   const shown = stats.filter(s => s.kind !== 'exit' && (GROUP.test(s.id) || CORE.includes(s.id) || s.staffed && s.lanes != null || s.state != null || s.people != null || s.closed || s.id === active))
   const targets = zone ? redirectTargets(shown, zone) : []
@@ -183,7 +187,7 @@ export function OpsDashboard() {
         const id = (e.target as Element).closest('[data-testid^="zone-"]')?.getAttribute('data-testid')?.slice(5)
         if (id) setHovered(id)
       }} onMouseLeave={() => setHovered(null)}>
-        <TerminalMap level={floor} views={views} selected={hovered ? (GROUP.test(hovered) ? groupZone(hovered) : hovered) : mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
+        <TerminalMap level={floor} onLevel={setFloor} views={views} selected={hovered ? (GROUP.test(hovered) ? groupZone(hovered) : hovered) : mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
           focus={mapSelected} wheelZoom keys describe={describe} cameras={layers.cameras} base={layers.base}
           layers={{ dots: layers.dots, heat: layers.heat, labels: layers.labels, points: layers.points, pins: layers.pins }}
           markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
