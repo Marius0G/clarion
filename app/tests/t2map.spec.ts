@@ -9,11 +9,14 @@ test('the T2 map draws every floor and zooms', async ({ page }) => {
   await page.getByTestId('t2-zone-G_CHECKIN_QUEUE').click({ force: true })
   await expect(page.getByText('G_CHECKIN_QUEUE')).toBeVisible()
 
+  const initial = (await page.getByTestId('t2-map-G').getAttribute('viewBox'))!
+  // Cropped to the building, not the whole Unity frame.
+  expect(Number(initial.split(' ')[2])).toBeLessThan(3000)
   await page.getByRole('button', { name: 'Mărește' }).click()
   const box = await page.getByTestId('t2-map-G').getAttribute('viewBox')
-  expect(box?.split(' ').map(Number)[2]).toBeLessThan(3000)
+  expect(Number(box!.split(' ')[2])).toBeLessThan(Number(initial.split(' ')[2]))
   await page.getByRole('button', { name: 'Toată harta' }).click()
-  await expect(page.getByTestId('t2-map-G')).toHaveAttribute('viewBox', '0 0 3000 1050')
+  await expect(page.getByTestId('t2-map-G')).toHaveAttribute('viewBox', initial)
 
   await page.getByRole('button', { name: 'Etaj 1' }).click()
   await expect(page.locator('[data-testid^="t2-zone-U_"]')).toHaveCount(19)
