@@ -26,7 +26,7 @@ Clarion lucrează ca un sistem real: vede terminalul doar prin camere, plus orar
 
 Detecție YOLO pe imaginile camerelor, cu o corecție învățată pentru cozile dense; un filtru Kalman pe fiecare zonă, pentru număr și flux; așteptarea calculată din oamenii din coadă și viteza liniilor deschise; prognoza la 30–120 de minute din orarul zborurilor și un model de coadă; timpul de evacuare și împărțirea pe ieșiri dintr-un flux maxim pe graful terminalului. Modelele ML sunt antrenate pe zile simulate, în care știm adevărul.
 
-Detalii: [`docs/SPEC-v2.md`](docs/SPEC-v2.md), secțiunea „Algoritmi”. Varianta pentru pitch: [`docs/pitch/algoritmi.md`](docs/pitch/algoritmi.md).
+Detalii: [`docs/SPEC-v2.md`](docs/SPEC-v2.md), secțiunea „Algoritmi”.
 
 ## Starea la 31 octombrie, seara
 
