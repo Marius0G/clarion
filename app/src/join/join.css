@@ -245,11 +245,11 @@
     font-size: 27px;
   }
 }
-.join-demo { margin-bottom: 24px; background: white; }
-.join-demo h2 { font-size: 20px; margin: 20px 0 8px; }
-.join-demo p { font-size: 14px; }
-.join-demo canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
-.join-demo .join-primary { margin-top: 10px; }
+.join-boarding-pass { margin-bottom: 24px; background: white; }
+.join-boarding-pass h2 { font-size: 20px; margin: 20px 0 8px; }
+.join-boarding-pass p { font-size: 14px; }
+.join-boarding-pass canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.join-boarding-pass .join-primary { margin-top: 10px; }
 
 .join-auth { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid #d6e1eb; border-radius: 12px; background: #fff; }
 .join-auth form { display: grid; gap: .6rem; margin-top: 1rem; }
@@ -262,5 +262,5 @@
 .join-auth a { display: inline-block; margin: .4rem 1rem .4rem 0; }
 
 .join-manual label { display: block; font-size: 14px; margin: 8px 0; }
-.join-shell .join-demo > button { width: auto; min-height: 32px; padding: 4px 0; border: 0; text-decoration: underline; font-size: 12px; color: #475569; }
-.join-demo { margin-bottom: 12px; }
+.join-shell .join-boarding-pass > button { width: auto; min-height: 32px; padding: 4px 0; border: 0; text-decoration: underline; font-size: 12px; color: #475569; }
+.join-boarding-pass { margin-bottom: 12px; }

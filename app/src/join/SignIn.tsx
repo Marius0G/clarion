@@ -105,7 +105,7 @@ export default function SignIn({ onFlight, en = false }: { onFlight: (flight: st
           const result = await auth.otp(phone);
           if (result.sent || result.code) {
             setOtp(true);
-            if (result.code) setMessage(`Cod demo: ${result.code}`);
+            if (result.code) setMessage(`Cod: ${result.code}`);
           } else setMessage(result.reason === 'window' ? 'Trimite primul mesaj cu butonul WhatsApp de mai sus.' : 'Cod netrimis. Folosește butonul WhatsApp.');
         }
       }); }}>

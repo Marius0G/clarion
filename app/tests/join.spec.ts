@@ -13,7 +13,7 @@ test("optional flight, WhatsApp and passenger share", async ({ page, context }) 
   await page.goto("/join?src=jury");
   await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
+  await page.locator(".join-scanner").getByRole("button", { name: "Boarding pass", exact: true }).click();
   await page.getByLabel("Număr zbor").fill("W6 3412");
   await expect(page.locator("#join-flights option")).toHaveAttribute("value", "W6 3412");
   await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
@@ -28,7 +28,7 @@ test("flight prefill and English", async ({ page }) => {
   await page.route("**/api/state", route => route.fulfill({ json: state }));
   await page.goto("/join?role=relative_arrivals&flight=W6%203412");
   await expect(page.getByRole("checkbox")).toHaveCount(0);
-  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
+  await page.locator(".join-scanner").getByRole("button", { name: "Boarding pass", exact: true }).click();
   await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
   await page.getByRole("button", { name: "Switch to English" }).click();
   await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
@@ -53,7 +53,7 @@ test("QR and scanner fallback", async ({ page }) => {
   );
   await page.goto("/join");
   await expect(
-    page.getByRole("button", { name: "Boarding pass", exact: true }),
+    page.locator(".join-scanner").getByRole("button", { name: "Boarding pass", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(
@@ -109,7 +109,7 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
   });
   await page.goto("/join");
 
-  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
+  await page.locator(".join-scanner").getByRole("button", { name: "Boarding pass", exact: true }).click();
   await page
     .locator("input[type=file]")
     .setInputFiles({
@@ -139,7 +139,7 @@ test('WhatsApp join uses the public token endpoint and shows the WhatsApp and Wa
   await page.goto('/join');
   await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeEnabled();
 
-  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
+  await page.locator('.join-scanner').getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Număr zbor').fill('W6 3412');
 
   await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
@@ -161,7 +161,7 @@ test('unknown flight shows a Romanian error and lets the passenger retry', async
   await page.route('**/api/join', route => route.fulfill({ status: 404, json: { error: 'Unknown flight' } }));
   await page.goto('/join');
 
-  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
+  await page.locator('.join-scanner').getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Număr zbor').fill('XX 9999');
 
   await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
@@ -169,26 +169,26 @@ test('unknown flight shows a Romanian error and lets the passenger retry', async
   await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeEnabled();
 });
 
-test('language switch drives join and demo requests and all success copy', async ({ page }) => {
+test('language switch drives join and boarding pass requests and success copy', async ({ page }) => {
   await page.route('**/api/state', route => route.fulfill({ json: state }));
   let request: unknown;
   await page.route('**/api/join', route => {
     request = route.request().postDataJSON();
     return route.fulfill({ json: { token: 'english-token', waLink: 'https://wa.me/15556318672?text=START' } });
   });
-  let demo: unknown;
+  let boardingPass: unknown;
   await page.route('**/api/join/demo', route => {
-    demo = route.request().postDataJSON();
+    boardingPass = route.request().postDataJSON();
     return route.fulfill({ status: 500, json: {} });
   });
   await page.goto('/join');
   await page.getByRole('button', { name: 'Switch to English' }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await page.getByRole('button', { name: 'Demo boarding pass', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('The demo boarding pass could not be created');
-  expect(demo).toEqual({ lang: 'en' });
+  await page.getByRole('region', { name: 'Boarding pass', exact: true }).getByRole('button', { name: 'Boarding pass', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Boarding pass unavailable');
+  expect(boardingPass).toEqual({ lang: 'en' });
 
-  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
+  await page.locator('.join-scanner').getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Flight number').fill('W6 3412');
 
   await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
@@ -200,7 +200,7 @@ test('language switch drives join and demo requests and all success copy', async
 
 test('sign-in buttons stay readable through login, hover and disabled states', async ({ page }) => {
   await page.route('**/api/state', route => route.fulfill({ json: state }));
-  await page.route('**/api/auth/otp', route => route.fulfill({ json: { sent: true } }));
+  await page.route('**/api/auth/otp', route => route.fulfill({ json: { sent: true, code: '123456' } }));
   await page.route('**/api/auth/verify', route => route.fulfill({ json: { session: 'test-session' } }));
   await page.route('**/api/auth/me', route => route.fulfill({ json: { phone: '+40712345678', role: 'passenger' } }));
   let finishLogout!: () => void;
@@ -216,6 +216,7 @@ test('sign-in buttons stay readable through login, hover and disabled states', a
   await expect(receive).toHaveCSS('color', 'rgb(255, 255, 255)');
   await auth.getByLabel('Telefon').fill('0712345678');
   await receive.click();
+  await expect(auth.getByRole('status')).toHaveText('Cod: 123456');
   await expect(auth.getByRole('button', { name: 'Alt număr' })).toHaveCSS('color', 'rgb(255, 255, 255)');
   await auth.getByLabel('Cod', { exact: true }).fill('123456');
   await auth.getByRole('button', { name: 'Verifică' }).click();
@@ -268,3 +269,23 @@ test('login link exchange restores the account and removes the single-use link',
   await expect(page).toHaveURL(/\/join$/);
   expect(await page.evaluate(() => localStorage.getItem('clarion.session'))).toBe('link-session');
 });
+
+for (const lang of ['ro', 'en']) {
+  test(`boarding pass copy and Wallet link stay concise (${lang})`, async ({ page }) => {
+    await page.route('**/api/state', route => route.fulfill({ json: state }));
+    const bcbp = 'M1' + 'PASSENGER/NAME'.padEnd(20) + 'E' + 'ABC1234' + 'CRA' + 'BGY' + 'W6 ' + '03412' + '304' + 'Y' + '012A' + '00001' + '1' + '00';
+    let request: unknown;
+    await page.route('**/api/join/demo', route => {
+      request = route.request().postDataJSON();
+      return route.fulfill({ json: { bcbp, token: 'boarding-token', waLink: 'https://wa.me/15556318672?text=START', walletUrl: 'https://pay.google.com/gp/v/save/boarding-token' } });
+    });
+    await page.goto(`/join?lang=${lang}`);
+    const boardingPass = page.getByRole('region', { name: 'Boarding pass', exact: true });
+    await boardingPass.getByRole('button', { name: 'Boarding pass', exact: true }).click();
+    await expect(boardingPass.getByRole('heading')).toHaveText('Boarding pass');
+    await expect(boardingPass.getByRole('img')).toHaveAccessibleName(lang === 'en' ? 'Boarding pass PDF417 barcode' : 'Cod de bare PDF417 boarding pass');
+    await expect(boardingPass.getByRole('link', { name: /Google Wallet/ })).toHaveAttribute('href', 'https://pay.google.com/gp/v/save/boarding-token');
+    await expect(page.locator('body')).not.toContainText(/demo|estimare|simulare|simulation|preview|not a travel ticket/i);
+    expect(request).toEqual({ lang });
+  });
+}

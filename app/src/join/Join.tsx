@@ -1,7 +1,7 @@
 import SignIn from "./SignIn";
 import { authHeaders } from "../backend/auth";
 import { useCallback, useEffect, useRef, useState } from "react";
-import DemoBoardingPass from "./DemoBoardingPass";
+import BoardingPass from "./BoardingPass";
 import WalletButton from "./WalletButton";
 import QRCode from "qrcode";
 import Scanner from "./Scanner";
@@ -248,8 +248,8 @@ export default function Join() {
                   <p className="join-note">
                     {scan.route} · {scan.date} ·{" "}
                     {t(
-                      "An dedus. Verifică data:",
-                      "Year inferred. Check date:",
+                      "Data:",
+                      "Date:",
                     )}{" "}
                     <input
                       aria-label={t("Data zborului", "Flight date")}
@@ -262,7 +262,7 @@ export default function Join() {
                   </p>
                 )}
               </div>
-              <DemoBoardingPass key={en ? "en" : "ro"} en={en} />
+              <BoardingPass key={en ? "en" : "ro"} en={en} />
               <p className="join-note">{t("Alertele vin pe WhatsApp după primul mesaj.", "Alerts arrive on WhatsApp after your first message.")}</p>
               {error && (
                 <p role="alert" className="join-error">

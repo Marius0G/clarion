@@ -7,7 +7,6 @@ export default function WalletButton({ subscriptionId, joinToken, en = false }: 
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const [demo, setDemo] = useState(false);
   async function save() {
     if (busy.current || (!subscriptionId && !joinToken)) return;
     busy.current = true;
@@ -29,7 +28,6 @@ export default function WalletButton({ subscriptionId, joinToken, en = false }: 
       const google = url.origin === 'https://pay.google.com' && url.pathname.startsWith('/gp/v/save/');
       const local = url.origin === window.location.origin && url.pathname === '/join/wallet-demo';
       if (!google && !local) throw new Error();
-      setDemo(result.demo);
       if (tab && !tab.closed) tab.location.replace(url.href);
       else window.location.assign(url.href);
     } catch {
@@ -60,7 +58,6 @@ export default function WalletButton({ subscriptionId, joinToken, en = false }: 
       {en ? 'Add to Google Wallet' : 'Adaugă în Google Wallet'}
     </button>
     {pending && <p role="status">{en ? 'Preparing pass…' : 'Se pregătește pass-ul…'}</p>}
-    {demo && <p role="status">{en ? 'Demo · Simulated Clarion pass.' : 'Mod demo · Pass Clarion de simulare.'}</p>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }
