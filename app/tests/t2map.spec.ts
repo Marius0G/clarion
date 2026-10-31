@@ -13,8 +13,8 @@ test('the T2 map draws every floor and zooms', async ({ page }) => {
   // Cropped to the building, not the whole Unity frame.
   expect(Number(initial.split(' ')[2])).toBeLessThan(3000)
   await page.getByRole('button', { name: 'Mărește' }).click()
-  const box = await page.getByTestId('t2-map-G').getAttribute('viewBox')
-  expect(Number(box!.split(' ')[2])).toBeLessThan(Number(initial.split(' ')[2]))
+  // Zoom glides, so wait for the view to settle smaller.
+  await expect.poll(async () => Number((await page.getByTestId('t2-map-G').getAttribute('viewBox'))!.split(' ')[2])).toBeLessThan(Number(initial.split(' ')[2]))
   await page.getByRole('button', { name: 'Toată harta' }).click()
   await expect(page.getByTestId('t2-map-G')).toHaveAttribute('viewBox', initial)
 

@@ -12,7 +12,9 @@ import './t2map.css'
  */
 export type ZoneState = 'normal' | 'near' | 'full'
 export interface ZoneView { state?: ZoneState | null; people?: number | null; waitMin?: number | null; closed?: boolean }
-export interface MapDot { x: number; z: number; level: Level }
+export interface MapDot { x: number; z: number; level: Level; kind?: 'pax' | 'staff' }
+/** What the map draws on top of the floor. Missing = on, except `heat` (off). */
+export interface MapLayers { dots?: boolean; heat?: boolean; labels?: boolean; points?: boolean; pins?: boolean }
 
 interface Props {
   level: Level
@@ -30,7 +32,31 @@ interface Props {
   markers?: { id: string; at: Pt; label: string }[]
   /** data-testid prefix for zones (`t2-zone-` by default). */
   testIdPrefix?: string
+  layers?: MapLayers
+  /** Fly to this zone whenever it changes (id on this level). */
+  focus?: string | null
+  /** Plain wheel / trackpad zooms (full-screen maps). Off: only ctrl/pinch, so the page keeps scrolling. */
+  wheelZoom?: boolean
+  /** + − 0 keys zoom while the page has no input focused. */
+  keys?: boolean
+  /** Hover card for a zone; null = no card. */
+  describe?: (id: string) => ReactNode
 }
+
+type Box = [number, number, number, number]
+/** Padded pixel box of a zone, kept at the floor's aspect ratio and never smaller than 1/8 of the floor. */
+function zoneBox(z: MapZone, full: Box): Box {
+  const xs: number[] = [], ys: number[] = []
+  for (const r of z.polygons_px) for (const [x, y] of r.outer) { xs.push(x); ys.push(y) }
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
+  const ratio = full[3] / full[2]
+  let w = Math.max((x1 - x0) * 2.4, full[2] / 8), h = w * ratio
+  if (h < (y1 - y0) * 2.4) { h = (y1 - y0) * 2.4; w = h / ratio }
+  w = Math.min(w, full[2]); h = w * ratio
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
+  return [Math.min(Math.max(cx - w / 2, full[0]), full[0] + full[2] - w), Math.min(Math.max(cy - h / 2, full[1]), full[1] + full[3] - h), w, h]
+}
+const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 
 /** Content box of a floor (zones + points), padded, so the drawing fills the panel instead of the Unity frame. */
 const boundsCache = new Map<Level, [number, number, number, number]>()
@@ -114,7 +140,8 @@ function PointIcon({ p, s, cameras }: { p: MapPoint; s: number; cameras: boolean
   }
 }
 
-export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = false, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-' }: Props) {
+export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = false, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-', layers = {}, focus = null, wheelZoom = false, keys = false, describe }: Props) {
+  const show = { dots: layers.dots !== false, heat: layers.heat === true, labels: layers.labels !== false, points: layers.points !== false, pins: layers.pins !== false }
   const fr = frames[level]
   const m = fr.ppm
   const fs = contentBox(level)[2] / 95
@@ -122,7 +149,6 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   const here = zones.filter(z => z.level === level)
   const interior = level !== 'X'
   const lit = new Set(highlight)
-  type Box = [number, number, number, number]
   const full: Box = contentBox(level)
   // The view belongs to one floor; switching floors shows the whole new floor.
   const [zoom, setZoom] = useState<{ level: Level; v: Box }>({ level, v: full })
@@ -132,14 +158,58 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     return { level, v: typeof next === 'function' ? next(cur) : next }
   })
   const svgRef = useRef<SVGSVGElement>(null)
+  const anim = useRef(0)
+  const viewRef = useRef(view)
+  useEffect(() => { viewRef.current = view })
+  /** Glide to a box (buttons, double-click, focus); drag and wheel stay immediate. */
+  const flyTo = (to: Box, ms = 420) => {
+    cancelAnimationFrame(anim.current)
+    const from = viewRef.current, t0 = performance.now()
+    if (ms <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) ms = 1
+    const step = (now: number) => {
+      const k = ease(Math.min(1, (now - t0) / ms))
+      setView(from.map((v, i) => v + (to[i]! - v) * k) as Box)
+      if (k < 1) anim.current = requestAnimationFrame(step)
+    }
+    anim.current = requestAnimationFrame(step)
+  }
+  useEffect(() => () => cancelAnimationFrame(anim.current), [])
+  /** Hover card position, relative to the map, measured at pointer time. */
+  const [hover, setHover] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null)
+  const hoverAt = (id: string, e: { clientX: number; clientY: number }) => {
+    const r = svgRef.current?.getBoundingClientRect()
+    if (r) setHover({ id, x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height })
+  }
   const drag = useRef<{ x: number; y: number; v: [number, number, number, number]; moved: boolean } | null>(null)
   const dragged = useRef(false)
   const click = (id: string) => { if (!dragged.current) onZone?.(id) }
-  const zoomBy = (k: number, cx?: number, cy?: number) => setView(([x, y, w, h]) => {
+  const zoomed = view[2] < full[2] - 1
+  const scaled = ([x, y, w]: Box, k: number, cx?: number, cy?: number): Box => {
     const nw = Math.min(full[2], Math.max(full[2] / 8, w * k)), nh = nw * (full[3] / full[2])
-    const px = cx ?? x + w / 2, py = cy ?? y + h / 2
-    const nx = px - ((px - x) * nw) / w, ny = py - ((py - y) * nh) / h
+    const px = cx ?? x + w / 2, py = cy ?? y + (w * full[3] / full[2]) / 2
+    const nx = px - ((px - x) * nw) / w, ny = py - ((py - y) * nh) / (w * full[3] / full[2])
     return [Math.min(Math.max(nx, full[0]), full[0] + full[2] - nw), Math.min(Math.max(ny, full[1]), full[1] + full[3] - nh), nw, nh]
+  }
+  const zoomBy = (k: number, cx?: number, cy?: number) => flyTo(scaled(viewRef.current, k, cx, cy), 260)
+  // Fly to the focused zone when it changes; back to the whole floor when it clears.
+  const focusZone = focus ? zones.find(z => z.id === focus && z.level === level) : undefined
+  useEffect(() => {
+    if (focusZone) flyTo(zoneBox(focusZone, contentBox(level)), 520)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusZone?.id, level])
+  useEffect(() => {
+    if (!keys) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, select, textarea, [contenteditable]')) return
+      if (e.key === '+' || e.key === '=') zoomBy(0.66)
+      else if (e.key === '-' || e.key === '_') zoomBy(1.5)
+      else if (e.key === '0') flyTo(contentBox(level))
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   })
   const toSvg = (clientX: number, clientY: number): Pt => {
     const r = svgRef.current!.getBoundingClientRect()
@@ -150,14 +220,27 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     const el = svgRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
+      if (!wheelZoom && !e.ctrlKey && !e.metaKey) return
       e.preventDefault()
+      cancelAnimationFrame(anim.current)
+      // A trackpad two-finger scroll pans; pinch (ctrl) and a mouse wheel zoom.
+      const pan = wheelZoom && !e.ctrlKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0.5
+      if (pan) {
+        const r0 = el.getBoundingClientRect()
+        setZoom(z => {
+          const b = contentBox(level)
+          const v: Box = z.level === level ? z.v : b
+          const nx = v[0] + (e.deltaX / r0.width) * v[2], ny = v[1] + (e.deltaY / r0.height) * v[3]
+          return { level, v: [Math.min(Math.max(nx, b[0]), b[0] + b[2] - v[2]), Math.min(Math.max(ny, b[1]), b[1] + b[3] - v[3]), v[2], v[3]] }
+        })
+        return
+      }
       const r = el.getBoundingClientRect()
       setZoom(z => {
         const b = contentBox(level)
         const v: Box = z.level === level ? z.v : b
         const cx = v[0] + ((e.clientX - r.left) / r.width) * v[2], cy = v[1] + ((e.clientY - r.top) / r.height) * v[3]
-        const k = Math.exp(e.deltaY * 0.01)
+        const k = Math.exp(Math.max(-1, Math.min(1, e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025))) * (e.ctrlKey ? 4 : 1))
         const nw = Math.min(b[2], Math.max(b[2] / 8, v[2] * k)), nh = nw * (b[3] / b[2])
         const nx = cx - ((cx - v[0]) * nw) / v[2], ny = cy - ((cy - v[1]) * nh) / v[3]
         return { level, v: [Math.min(Math.max(nx, b[0]), b[0] + b[2] - nw), Math.min(Math.max(ny, b[1]), b[1] + b[3] - nh), nw, nh] }
@@ -165,8 +248,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [level, fr.width, fr.height])
-  const zoomed = view[2] < full[2] - 1
+  }, [level, fr.width, fr.height, wheelZoom])
 
   const zoneEls: ReactNode[] = []
   const labels: ReactNode[] = []
@@ -179,8 +261,11 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     zoneEls.push(<g key={z.id} className={cls} data-zone={z.id} data-testid={`${testIdPrefix}${z.id}`} aria-pressed={onZone ? selected === z.id : undefined}
       role={onZone ? 'button' : undefined} tabIndex={onZone ? 0 : undefined} aria-label={placeName(z, lang)}
       onClick={onZone ? () => click(z.id) : undefined}
+      onPointerEnter={describe ? e => hoverAt(z.id, e) : undefined}
+      onPointerMove={describe ? e => { if (!drag.current?.moved) hoverAt(z.id, e) } : undefined}
+      onPointerLeave={describe ? () => setHover(h => h?.id === z.id ? null : h) : undefined}
       onKeyDown={onZone ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); click(z.id) } } : undefined}>
-      <title>{`${placeName(z, lang)}${z.approx ? (lang === 'en' ? ' (approximate)' : ' (aproximativ)') : ''}`}</title>
+      {!describe && <title>{`${placeName(z, lang)}${z.approx ? (lang === 'en' ? ' (approximate)' : ' (aproximativ)') : ''}`}</title>}
       <path className="fill" d={d} fillRule="evenodd" />
       <g clipPath={`url(#t2c-${z.id})`} className="detail">
         <g transform={`translate(${fmt(f.cx)} ${fmt(f.cy)}) rotate(${fmt(f.angle)})`}>{zoneDetail({ zone: z, f, m, pts, base })}</g>
@@ -218,7 +303,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   return <div className={`t2-wrap ${className ?? ''}`}>
   <svg ref={svgRef} className={`t2map ${interior ? 'interior' : 'exterior'}${zoomed ? ' zoomed' : ''}`} viewBox={view.map(fmt).join(' ')}
     role="group" aria-label={fr.title} data-testid={`t2-map-${level}`}
-    onPointerDown={e => { if (!zoomed || e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, v: view, moved: false }; dragged.current = false }}
+    onPointerDown={e => { if (!zoomed || e.button !== 0) return; cancelAnimationFrame(anim.current); setHover(null); drag.current = { x: e.clientX, y: e.clientY, v: view, moved: false }; dragged.current = false }}
     onPointerMove={e => {
       const d = drag.current
       if (!d) return
@@ -230,7 +315,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       setView([Math.min(Math.max(nx, full[0]), full[0] + full[2] - d.v[2]), Math.min(Math.max(ny, full[1]), full[1] + full[3] - d.v[3]), d.v[2], d.v[3]])
     }}
     onPointerUp={() => { drag.current = null; setTimeout(() => { dragged.current = false }, 0) }}
-    onDoubleClick={e => { const [x, y] = toSvg(e.clientX, e.clientY); zoomBy(zoomed ? 1 / 0.5 : 0.5, x, y) }}>
+    onDoubleClick={e => { const [x, y] = toSvg(e.clientX, e.clientY); zoomBy(view[2] < full[2] / 3 ? 2 : 0.5, x, y) }}>
     <defs>
       <pattern id={`t2-tiles-${m}`} width={1.2 * m} height={1.2 * m} patternUnits="userSpaceOnUse">
         <path d={`M${1.2 * m},0V${1.2 * m}H0`} className="p-tile" />
@@ -247,6 +332,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       <pattern id={`t2-hatch-${m}`} width={1.2 * m} height={1.2 * m} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <line x1={0} y1={0} x2={0} y2={1.2 * m} className="p-hatch" />
       </pattern>
+      <filter id={`t2-blur-${m}`} x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation={1.6 * m} /></filter>
       {here.map(z => <clipPath key={z.id} id={`t2c-${z.id}`}><path d={z.polygons_px.map(ringPath).join('')} clipRule="evenodd" /></clipPath>)}
     </defs>
     <style>{`.t2map .d-seat{fill:url(#t2-seats-${m})}.t2map .d-steps{fill:url(#t2-steps-${m})}.t2map .d-stalls{fill:url(#t2-stalls-${m})}.t2map.interior .t2-zone .fill{--tile:url(#t2-tiles-${m})}.t2map .t2-zone.approx .detail{--hatch:url(#t2-hatch-${m})}`}</style>
@@ -266,24 +352,27 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       <text x={footLabel[0]} y={footLabel[1]} fontSize={fs * 0.9}>Terminal T2</text>
     </g>}
     <g className="t2-zones">{zoneEls}</g>
-    <g className="t2-points" aria-hidden="true">
+    {show.heat && <g className="t2-heat" aria-hidden="true" filter={`url(#t2-blur-${m})`}>
+      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(2.4 * m)} /> })}
+    </g>}
+    {show.points && <g className="t2-points" aria-hidden="true">
       {points.filter(p => p.level === level).map(p => <PointIcon key={p.id} p={p} s={icon} cameras={cameras} />)}
-    </g>
+    </g>}
     {routeD && <g className="t2-route" aria-label="Traseu">
       <path d={routeD} className="halo" strokeWidth={1.6 * m} />
       <path d={routeD} className="line" strokeWidth={0.7 * m} />
       {end && <circle cx={end[0]} cy={end[1]} r={1.1 * m} className="end" />}
     </g>}
-    <g className="t2-dots" aria-hidden="true">
-      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} r={fmt(Math.max(0.6 * m, 2.6))} style={{ transform: `translate(${fmt(x)}px, ${fmt(y)}px)` }} /> })}
-    </g>
-    <g className="t2-labels">{labels}</g>
-    <g className="t2-pins">
+    {show.dots && <g className="t2-dots" aria-hidden="true" data-testid="map-dots">
+      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} className={d.kind === 'staff' ? 'staff' : undefined} r={fmt(Math.max(0.6 * m, 2.6))} style={{ transform: `translate(${fmt(x)}px, ${fmt(y)}px)` }} /> })}
+    </g>}
+    {show.labels && <g className="t2-labels">{labels}</g>}
+    {show.pins && <g className="t2-pins">
       {markers.map(mk => <g key={mk.id} className="t2-pin" transform={`translate(${fmt(mk.at[0])} ${fmt(mk.at[1])}) scale(${fmt(fs / 10)})`} data-testid="report-pin" role="img" aria-label={`Raport: ${mk.label}`}>
         <title>{mk.label}</title>
         <path d="M0 0 L-7 -13 A8 8 0 1 1 7 -13 Z" /><circle cy={-17} r={3} />
       </g>)}
-    </g>
+    </g>}
     {!zoomed && <><g className="t2-north" transform={`translate(${view[0] + view[2] - fs * 2} ${view[1] + fs * 2.2})`} aria-hidden="true">
       <path d={`M0,${-fs * 1.2}L${fs * 0.55},${fs * 0.5}L0,${fs * 0.15}L${-fs * 0.55},${fs * 0.5}Z`} /><text y={fs * 1.6} fontSize={fs * 0.8}>N</text>
     </g>
@@ -291,10 +380,15 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       <path d={`M0,0H${25 * m}M0,${-fs * 0.3}V${fs * 0.3}M${25 * m},${-fs * 0.3}V${fs * 0.3}`} /><text x={25 * m + fs * 0.4} y={fs * 0.3} fontSize={fs * 0.8}>25 m</text>
     </g></>}
   </svg>
+  {describe && hover && (() => {
+    const card = describe(hover.id)
+    if (!card) return null
+    return <div className={`t2-card${hover.x > hover.w - 260 ? ' left' : ''}${hover.y > hover.h - 160 ? ' up' : ''}`} style={{ left: hover.x, top: hover.y }} role="tooltip" data-testid="map-card">{card}</div>
+  })()}
   <div className="t2-zoom" role="group" aria-label="Zoom">
     <button type="button" onClick={() => zoomBy(0.66)} aria-label="Mărește">+</button>
     <button type="button" onClick={() => zoomBy(1.5)} aria-label="Micșorează" disabled={!zoomed}>−</button>
-    <button type="button" onClick={() => setView(full)} aria-label="Toată harta" disabled={!zoomed}>⤢</button>
+    <button type="button" onClick={() => flyTo(full)} aria-label="Toată harta" disabled={!zoomed}>⤢</button>
   </div>
   </div>
 }

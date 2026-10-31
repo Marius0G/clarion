@@ -153,3 +153,19 @@
 .t2-legend .ic.i-exit { background: #16a34a; }
 .t2-legend .ic.i-vert { background: #fff; border: 2px solid #8b5cf6; border-radius: 50%; }
 .t2-legend .ic.i-info { background: #2563eb; border-radius: 50%; }
+
+/* Live layers: dots glide between camera snapshots, density as a soft heat, staff in accent */
+.t2-dots circle { transition: transform 1s linear; }
+.t2-dots circle.staff { fill: #f59e0b; fill-opacity: 1; }
+.t2-heat { pointer-events: none; mix-blend-mode: multiply; }
+.t2-heat circle { fill: #ef4444; fill-opacity: .13; }
+@media (prefers-reduced-motion: reduce) { .t2-dots circle { transition: none; } }
+
+/* Hover card */
+.t2-card { position: absolute; z-index: 5; transform: translate(14px, 14px); min-width: 180px; max-width: 260px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(255, 255, 255, .97); box-shadow: 0 8px 24px rgba(15, 23, 42, .16), 0 0 0 1px rgba(15, 23, 42, .06); pointer-events: none;
+  font: 400 12px/1.4 'Geist', system-ui, sans-serif; color: #111827; animation: t2-card-in .12s ease-out; }
+.t2-card.left { transform: translate(calc(-100% - 14px), 14px); }
+.t2-card.up { transform: translate(14px, calc(-100% - 14px)); }
+.t2-card.left.up { transform: translate(calc(-100% - 14px), calc(-100% - 14px)); }
+@keyframes t2-card-in { from { opacity: 0; } }
