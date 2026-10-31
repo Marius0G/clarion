@@ -4,6 +4,7 @@ import { engineRuntime } from "./runtime.js";
 const randomUUID = () => crypto.randomUUID();
 import {
   roles,
+  waveRoles,
   isRole,
   isChannel,
   type Agent,
@@ -532,8 +533,9 @@ export class Engine {
     situation: Situation,
     flight?: string,
     extra: Record<string, string> = {},
+    only: readonly Role[] = roles,
   ): Draft[] {
-    const created = roles.flatMap((role) =>
+    const created = only.flatMap((role) =>
       (["ro", "en"] as const).map((lang) => ({
         messageId: randomUUID(),
         role,
@@ -574,7 +576,7 @@ export class Engine {
         from: new Date(Date.now() + i * minutes * 60000).toISOString(),
         to: new Date(Date.now() + (i + 1) * minutes * 60000).toISOString(),
       },
-      roles: [...roles],
+      roles: this.rolesInWave(i + 1),
       opened: false,
     }));
   }
@@ -779,7 +781,7 @@ export class Engine {
           wave: String(wave.wave),
           window: `${clock(wave.window.from)}–${clock(wave.window.to)}`,
         };
-        const drafts = this.draft("reopen_wave", undefined, extra);
+        const drafts = this.draft("reopen_wave", undefined, extra, wave.roles);
         await this.sendDrafts(drafts, wave.wave, extra);
         break;
       }
@@ -800,9 +802,7 @@ export class Engine {
               agentId: a.agentId,
               role: a.role,
               channel: a.channel,
-              wave:
-                1 +
-                Math.floor(seeded(a.agentId) * (this.options.waveCount ?? 3)),
+              wave: this.waveForRole(a.role),
             });
         break;
       }
@@ -999,7 +999,14 @@ export class Engine {
     this.changed();
   }
   private subscriptionWave(s: Subscription) {
-    return 1 + Math.floor(seeded(s.id) * (this.options.waveCount ?? 3));
+    return this.waveForRole(s.role);
+  }
+  private waveForRole(role: Role) {
+    const group = waveRoles.findIndex((roles) => roles.includes(role));
+    return Math.min(group + 1, this.options.waveCount ?? 3);
+  }
+  private rolesInWave(wave: number) {
+    return roles.filter((role) => this.waveForRole(role) === wave);
   }
   private newReceipt(
     draft: Draft,

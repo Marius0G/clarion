@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, readLatency, seeded } from "../src/engine.js";
-import { roles, type Envelope, type Role } from "../src/types.js";
+import { roles, waveRoles, type Envelope, type Role } from "../src/types.js";
 import { render, situations } from "../src/messages.js";
 import type { Outbound } from "../src/channels/types.js";
 import { wazeFeed } from "../src/channels/waze.js";
@@ -104,6 +104,38 @@ describe("state machine and dispatch", () => {
         )
         .map((t) => t.phase),
     ).toEqual(["detection", "suspended", "recovery", "normal"]);
+  });
+  it("reopens by role, in the team's order", async () => {
+    const send = vi.fn(async (_m: Outbound) => ({
+      delivered: true,
+      simulated: false,
+    }));
+    const e = new Engine({ adapters: { telegram: send } });
+    for (const [i, role] of roles.entries())
+      await e.telegramStart(String(i + 1), `${role}__`);
+    await suspend(e);
+    await e.handle(event("console.reopen"));
+    expect(e.state.waves.map((w) => [...w.roles].sort())).toEqual(
+      waveRoles.map((group) => [...group].sort()),
+    );
+    for (const group of waveRoles) {
+      send.mockClear();
+      await e.handle(
+        event("console.open_wave", { wave: waveRoles.indexOf(group) + 1 }),
+      );
+      expect(send.mock.calls.map(([m]) => m.role).sort()).toEqual(
+        [...group].sort(),
+      );
+    }
+  });
+  it("puts every role in exactly one wave, also with fewer waves", async () => {
+    expect([...waveRoles.flat()].sort()).toEqual([...roles].sort());
+    const e = new Engine({ waveCount: 2 });
+    await suspend(e);
+    await e.handle(event("console.reopen"));
+    expect(e.state.waves.flatMap((w) => w.roles).sort()).toEqual(
+      [...roles].sort(),
+    );
   });
   it("supports waves disabled", async () => {
     const e = new Engine({ wavesEnabled: false });

@@ -12,6 +12,12 @@ export const roles = [
   "public",
 ] as const;
 export type Role = (typeof roles)[number];
+/** Recovery order decided by the team: services and transport, then people nearby, then everyone else. */
+export const waveRoles: readonly (readonly Role[])[] = [
+  ["staff", "isu_smurd", "taxi", "rideshare", "rent_a_car_ubt"],
+  ["passenger_road", "passenger_terminal", "relative_arrivals"],
+  ["passenger_home", "public", "alt_airport"],
+];
 export const channels = ["telegram", "sms", "whatsapp", "webpush"] as const;
 export type Channel = (typeof channels)[number];
 export type Lang = "ro" | "en";
