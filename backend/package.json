@@ -12,7 +12,8 @@
     "build": "tsc",
     "test": "vitest run",
     "demo": "tsx scripts/demo.ts",
-    "demo:pitch": "tsx scripts/demo-pitch.ts"
+    "demo:pitch": "tsx scripts/demo-pitch.ts",
+    "demo:terminal": "tsx scripts/demo-terminal.ts"
   },
   "dependencies": {
     "ws": "^8.18.3"
