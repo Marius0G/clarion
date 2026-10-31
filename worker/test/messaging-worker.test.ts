@@ -77,6 +77,7 @@ describe('passenger messaging in the Tower', () => {
 
     // Evacuation: vision's plan arrives in time -> routes; agent.route for the sim agent.
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['check_in:2'] })).status).toBe(202);
+    await expect.poll(() => u.of('ops.command').length, { timeout: 10000 }).toBeGreaterThan(0);
     const command = u.of('ops.command').at(-1);
     u.ws.send(envelope('evac.plan', { id: command.id, blocked: ['check_in:2'], clearSec: 120, exits: [{ exit: 'exit_1', people: 10, clearSec: 60 }],
       routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] }));
