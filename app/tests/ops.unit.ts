@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest'
-import { accuracyRows, adviceText, commandLabel, liveDots, loadState, simClock, zoneStats } from '../src/console/opsZones'
+import { accuracyRows, adviceText, commandLabel, commandTouchesZone, redirectTargets, liveDots, loadState, simClock, zoneStats } from '../src/console/opsZones'
 import { inside, plan } from '../src/console/terminal'
 import { openReports } from '../src/backend/reports'
 import type { SimSnapshot } from '../src/backend/sim'
@@ -96,4 +96,26 @@ it('labels commands with short nouns and formats sim time', () => {
   expect(simClock(52200)).toBe('14:30:00')
   expect(simClock(86400 + 61)).toBe('00:01:01')
   expect(simClock(null)).toBe('—')
+})
+
+it('reads blocked zones independently of camera state and only redirects to open peers', () => {
+  const stats = zoneStats(plan, sim({ vision: false, blocked: ['check_in:2', 'security'] }))
+  const source = stats.find(z => z.id === 'check_in:1')!
+  expect(source.closed).toBe(false)
+  expect(stats.find(z => z.id === 'security')).toMatchObject({ closed: true, people: null })
+  expect(redirectTargets(stats, source)).toEqual([])
+  const open = zoneStats(plan, sim({}))
+  expect(redirectTargets(open, open.find(z => z.id === 'check_in:1')!).map(z => z.id)).toEqual(['check_in:2'])
+  expect(redirectTargets(open, open.find(z => z.id === 'security')!)).toEqual([])
+  expect(redirectTargets(open, open.find(z => z.id === 'bag_drop:1')!).map(z => z.id)).toEqual(['bag_drop:2'])
+})
+
+it('associates each decision with its zones and labels redirect, close and open', () => {
+  expect(commandTouchesZone({ type: 'redirect', from: 'check_in:1', to: 'check_in:2' }, 'check_in:2')).toBe(true)
+  expect(commandTouchesZone({ type: 'evacuate', zones: ['security', 'gate_1'] }, 'gate_1')).toBe(true)
+  expect(commandTouchesZone({ type: 'close', zone: 'security' }, 'gate_1')).toBe(false)
+  expect(commandTouchesZone({ type: 'staff', zone: 'security', delta: 1 }, 'security')).toBe(true)
+  expect(commandLabel({ type: 'redirect', from: 'check_in:1', to: 'check_in:2' }, plan)).toBe('Redirecționare Check-in 1 → Check-in 2')
+  expect(commandLabel({ type: 'close', zone: 'security' }, plan)).toBe('Închidere Securitate')
+  expect(commandLabel({ type: 'open', zone: 'security' }, plan)).toBe('Deschidere Securitate')
 })

@@ -20,6 +20,8 @@ export interface SimSnapshot {
   ops?: OpsRecord[]
   /** D12: lanes / desks open per zone, held by the backend. */
   lanes?: Record<string, number>
+  /** Zones closed or evacuated by the backend. */
+  blocked?: string[]
   /** D0: Unity's truth, only for the accuracy panel. */
   truth?: { zones: Record<string, { waiting: number; waitMin: number | null }>; at: string } | null
 }

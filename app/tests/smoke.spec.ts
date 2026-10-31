@@ -6,7 +6,7 @@ import { plan } from '../src/console/terminal'
 const shots = process.env.OPS_SHOTS || 'test-results'
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type, Authorization', 'access-control-allow-methods': 'GET, POST, OPTIONS' }
 const row = (waiting: number, waitMin: number | null, extra = {}) => ({ waiting, waitMin, capacity: null, staff: null, coverage: 0.8, forecast: null, peak: waiting, updatedAt: '2026-10-31T12:00:00Z', stale: false, source: 'vision', ...extra })
-const empty = { connected: false, vision: false, lastSeen: null, run: { scenario: null, arm: null, coverage: null, seed: null }, simTime: null, speed: null, counts: {}, actions: {}, phones: { unknown: 0, notified: 0, read: 0, acting: 0 }, metrics: {}, flow: {}, flights: [], flightsAt: null, positions: null, ops: [], lanes: { 'check_in:1': 2, 'bag_drop:1': 1, 'check_in:2': 2, 'bag_drop:2': 1, security: 2 }, truth: null }
+const empty = { connected: false, vision: false, lastSeen: null, run: { scenario: null, arm: null, coverage: null, seed: null }, simTime: null, speed: null, counts: {}, actions: {}, phones: { unknown: 0, notified: 0, read: 0, acting: 0 }, metrics: {}, flow: {}, flights: [], flightsAt: null, positions: null, ops: [], blocked: [], lanes: { 'check_in:1': 2, 'bag_drop:1': 1, 'check_in:2': 2, 'bag_drop:2': 1, security: 2 }, truth: null }
 
 /** Deterministic dots spread inside the zones the cameras see. Vision sends no kind. */
 function crowd(counts: Record<string, number>) {
@@ -66,9 +66,12 @@ test('no cameras: lanes from the backend, zones unknown, commands report Unity o
   await expect(page.getByTestId('row-security').getByTestId('lanes')).toHaveText('2')
   await expect(page.getByTestId('row-security').getByTestId('people')).toHaveText('necunoscut')
   await expect(page.getByTestId('zone-security')).toHaveClass(/ops-unknown/)
-  await page.getByRole('button', { name: 'Securitate +1 linie' }).click()
+  await page.getByTestId('zone-security').click()
+  await expect(page.getByTestId('zone-panel')).toBeVisible()
+  await page.getByRole('button', { name: '+1 linie', exact: true }).click()
   await expect(page.getByTestId('command').first()).toContainText('Securitate +1 linie')
   await expect(page.getByTestId('command').first()).toContainText('Unity offline')
+  await expect(page.getByTestId('zone-panel')).toContainText('Unity offline')
   expect(posted).toEqual([{ type: 'staff', zone: 'security', delta: 1 }])
 })
 
@@ -82,7 +85,11 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
     const command = { ...body, id: `op-${posted.length}`, status: 'sent', sentAt: new Date(Date.now() + posted.length).toISOString(), ackedAt: null }
     const lanes = { ...(sim.lanes as Record<string, number>) }
     if (body.type === 'staff') lanes[body.zone as string] = Math.max(0, (lanes[body.zone as string] ?? 0) + (body.delta as number))
-    sim = { ...sim, lanes, ops: [command, ...(sim.ops as unknown[])] }
+    const blocked = new Set(sim.blocked as string[])
+    if (body.type === 'close') blocked.add(body.zone as string)
+    if (body.type === 'open') blocked.delete(body.zone as string)
+    if (body.type === 'evacuate') for (const id of body.zones as string[]) blocked.add(id)
+    sim = { ...sim, lanes, blocked: [...blocked], ops: [command, ...(sim.ops as unknown[])] }
     await route.fulfill({ status: 202, json: { connected: true, command }, headers: cors })
   }, reports)
   await page.goto('/')
@@ -93,7 +100,8 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   await expect(security.getByTestId('people')).toHaveText('88')
   await expect(security.getByTestId('lanes')).toHaveText('2')
   await expect(security.getByTestId('wait')).toHaveText('14 min')
-  await expect(security.getByTestId('advice')).toHaveText('Deschide o linie până la 14:05, altfel 18 min')
+  await page.getByTestId('zone-security').click()
+  await expect(page.getByTestId('zone-panel').getByTestId('advice')).toHaveText('Deschide o linie până la 14:05, altfel 18 min')
   await expect(page.getByTestId('zone-security')).toHaveClass(/ops-near/)
   await expect(page.getByTestId('zone-check_in:1')).toHaveClass(/ops-full/)
   await expect(page.getByTestId('zone-check_in:2')).toHaveClass(/ops-normal/)
@@ -103,7 +111,7 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   await expect(page.getByTestId('row-airside').getByTestId('people')).toHaveText('necunoscut')
   await expect(page.getByTestId('zone-airside')).toHaveClass(/ops-unknown/)
   await expect(page.getByTestId('row-gate_1').getByTestId('people')).toHaveText('32')
-  await expect(page.getByTestId('row-gate_1').getByRole('button')).toHaveCount(0)
+  await expect(page.getByTestId('zone-panel').getByRole('button', { name: 'Mută', exact: true })).toBeDisabled()
   await expect(page.locator('.ops-dots circle')).toHaveCount(live.positions.people.length)
   const accuracy = page.getByTestId('accuracy')
   await expect(accuracy.getByRole('heading')).toHaveText('Acuratețe')
@@ -113,26 +121,50 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   await expect(page.getByTestId('report-pin')).toHaveAttribute('aria-label', 'Raport: Bagaj abandonat la poarta 3')
   await page.screenshot({ path: join(shots, 'v2-desktop.png') })
 
-  await page.getByRole('button', { name: 'Check-in 2 +1 linie' }).click()
+  await page.getByTestId('row-check_in:2').getByRole('button').click()
+  await expect(page.getByTestId('zone-panel')).toHaveCount(1)
+  await page.getByRole('button', { name: '+1 linie', exact: true }).click()
   await expect.poll(() => posted.at(-1)).toEqual({ type: 'staff', zone: 'check_in:2', delta: 1 })
   await expect(page.getByTestId('row-check_in:2').getByTestId('lanes')).toHaveText('3')
   await expect(page.getByTestId('command').first()).toContainText('Check-in 2 +1 linie')
   await expect(page.getByTestId('command').first()).toContainText('Trimis')
+  await expect(page.getByTestId('zone-panel')).toContainText('Trimis')
   sim = { ...sim, ops: (sim.ops as Record<string, unknown>[]).map(o => ({ ...o, status: 'acked', ackedAt: new Date().toISOString() })) }
   await expect(page.getByTestId('command').first()).toContainText('Confirmat')
-  await page.getByRole('button', { name: 'Bagaje 2 −1 linie' }).click()
+  await expect(page.getByTestId('zone-panel')).toContainText('Confirmat')
+  await page.getByTestId('row-bag_drop:2').getByRole('button').click()
+  await page.getByRole('button', { name: '−1 linie', exact: true }).click()
   await expect.poll(() => posted.at(-1)).toEqual({ type: 'staff', zone: 'bag_drop:2', delta: -1 })
-  await expect(page.getByRole('button', { name: 'Bagaje 2 −1 linie' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '−1 linie', exact: true })).toBeDisabled()
+
+  await page.getByTestId('zone-check_in:1').click()
+  await page.getByRole('combobox', { name: 'Destinație' }).selectOption('check_in:2')
+  await page.getByRole('button', { name: 'Mută', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'redirect', from: 'check_in:1', to: 'check_in:2' })
+  await page.getByRole('button', { name: 'Închide', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'close', zone: 'check_in:1' })
+  const closed = page.getByTestId('zone-check_in:1')
+  await expect(closed).toHaveClass(/ops-closed/)
+  await expect(closed.locator('polygon')).toHaveCSS('fill', 'rgb(209, 213, 219)')
+  await page.getByRole('button', { name: 'Deschide', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'open', zone: 'check_in:1' })
+  await expect(closed).not.toHaveClass(/ops-closed/)
 
   await page.getByTestId('zone-gate_1').click()
-  await page.getByRole('checkbox', { name: 'Selectează Zona plecări' }).check()
-  await expect(page.getByTestId('zone-airside')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('zone-panel').getByRole('button', { name: '+1 linie', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Evacuează', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'evacuate', zones: ['gate_1'] })
+  await page.getByRole('checkbox', { name: 'Adaugă la evacuare' }).check()
+  await page.getByTestId('zone-airside').click()
+  await page.getByRole('checkbox', { name: 'Adaugă la evacuare' }).check()
   await expect(page.locator('.ops-hint')).toHaveText('Poarta 1, Zona plecări')
-  await page.screenshot({ path: join(shots, 'v2-desktop-selected.png') })
   await page.getByRole('button', { name: 'Evacuare · 2' }).click()
   await expect.poll(() => posted.at(-1)).toEqual({ type: 'evacuate', zones: ['gate_1', 'airside'] })
   await expect(page.getByTestId('command').first()).toContainText('Evacuare Poarta 1, Zona plecări')
-  await expect(page.getByRole('button', { name: 'Evacuare' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Evacuare', exact: true })).toBeDisabled()
+
+  await page.getByTestId('zone-security').click()
+  await page.screenshot({ path: join(shots, 'zone-panel-desktop.png') })
 
   // Cameras gone: numbers turn unknown, lanes stay.
   sim = { ...sim, vision: false, connected: false }
@@ -148,9 +180,21 @@ test('fits a phone screen without horizontal scroll', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByTestId('row-security').getByTestId('people')).toHaveText('88')
   await expect(page.getByTestId('report-pin')).toHaveCount(1)
+  await page.getByTestId('zone-security').click()
+  await expect(page.getByTestId('zone-panel')).toBeInViewport()
   const width = await page.locator('.ops').evaluate(el => [el.scrollWidth, el.clientWidth])
   expect(width[0]).toBeLessThanOrEqual(width[1]!)
-  await page.screenshot({ path: join(shots, 'v2-phone.png') })
+  await page.screenshot({ path: join(shots, 'zone-panel-phone.png') })
   await page.locator('.ops').evaluate(el => el.scrollTo(0, el.scrollHeight))
   await page.screenshot({ path: join(shots, 'v2-phone-list.png') })
+})
+
+test('rejected decisions stay visible in the zone panel without closing the zone', async ({ page }) => {
+  await mock(page, () => live, async route => { await route.fulfill({ status: 400, json: { error: 'Invalid ops command' }, headers: cors }) })
+  await page.goto('/')
+  await page.getByTestId('zone-check_in:1').focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: 'Închide', exact: true }).click()
+  await expect(page.getByTestId('zone-panel')).toContainText('Respins')
+  await expect(page.getByTestId('zone-check_in:1')).not.toHaveClass(/ops-closed/)
 })

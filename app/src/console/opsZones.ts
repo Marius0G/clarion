@@ -3,7 +3,7 @@ import { flowState, type FlowState } from './flow'
 import { staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
 
 export interface ZoneStat {
-  id: string; name: string; kind: ZoneKind; staffed: boolean
+  id: string; name: string; kind: ZoneKind; staffed: boolean; closed: boolean
   /** Camera estimate (flow.report `waiting`); null = unknown: never seen, stale, or no feed. Never guessed from dots. */
   people: number | null
   /** Lanes / desks open, held by the backend (D12); null when it has no number for the zone. */
@@ -36,7 +36,7 @@ export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat
   return plan.zones.map(zone => {
     const row = liveRow(sim, zone.id)
     return {
-      id: zone.id, name: zone.name, kind: zone.kind, staffed: staffedKinds.includes(zone.kind),
+      id: zone.id, name: zone.name, kind: zone.kind, closed: sim?.blocked?.includes(zone.id) ?? false, staffed: staffedKinds.includes(zone.kind),
       people: row ? row.waiting : null, lanes: sim?.lanes?.[zone.id] ?? null,
       waitMin: row?.waitMin ?? null, state: row ? loadState(row) : null,
       advice: row?.advice == null ? null : adviceText(row.advice, sim?.lanes?.[zone.id] ?? null),
@@ -100,4 +100,15 @@ export function simClock(simTime: number | null | undefined) {
   if (simTime == null || !Number.isFinite(simTime)) return '—'
   const s = Math.floor(simTime) % 86400
   return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, '0')).join(':')
+}
+
+/** Only other open zones of the same kind can receive redirected passengers. */
+export function redirectTargets(zones: ZoneStat[], source: ZoneStat): ZoneStat[] {
+  return zones.filter(z => z.id !== source.id && z.kind === source.kind && !z.closed)
+}
+
+export function commandTouchesZone(command: OpsCommand, id: string): boolean {
+  if (command.type === 'redirect') return command.from === id || command.to === id
+  if (command.type === 'evacuate') return command.zones.includes(id)
+  return command.zone === id
 }
