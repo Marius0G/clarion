@@ -38,7 +38,7 @@ export interface FlowRow {
 /** A7 lane advice from vision: a sentence, or `{ lanes, by, waitMinIfNot }` (by = sim time). */
 export type Advice = string | { lanes?: number | null; by?: number | string | null; waitMinIfNot?: number | null; waitMin?: number | null }
 /** Feet point of a detected person, terminal metres. Vision sends no kind. */
-export interface Person { x: number; y: number; kind?: 'pax' | 'staff' }
+export interface Person { x: number; y: number; z?: number; level?: 'G' | 'U' | 'X'; kind?: 'pax' | 'staff' }
 export interface TerminalFlight {
   flight: string; airline: string; destination: string; std: number | string; gate: string | null; checkInDesks: string[]
   gateCloseAt: number | string | null; status: 'scheduled' | 'boarding' | 'delayed' | 'cancelled' | 'departed'; delayMin: number; pax: number | null

@@ -1,6 +1,13 @@
 // Shared provisional plan; UI helpers remain here.
 import type { ZoneKind } from '../../../backend/src/terminal'
-export { plan } from '../../../backend/src/terminal'
+// Keep the current rendering until TerminalMap is integrated. Routing uses realPlan.
+export { plan } from './displayPlan'
+export { plan as realPlan, zones, points, frames, worldToPx } from '../../../backend/src/terminal'
+export const floorAssets = {
+  G: new URL('../../../docs/contract/map/map_parter.svg', import.meta.url).href,
+  U: new URL('../../../docs/contract/map/map_etaj1.svg', import.meta.url).href,
+  X: new URL('../../../docs/contract/map/map_exterior.svg', import.meta.url).href,
+}
 export type { ZoneKind, TerminalZone, TerminalNode, TerminalEdge, TerminalPlan } from '../../../backend/src/terminal'
 
 /** Zones where a person works a queue, so `+1 linie` makes sense (D12 staff, counted in lanes or desks). */

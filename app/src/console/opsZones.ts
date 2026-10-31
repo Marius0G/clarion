@@ -1,3 +1,4 @@
+import { logicalKind, flowRow } from '../../../backend/src/mapIds'
 import type { FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
 import type { FlowState } from './flow'
 import { staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
@@ -16,7 +17,7 @@ export interface ZoneStat {
 export const WAIT_TARGETS = { security: 10, check_in: 15, bag_drop: 15 } as const
 export const zoneStateLabels = { normal: 'Normal', near: 'Ocupat', full: 'Plin' } as const
 const targetFor = (id: string): number | null => {
-  const kind = id.split(':')[0]
+  const kind = logicalKind(id)
   return Object.hasOwn(WAIT_TARGETS, kind) ? WAIT_TARGETS[kind as keyof typeof WAIT_TARGETS] : null
 }
 const measured = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n >= 0
@@ -65,7 +66,7 @@ export function zoneLine(id: string, row: FlowRow | null, lanes: number | null, 
 /** D0: only fresh camera data while vision is online; Unity connectivity is independent. */
 export function liveRow(sim: SimSnapshot | null, zone: string): FlowRow | null {
   if (!sim || !sim.vision) return null
-  const row = sim.flow?.[zone] ?? null
+  const row = flowRow(sim.flow ?? {}, zone) ?? null
   return observed(row) ? row : null
 }
 
