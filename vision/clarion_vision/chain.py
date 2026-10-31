@@ -1,0 +1,360 @@
+"""The chain, without I/O: floor points per camera -> count and flows per zone (A3) -> the wait now (A4) -> forecast (A5) ->
+advice (A7). `ingest` runs on every camera tick, `report` builds the contract rows once a second. Times in sim seconds."""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from .advice import advise
+from .forecast import CURVES, ArrivalScale, Flight, arrival_rates, forecast_points, wait_curve
+from .contract import flow_row
+from .geometry import ZoneIndex, in_ring, ring_samples
+from .kalman import CountFilter, count_variance
+from .queues import QueueSpec
+from .sources.base import CameraSpec, FloorPoint, Tick
+from .state import LaneBook
+from .terminal import Terminal
+from .wait import HeadRate, wait_minutes, wait_p90
+
+COVERAGE_MIN = 0.10       # a zone seen less than this is treated as not seen
+BLIND_MAX_S = 600.0       # after a camera drops: keep reporting from flows at most this long...
+SD_UNKNOWN = 12.0         # ...and while the filter's sd stays under this, then the zone is unknown
+MERGE_RADIUS_M = 0.7      # two cameras' points this close are one person
+SAMPLES_MAX = 1500
+# Rows whose wait is the queue's in front of them. Without a wait the dashboard shows them as unknown (D20).
+SERVICE_WAIT_FROM = {"U_SECURITY": "U_SECURITY_QUEUE", "G_CHECKIN_DESKS": "G_CHECKIN_QUEUE"}
+
+
+def merge_cameras(points: list[FloorPoint], radius: float = MERGE_RADIUS_M) -> list[FloorPoint]:
+    """One point per person across overlapping cameras, surest first. Points of the same camera are never merged."""
+    kept: list[FloorPoint] = []
+    grid: dict[tuple, list[FloorPoint]] = {}
+    for p in sorted(points, key=lambda p: -p.conf):
+        cx, cz = int(math.floor(p.x / radius)), int(math.floor(p.z / radius))
+        dup = False
+        for ix in range(cx - 1, cx + 2):
+            for iz in range(cz - 1, cz + 2):
+                for q in grid.get((p.level, ix, iz), ()):
+                    if q.camera != p.camera and (q.x - p.x) ** 2 + (q.z - p.z) ** 2 <= radius * radius:
+                        dup = True
+                        break
+                if dup:
+                    break
+            if dup:
+                break
+        if not dup:
+            kept.append(p)
+            grid.setdefault((p.level, cx, cz), []).append(p)
+    return kept
+
+
+class TrackLedger:
+    """One camera, one queue: tracks that cross into its ring and tracks that leave at its head. A track lost elsewhere in
+    the ring is an occlusion or an id switch, not somebody served. Leaving needs two ticks outside and a metre from where it
+    was: feet jitter across the ring's edge at the queue's head, and that is nobody served either."""
+
+    def __init__(self, spec: QueueSpec, head_radius_m: float = 4.0, min_ticks: int = 2, lost_after_s: float = 6.0, leave_m: float = 1.0):
+        self.ring, self.head, self.radius, self.min_ticks, self.lost_after, self.leave_m = spec.ring, spec.head, head_radius_m, min_ticks, lost_after_s, leave_m
+        self.tracks: dict[int, dict] = {}
+
+    def reset(self) -> None:
+        self.tracks.clear()
+
+    def _at_head(self, s: dict) -> bool:
+        return math.hypot(s["x"] - self.head[0], s["z"] - self.head[1]) <= self.radius
+
+    def step(self, t: float, points: list[FloorPoint], dt: float) -> tuple[int, int]:
+        entries = exits = 0
+        if points:
+            inside = in_ring(np.array([p.x for p in points]), np.array([p.z for p in points]), self.ring)
+        else:
+            inside = []
+        seen = set()
+        for p, is_in in zip(points, inside):
+            seen.add(p.track)
+            s = self.tracks.get(p.track)
+            if s is None:
+                s = self.tracks[p.track] = {"in": False, "x": p.x, "z": p.z, "t": t, "n": 0, "from_out": not is_in, "counted": False, "out": 0}
+            if is_in:
+                s.update(x=p.x, z=p.z, n=s["n"] + 1, out=0, **{"in": True})
+                if s["from_out"] and not s["counted"] and s["n"] >= self.min_ticks:
+                    entries += 1
+                    s["counted"] = True
+            elif s["in"]:
+                s["out"] += 1
+                if s["out"] >= 2 and math.hypot(p.x - s["x"], p.z - s["z"]) >= self.leave_m:
+                    if s["n"] >= self.min_ticks and self._at_head(s):
+                        exits += 1
+                    s.update({"in": False, "n": 0, "from_out": True, "counted": False, "out": 0})
+            s["t"] = t
+        for track in [k for k, s in self.tracks.items() if k not in seen and t - s["t"] > max(self.lost_after, 2.5 * dt)]:
+            s = self.tracks.pop(track)
+            if s["in"] and s["n"] >= self.min_ticks and self._at_head(s):
+                exits += 1
+        return entries, exits
+
+
+@dataclass
+class ZoneTrack:
+    filter: CountFilter
+    seen_t: float | None = None
+    coverage: float = 0.0
+
+
+@dataclass
+class QueueTrack:
+    spec: QueueSpec
+    filter: CountFilter
+    head: HeadRate
+    scale: ArrivalScale
+    ledgers: dict[str, TrackLedger] = field(default_factory=dict)
+    seen_t: float | None = None
+    coverage: float = 0.0
+    last_n: float | None = None
+    features: dict = field(default_factory=dict)
+
+
+@dataclass
+class Report:
+    t_s: float
+    rows: list[dict]
+    people: list[dict]
+
+
+class Chain:
+    def __init__(self, terminal: Terminal, cameras: list[CameraSpec], queues: list[QueueSpec], book: LaneBook, corrections=None):
+        self.terminal, self.cameras, self.book, self.corrections = terminal, {c.id: c for c in cameras}, book, corrections
+        self.queues = list(queues)
+        self.index = ZoneIndex.of(terminal)
+        self.zone_samples: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        for zone_id, (xs, zs) in self.index.cells.items():
+            stride = max(1, xs.size // SAMPLES_MAX)
+            self.zone_samples[zone_id] = (xs[::stride], zs[::stride])
+        self.queue_samples = {q.queue: ring_samples(q.ring) for q in self.queues}
+        # What each camera can see of each target; fixed geometry, computed once.
+        self.masks: dict[str, dict[str, np.ndarray]] = {c.id: {} for c in cameras}
+        for c in cameras:
+            for zone_id, (xs, zs) in self.zone_samples.items():
+                if terminal.zones[zone_id].level == c.level:
+                    mask = c.sees(xs, zs)
+                    if mask.any():
+                        self.masks[c.id][zone_id] = mask
+            for q in self.queues:
+                if q.level == c.level:
+                    xs, zs = self.queue_samples[q.queue]
+                    mask = c.sees(xs, zs)
+                    if mask.any():
+                        self.masks[c.id]["q:" + q.queue] = mask
+        self.sees_head = {c.id: {q.queue: q.level == c.level and bool(c.sees(np.array([q.head[0]]), np.array([q.head[1]]))[0])
+                                 for q in self.queues} for c in cameras}
+        self.coverage_cache: dict[frozenset, dict[str, float]] = {}
+        self.reset()
+
+    def reset(self) -> None:
+        self.zones = {z: ZoneTrack(CountFilter(flows=False, q_n=0.25)) for z in self.terminal.zones}
+        self.tracks = {q.queue: QueueTrack(q, CountFilter(flows=True), HeadRate(q.mu0), ArrivalScale()) for q in self.queues}
+        self.last_t: float | None = None
+        self.people: list[FloorPoint] = []
+        self.detector = ""
+        self.active: frozenset[str] = frozenset()
+
+    # ------------------------------------------------------------------ coverage
+    def coverage(self, active: frozenset) -> dict[str, float]:
+        cached = self.coverage_cache.get(active)
+        if cached is not None:
+            return cached
+        out: dict[str, float] = {}
+        sizes = {z: s[0].size for z, s in self.zone_samples.items()} | {"q:" + q: s[0].size for q, s in self.queue_samples.items()}
+        union: dict[str, np.ndarray] = {}
+        for camera in active:
+            for target, mask in self.masks.get(camera, {}).items():
+                union[target] = union[target] | mask if target in union else mask.copy()
+        for target, mask in union.items():
+            out[target] = float(mask.sum()) / max(sizes.get(target, 1), 1)
+        self.coverage_cache[active] = out
+        return out
+
+    # ------------------------------------------------------------------ one camera tick
+    def ingest(self, tick: Tick, flights: list[Flight]) -> None:
+        t = tick.t_s
+        if self.last_t is not None and t < self.last_t - 1.0:
+            self.reset()         # the sim clock restarted
+        dt = 0.0 if self.last_t is None else t - self.last_t
+        if self.last_t is not None and dt <= 0:
+            return
+        self.last_t, self.detector = t, tick.detector
+        self.active = frozenset(c for c in tick.cameras if c in self.cameras)
+        cover = self.coverage(self.active)
+        merged = merge_cameras([p for points in tick.cameras.values() for p in points])
+
+        on_floor: list[FloorPoint] = []
+        counts: dict[str, int] = {}
+        for level in {p.level for p in merged}:
+            pts = [p for p in merged if p.level == level]
+            idx = self.index.lookup(level, np.array([p.x for p in pts]), np.array([p.z for p in pts]))
+            for p, i in zip(pts, idx):
+                if i >= 0:
+                    on_floor.append(p)
+                    zone_id = self.index.ids[i]
+                    counts[zone_id] = counts.get(zone_id, 0) + 1
+        self.people = on_floor
+
+        for zone_id, track in self.zones.items():
+            track.filter.predict(dt)
+            cov = cover.get(zone_id, 0.0)
+            track.coverage = cov
+            if cov >= COVERAGE_MIN:
+                n = counts.get(zone_id, 0)
+                track.filter.update_count(n / cov, count_variance(n, cov))
+                track.seen_t = t
+
+        for track in self.tracks.values():
+            self._ingest_queue(track, tick, merged, cover, flights, t, dt)
+
+    def _lanes(self, spec: QueueSpec) -> int:
+        return self.book.lanes(spec.lanes_key, spec.default_lanes) if spec.lanes_key else spec.default_lanes
+
+    def _select(self, spec: QueueSpec):
+        if spec.queue.startswith("checkin_group_"):
+            return lambda f: f.check_in == spec.lanes_key
+        if spec.queue == "passport_departures":
+            return lambda f: str(f.gate) in ("gate_1", "gate_2", "gate_3")   # the non-Schengen gates
+        return lambda f: True
+
+    def _ingest_queue(self, track: QueueTrack, tick: Tick, merged, cover, flights, t, dt) -> None:
+        spec = track.spec
+        cov = cover.get("q:" + spec.queue, 0.0)
+        track.coverage = cov
+        lanes = self._lanes(spec)
+        points = [p for p in merged if p.level == spec.level]
+        count = 0
+        if points:
+            count = int(in_ring(np.array([p.x for p in points]), np.array([p.z for p in points]), spec.ring).sum())
+
+        # Flows: the working camera that sees the queue's head and most of the queue. Its tracks only, or one person counts
+        # twice. No such camera, or tracks that jumped: no flows this tick, and mu keeps its last measurement.
+        camera = max((c for c in self.active if c not in tick.invalid_tracks and self.sees_head[c].get(spec.queue) and "q:" + spec.queue in self.masks.get(c, {})),
+                     key=lambda c: self.masks[c]["q:" + spec.queue].sum(), default=None)
+        entries = exits = 0
+        flows_seen = camera is not None and tick.tracks_valid and cov >= COVERAGE_MIN
+        for name, ledger in track.ledgers.items():
+            if not tick.tracks_valid or name in tick.invalid_tracks:
+                ledger.reset()
+        if flows_seen:
+            ledger = track.ledgers.setdefault(camera, TrackLedger(spec))
+            entries, exits = ledger.step(t, tick.cameras.get(camera, []), dt)
+
+        busy = track.filter.n >= 1.0
+        if dt > 0 and flows_seen:
+            track.head.add(t, exits, dt, lanes, busy)
+        mu = track.head.mu
+        if flows_seen:
+            track.filter.predict(dt, left=exits, left_var=0.25 * exits)
+        else:
+            track.filter.predict(dt, left=mu * lanes * dt / 60.0 if busy else 0.0)
+        if cov >= COVERAGE_MIN:
+            corrected = self.corrections.count(spec, count, cov, tick) if self.corrections else None
+            if corrected is None:
+                track.filter.update_count(count / cov, count_variance(count, cov))
+            else:
+                track.filter.update_count(corrected[0], corrected[1])
+            track.seen_t = t
+        if flows_seen and dt > 0:
+            track.filter.update_in_rate(entries / cov / dt, max(entries, 1) / (cov * dt) ** 2)
+
+        if dt > 0:
+            n = track.filter.n
+            grew = 0.0 if track.last_n is None else n - track.last_n
+            curve = CURVES.get(spec.curve)
+            expected = float(arrival_rates(flights, t, curve, 0, self._select(spec))[0]) * dt / 60.0 if curve and flights else 0.0
+            track.scale.add(expected, grew + (exits if flows_seen else (mu * lanes * dt / 60.0 if busy else 0.0)))
+            track.last_n = n
+        track.features = {"count": count, "coverage": cov, "camera": camera, "entries": entries, "exits": exits, "lanes": lanes}
+
+    # ------------------------------------------------------------------ the reported rows
+    def longest_group(self) -> str | None:
+        groups = [t for t in self.tracks.values() if t.spec.queue.startswith("checkin_group_")]
+        return max(groups, key=lambda t: t.filter.n).spec.lanes_key if groups else None
+
+    def _alive(self, seen_t, sd, cov, t) -> bool:
+        if seen_t is None:
+            return False
+        return cov >= COVERAGE_MIN or (t - seen_t <= BLIND_MAX_S and sd <= SD_UNKNOWN)
+
+    def _queue_numbers(self, track: QueueTrack, flights: list[Flight], t: float) -> dict:
+        spec = track.spec
+        lanes = self._lanes(spec)
+        queue, sd = track.filter.n, track.filter.sd
+        mu, sd_mu = track.head.mu, track.head.sd
+        wait = wait_minutes(queue, mu, lanes)
+        p90 = wait_p90(queue, sd, mu, sd_mu, lanes)
+        curve_spec = CURVES.get(spec.curve)
+        lam = arrival_rates(flights, t, curve_spec, 120, self._select(spec)) * track.scale.factor if curve_spec else np.zeros(121)
+        curve = wait_curve(queue, lam, mu, lanes)
+        correction = self.corrections.forecast(spec) if self.corrections else None
+        if self.corrections:
+            wait = self.corrections.wait(spec, wait, lam, mu, lanes, track)
+        adv = advise(queue, lam, mu, lanes, spec.target_min, spec.max_lanes, t) if spec.target_min and spec.lanes_key else None
+        return dict(queue=queue, sd=sd, mu=mu, lanes=lanes, wait=wait, p90=max(p90, wait), forecast=forecast_points(curve, correction), advice=adv, lam=lam)
+
+    def report(self, flights: list[Flight]) -> Report | None:
+        if self.last_t is None:
+            return None
+        t = self.last_t
+        rows: dict[str, dict] = {}
+        waits: dict[str, dict] = {}
+        for track in self.tracks.values():
+            spec = track.spec
+            if not self._alive(track.seen_t, track.filter.sd, track.coverage, t):
+                continue
+            q = self._queue_numbers(track, flights, t)
+            waits[spec.zone] = q
+            physical = self.terminal.zones.get(spec.zone)
+            if physical is not None and spec.area_m2 / physical.area_m2 < 0.5:
+                continue         # a queue inside a larger hall (passport): the hall's row below carries its wait
+            rows[spec.zone] = flow_row(spec.zone, q["queue"], q["sd"], q["queue"] / spec.area_m2, q["wait"], q["p90"], track.coverage, q["forecast"], q["advice"])
+        for zone_id, track in self.zones.items():
+            if zone_id in rows or not self._alive(track.seen_t, track.filter.sd, track.coverage, t):
+                continue
+            n = track.filter.n
+            wait = waits.get(zone_id)
+            rows[zone_id] = flow_row(zone_id, n, track.filter.sd, n / self.terminal.zones[zone_id].area_m2, wait["wait"] if wait else None,
+                                     wait["p90"] if wait else None, track.coverage, wait["forecast"] if wait else None, wait["advice"] if wait else None)
+        self._check_in_hall(rows, waits)
+        for service, queue in SERVICE_WAIT_FROM.items():
+            if service in rows and queue in rows and "waitMin" in rows[queue]:
+                for key in ("waitMin", "waitMinP90", "forecast"):
+                    if key in rows[queue]:
+                        rows[service][key] = rows[queue][key]
+        people = [{"x": round(p.x, 2), "z": round(p.z, 2), "level": p.level} for p in self.people]
+        return Report(t, list(rows.values()), people)
+
+    def _check_in_hall(self, rows: dict, waits: dict) -> None:
+        """G_CHECKIN_QUEUE holds all the groups: it shows the worst one. D8: passengers see their own group's row."""
+        hall = rows.get("G_CHECKIN_QUEUE")
+        groups = [z for z in waits if z.startswith("check_in:")]
+        if hall is None or not groups:
+            return
+        hall["waitMin"] = round(max(waits[z]["wait"] for z in groups), 2)
+        hall["waitMinP90"] = round(max(waits[z]["p90"] for z in groups), 2)
+        hall["forecast"] = [{"inMin": points[0]["inMin"], "waitMin": max(p["waitMin"] for p in points)}
+                            for points in zip(*(waits[z]["forecast"] for z in groups))]
+        advices = [waits[z]["advice"] for z in groups if waits[z]["advice"]]
+        if advices:
+            hall["advice"] = max(advices, key=lambda a: a["waitMinIfNot"])
+
+    # ------------------------------------------------------------------ for the evacuation
+    def zone_people(self) -> tuple[dict[str, float], dict[str, float], list[str]]:
+        """People and density per physical zone the cameras can vouch for, and the indoor zones they cannot (not invented)."""
+        people, density, unseen = {}, {}, []
+        t = self.last_t or 0.0
+        for zone_id, track in self.zones.items():
+            zone = self.terminal.zones[zone_id]
+            if self._alive(track.seen_t, track.filter.sd, track.coverage, t):
+                people[zone_id] = track.filter.n
+                density[zone_id] = track.filter.n / zone.area_m2
+            elif zone.level in ("G", "U"):
+                unseen.append(zone_id)
+        return people, density, unseen

@@ -1,0 +1,9 @@
+# On Marius's PC: conda env craiova-ml already has numpy, scipy, httpx, opencv and ultralytics (YOLO).
+numpy
+scipy
+httpx
+websockets
+pytest
+lightgbm
+opencv-python
+ultralytics
