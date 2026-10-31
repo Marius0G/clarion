@@ -10,18 +10,6 @@ import "./join.css";
 import { backend as backendConfig } from "../backend/config";
 const backend = backendConfig.http;
 const publicBase = import.meta.env.VITE_PUBLIC_URL || window.location.origin;
-// Lucide icons (ISC), inlined: plane, plane-landing, car-taxi-front, id-card, siren.
-const PLANE = "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z";
-const roles = [
-  ["passenger_home", "Pasager", "Passenger", PLANE],
-  ["relative_arrivals", "Rudă la sosiri", "Meeting someone", "M2 22h20 M3.77 10.77 2 9l2-4.5 1.1.55c.55.28.9.84.9 1.45s.35 1.17.9 1.45L8 8.5l3-6 1.05.53a2 2 0 0 1 1.09 1.52l.72 5.4a2 2 0 0 0 1.09 1.52l4.4 2.2c.42.22.78.55 1.01.96l.6 1.03c.49.88-.06 1.98-1.06 2.1l-1.18.15c-.47.06-.95-.02-1.37-.24L4.29 11.15a2 2 0 0 1-.52-.38Z"],
-  ["taxi", "Taxi", "Taxi", "M10 2h4 M21 8l-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8 M7 14h.01 M17 14h.01 M5 10h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z M5 18v2 M19 18v2"],
-  ["staff", "Personal aeroport", "Airport staff", "M16 10h2 M16 14h2 M6.17 15a3 3 0 0 1 5.66 0 M11 11a2 2 0 1 1-4 0 2 2 0 0 1 4 0z M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"],
-  ["isu_smurd", "ISU/SMURD", "ISU/SMURD", "M7 18v-6a5 5 0 1 1 10 0v6 M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z M21 12h1 M18.5 4.5 18 5 M2 12h1 M12 2v1 M4.929 4.929l.707.707 M12 12v6"],
-] as const;
-function Icon({ d, size = 20 }: { d: string; size?: number }) {
-  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
-}
 interface Flight {
   flight: string;
   city?: string;
@@ -51,8 +39,8 @@ function Qr({ en }: { en: boolean }) {
     <section className="join-qr">
       <h1>
         {en
-          ? "Scan. Pick a role. Stay informed."
-          : "Scanează. Alege un rol. Află la timp."}
+          ? "Scan. Stay informed."
+          : "Scanează. Află la timp."}
       </h1>
       {error ? (
         <p role="alert">
@@ -79,12 +67,8 @@ function Qr({ en }: { en: boolean }) {
 export default function Join() {
   const query = new URLSearchParams(window.location.search);
   const [en, setEn] = useState(query.get("lang") === "en");
-  const [role, setRole] = useState<string>(() =>
-    roles.some((r) => r[0] === query.get("role")) ? query.get("role")! : "",
-  );
   const [flight, setFlight] = useState(query.get("flight") || "");
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [consent, setConsent] = useState(false);
   const [scan, setScan] = useState<BoardingFlight | null>(null);
   const [loading, setLoading] = useState(false);
   const [stateError, setStateError] = useState(false);
@@ -121,7 +105,12 @@ export default function Join() {
   }, []);
   async function subscribe(event: React.FormEvent) {
     event.preventDefault();
-    if (!role || !consent || submitting.current) return;
+    if (submitting.current) return;
+    if (!flight.trim()) {
+      // TODO(join-api): token endpoints currently require a scheduled flight.
+      setSuccess({ waLink: "https://wa.me/15556318672?text=START" });
+      return;
+    }
     submitting.current = true;
     setLoading(true);
     setError("");
@@ -197,7 +186,7 @@ export default function Join() {
             {en ? "Română / English ✓" : "Română ✓ / English"}
           </button>
         </header>
-        <SignIn onFlight={setFlight} />
+        <SignIn en={en} onFlight={setFlight} />
         {window.location.pathname.replace(/\/$/, "") === "/join/qr" ? (
           <Qr en={en} />
         ) : success ? (
@@ -207,7 +196,7 @@ export default function Join() {
             <p>{t("Apasă Trimite în WhatsApp pentru a activa alertele. Ne scrii primul, apoi putem răspunde în următoarele 24 h.", "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.")}</p>
             <a className="join-primary" href={success.waLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>
             {(success.subscriptionId || success.token) && <WalletButton en={en} subscriptionId={success.subscriptionId} joinToken={success.token} />}
-            {role.startsWith("passenger") && (
+            {flight && (
               <button className="join-share" onClick={() => void share()}>
                 {t(
                   "Trimite celui care te așteaptă",
@@ -227,70 +216,16 @@ export default function Join() {
           </section>
         ) : (
           <>
-            <section className="join-intro">
-              <div className="join-airport">
-                <Icon d={PLANE} size={14} />{" "}
-                {t(
-                  "Aeroportul Internațional Craiova",
-                  "Craiova International Airport",
-                )}
-              </div>
-              <h1>
-                {t("Află la timp.", "Know in time.")}
-                <br />
-                {t("Situația și prognoza.", "Conditions and forecasts.")}
-              </h1>
-              <p>
-                {t(
-                  "Alerte utile pentru zborul tău și oamenii care te așteaptă.",
-                  "Useful flight alerts for you and the people waiting for you.",
-                )}
-              </p>
-            </section>
-            <DemoBoardingPass key={en ? "en" : "ro"} en={en} />
             <form onSubmit={(event) => void subscribe(event)}>
-              <fieldset className="join-roles">
-                <legend>
-                  {t("Tu cum călătorești?", "What brings you here?")}
-                </legend>
-                <div>
-                  {roles.map(([value, ro, english, icon]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={role === value}
-                      onClick={() => setRole(value)}
-                    >
-                      <span aria-hidden="true"><Icon d={icon} /></span>
-                      {en ? english : ro}
-                      <span className="join-check" aria-hidden="true">
-                        {role === value ? "✓" : ""}
-                      </span>
-                    </button>
-                  ))}
-                  <button type="button" aria-pressed="true">WhatsApp</button>
-                </div>
-              </fieldset>
+              <h1>{t("Zborul tău", "Your flight")}</h1>
+              <p className="join-note">{t("Opțional. Îl poți adăuga mai târziu în WhatsApp.", "Optional. Add it later in WhatsApp.")}</p>
               <div className="join-flight">
-                <label htmlFor="join-flight">
-                  {t("Număr zbor", "Flight number")}{" "}
-                  <small>{t("obligatoriu", "required")}</small>
-                </label>
-                <input
-                  id="join-flight"
-                  list="join-flights"
-                  placeholder="W6 3412"
-                  required
-                  maxLength={12}
-                  pattern="[A-Za-z0-9 ]{2,12}"
-                  value={flight}
-                  onChange={(e) => {
-                    setFlight(e.target.value);
-                    setScan(null);
-                  }}
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                />
+                <Scanner en={en} onFlight={receiveFlight}>
+                  <label htmlFor="join-flight">{t("Număr zbor", "Flight number")}</label>
+                  <input id="join-flight" list="join-flights" placeholder="W6 3412"
+                    maxLength={12} pattern="[A-Za-z0-9 ]{2,12}" value={flight}
+                    onChange={(event) => { setFlight(event.target.value); setScan(null); }}
+                    autoCapitalize="characters" autoComplete="off" />
                 <datalist id="join-flights">
                   {flights.map((f, i) => (
                     <option key={`${f.flight}-${i}`} value={f.flight}>
@@ -307,6 +242,8 @@ export default function Join() {
                     )}
                   </p>
                 )}
+                </Scanner>
+                {flight && <p className="join-note">{t("Zbor", "Flight")} · <strong>{flight}</strong></p>}
                 {scan && (
                   <p className="join-note">
                     {scan.route} · {scan.date} ·{" "}
@@ -324,39 +261,9 @@ export default function Join() {
                     />
                   </p>
                 )}
-                <Scanner en={en} onFlight={receiveFlight} />
               </div>
-              <fieldset className="join-channels">
-                <legend>
-                  {t(
-                    "Unde primești alertele?",
-                    "Where should alerts reach you?",
-                  )}
-                </legend>
-                <div>
-                  <button type="button" aria-pressed="true">WhatsApp</button>
-                </div>
-              </fieldset>
-              <label className="join-consent">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                />
-                <span>
-                  {t(
-                    "Sunt de acord să primesc alerte pe",
-                    "I agree to receive alerts on",
-                  )}{" "}
-                  WhatsApp.{" "}
-                  <span>
-                    {t(
-                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem zborul și limba aleasă. Datele conexiunii se șterg la 48 h după zbor.",
-                      "The boarding pass is read on your device. Your flight and chosen language are sent for WhatsApp. Connection data is deleted 48 h after the flight.",
-                    )}
-                  </span>
-                </span>
-              </label>
+              <DemoBoardingPass key={en ? "en" : "ro"} en={en} />
+              <p className="join-note">{t("Alertele vin pe WhatsApp după primul mesaj.", "Alerts arrive on WhatsApp after your first message.")}</p>
               {error && (
                 <p role="alert" className="join-error">
                   {error}
@@ -365,11 +272,11 @@ export default function Join() {
               <button
                 className="join-primary"
                 type="submit"
-                disabled={!role || !consent || loading}
+                disabled={loading}
               >
                 {loading
                   ? t("Se conectează…", "Connecting…")
-                  : t("Continuă în WhatsApp", "Continue in WhatsApp")}
+                  : t("WhatsApp", "WhatsApp")}
               </button>
               <p className="join-footer">
                 {t(

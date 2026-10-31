@@ -32,7 +32,9 @@ async function makeDetector(formats: string[]): Promise<Detector> {
 export default function Scanner({
   en,
   onFlight,
+  children,
 }: {
+  children: React.ReactNode;
   en: boolean;
   onFlight: (flight: BoardingFlight) => void;
 }) {
@@ -116,6 +118,7 @@ export default function Scanner({
       <button
         type="button"
         className="join-scan"
+        aria-expanded={open}
         onClick={() => {
           setOpen(!open);
           setError("");
@@ -123,14 +126,18 @@ export default function Scanner({
       >
         {open
           ? en
-            ? "Close scanner"
-            : "Închide scanarea"
+            ? "Close"
+            : "Închidere"
           : en
-            ? "Scan boarding pass"
-            : "Scanează boarding pass"}
+            ? "Boarding pass"
+            : "Boarding pass"}
       </button>
       {open && (
         <div>
+          <div className="join-manual">
+            <p>{en ? "Manual entry" : "Introducere manuală"}</p>
+            {children}
+          </div>
           <video
             ref={video}
             muted

@@ -107,44 +107,6 @@
   padding: 0;
   margin-bottom: 8px;
 }
-.join-roles > div {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-.join-roles button {
-  background: #fafbfc;
-  border: 1px solid #e2e8f0;
-  min-height: 49px;
-  padding: 9px 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  font-size: 14px;
-  font-weight: 650;
-}
-.join-roles button:first-child {
-  grid-column: span 2;
-}
-.join-roles button > span:first-child {
-  display: inline-flex;
-  font-size: 18px;
-  color: #475569;
-  width: 20px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.join-roles .join-check {
-  margin-left: auto;
-  color: #1f2937;
-}
-.join-shell button[aria-pressed="true"] {
-  background: #f1f5f9;
-  border: 2px solid #1f2937;
-  padding: 8px 9px;
-  color: #0f172a;
-}
 .join-flight {
   margin-bottom: 16px;
 }
@@ -156,7 +118,7 @@
   color: #475569;
   margin-left: 5px;
 }
-.join-flight > input {
+.join-manual > input {
   display: block;
   width: 100%;
   background: white;
@@ -167,46 +129,6 @@
 }
 .join-flight input::placeholder {
   color: #64748b;
-}
-.join-channels > div {
-  display: flex;
-  gap: 7px;
-}
-.join-channels button {
-  flex: 1;
-  min-height: 48px;
-  background: white;
-  padding: 8px 6px;
-  font-size: 14px;
-}
-.join-channels button:disabled {
-  background: #fafbfc;
-  color: #475569;
-  border-color: #e2e8f0;
-}
-.join-channels small {
-  display: block;
-  font-size: 10px;
-  font-weight: 400;
-}
-.join-consent {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 12px;
-  margin-bottom: 16px;
-  line-height: 1.45;
-  cursor: pointer;
-}
-.join-consent input {
-  width: 22px;
-  height: 22px;
-  margin: 0;
-  flex-shrink: 0;
-  accent-color: #1f2937;
-}
-.join-consent > span > span {
-  color: #475569;
 }
 .join-shell .join-primary {
   display: flex;
@@ -338,3 +260,7 @@
 .join-shell .join-auth button:disabled { background: #e2e8f0; color: #475569; opacity: 1; cursor: wait; }
 .join-auth p { margin: .6rem 0; }
 .join-auth a { display: inline-block; margin: .4rem 1rem .4rem 0; }
+
+.join-manual label { display: block; font-size: 14px; margin: 8px 0; }
+.join-shell .join-demo > button { width: auto; min-height: 32px; padding: 4px 0; border: 0; text-decoration: underline; font-size: 12px; color: #475569; }
+.join-demo { margin-bottom: 12px; }

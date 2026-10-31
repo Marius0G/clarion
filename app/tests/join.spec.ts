@@ -5,33 +5,35 @@ const state = {
     { flight: "W6 3412", city: "Bergamo", sched: "2026-10-31T23:55:00Z" },
   ],
 };
-test("jury role, consent, WhatsApp and passenger share", async ({ page, context }) => {
+test("optional flight, WhatsApp and passenger share", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: undefined, configurable: true }));
   await page.route("**/api/state", route => route.fulfill({ json: state }));
   await page.route("**/api/join", route => route.fulfill({ json: { token: "share-token", waLink: "https://wa.me/15556318672?text=START%20W6%203412%20share-token" } }));
   await page.goto("/join?src=jury");
-  await expect(page.getByRole("button", { name: "Continuă în WhatsApp" })).toBeDisabled();
-  await page.getByRole("button", { name: "Pasager", exact: true }).click();
+  await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
   await page.getByLabel("Număr zbor").fill("W6 3412");
   await expect(page.locator("#join-flights option")).toHaveAttribute("value", "W6 3412");
-  await expect(page.getByRole("button", { name: "Continuă în WhatsApp" })).toBeDisabled();
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Continuă în WhatsApp" }).click();
+  await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "WhatsApp", exact: true }).click();
   await expect(page.getByRole("link", { name: "Deschide WhatsApp" })).toBeVisible();
   await page.getByRole("button", { name: "Trimite celui care te așteaptă" }).click();
   await expect(page.getByRole("status")).toHaveText("Mesaj copiat.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("role=relative_arrivals&flight=W6+3412");
 });
-test("relative prefill, English and consent", async ({ page }) => {
+test("flight prefill and English", async ({ page }) => {
   await page.route("**/api/state", route => route.fulfill({ json: state }));
   await page.goto("/join?role=relative_arrivals&flight=W6%203412");
-  await expect(page.getByRole("button", { name: "Rudă la sosiri" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
   await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
   await page.getByRole("button", { name: "Switch to English" }).click();
-  await expect(page.getByRole("button", { name: "Continue in WhatsApp" })).toBeDisabled();
-  await page.getByRole("checkbox").check();
-  await expect(page.getByRole("button", { name: "Continue in WhatsApp" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
+
+  await expect(page.getByRole("button", { name: "WhatsApp", exact: true })).toBeEnabled();
 });
 test("QR and scanner fallback", async ({ page }) => {
   await page.addInitScript(() => {
@@ -51,7 +53,7 @@ test("QR and scanner fallback", async ({ page }) => {
   );
   await page.goto("/join");
   await expect(
-    page.getByRole("button", { name: "Scanează boarding pass" }),
+    page.getByRole("button", { name: "Boarding pass", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(
@@ -106,8 +108,8 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
     return route.fulfill({ json: { token: "scan-token", waLink: "https://wa.me/15556318672?text=START%20W6%203412%20scan-token" } });
   });
   await page.goto("/join");
-  await page.getByRole("button", { name: "Pasager", exact: true }).click();
-  await page.getByRole("button", { name: "Scanează boarding pass" }).click();
+
+  await page.getByRole("button", { name: "Boarding pass", exact: true }).click();
   await page
     .locator("input[type=file]")
     .setInputFiles({
@@ -115,10 +117,10 @@ test("screenshot scan sends only flight metadata, never name or PNR", async ({
       mimeType: "image/png",
       buffer: await page.screenshot(),
     });
-  await expect(page.getByLabel("Număr zbor")).toHaveValue("W6 3412");
+  await expect(page.getByText("W6 3412", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Data zborului")).toBeVisible();
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Continuă în WhatsApp" }).click();
+
+  await page.getByRole("button", { name: "WhatsApp", exact: true }).click();
   const href = await page.getByRole("link", { name: "Deschide WhatsApp" }).getAttribute("href");
   expect(new URL(href!).searchParams.get("text")).toBe("START W6 3412 scan-token");
   expect(requestBody).toEqual({ flight: "W6 3412", lang: "ro" });
@@ -135,11 +137,12 @@ test('WhatsApp join uses the public token endpoint and shows the WhatsApp and Wa
     return route.fulfill({ json: { token: 'abcd1234', waLink } });
   });
   await page.goto('/join');
-  await expect(page.getByRole('button', { name: 'Continuă în WhatsApp' })).toBeDisabled();
-  await page.getByRole('button', { name: 'Pasager', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeEnabled();
+
+  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Număr zbor').fill('W6 3412');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Continuă în WhatsApp' }).click();
+
+  await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Deschide WhatsApp' })).toHaveAttribute('href', waLink);
   await expect(page.getByRole('button', { name: 'Adaugă în Google Wallet' })).toBeVisible();
   expect(requestBody).toEqual({ flight: 'W6 3412', lang: 'ro' });
@@ -157,12 +160,13 @@ test('unknown flight shows a Romanian error and lets the passenger retry', async
   await page.route('**/api/state', route => route.fulfill({ json: state }));
   await page.route('**/api/join', route => route.fulfill({ status: 404, json: { error: 'Unknown flight' } }));
   await page.goto('/join');
-  await page.getByRole('button', { name: 'Pasager', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Număr zbor').fill('XX 9999');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Continuă în WhatsApp' }).click();
-  await expect(page.getByRole('alert')).toContainText('Zborul nu este în orarul de azi');
-  await expect(page.getByRole('button', { name: 'Continuă în WhatsApp' })).toBeEnabled();
+
+  await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
+  await expect(page.locator('.join-error')).toContainText('Zborul nu este în orarul de azi');
+  await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeEnabled();
 });
 
 test('language switch drives join and demo requests and all success copy', async ({ page }) => {
@@ -183,10 +187,11 @@ test('language switch drives join and demo requests and all success copy', async
   await page.getByRole('button', { name: 'Demo boarding pass', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('The demo boarding pass could not be created');
   expect(demo).toEqual({ lang: 'en' });
-  await page.getByRole('button', { name: 'Passenger', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Boarding pass', exact: true }).click();
   await page.getByLabel('Flight number').fill('W6 3412');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Continue in WhatsApp' }).click();
+
+  await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Send the message in WhatsApp.' })).toBeVisible();
   expect(request).toEqual({ flight: 'W6 3412', lang: 'en' });
   await expect(page.getByRole('button', { name: 'Add to Google Wallet' })).toBeVisible();
@@ -227,4 +232,39 @@ test('sign-in buttons stay readable through login, hover and disabled states', a
   await page.route('**/api/auth/login-code/test', route => route.fulfill({ json: { status: 'pending' } }));
   await auth.getByRole('button', { name: 'Conectează-te cu WhatsApp' }).click();
   await expect(auth.getByRole('button', { name: 'Anulare', exact: true })).toHaveCSS('color', 'rgb(255, 255, 255)');
+});
+
+for (const failure of [false, true]) {
+  test(`LOGIN logout persists after reload (request failure: ${failure})`, async ({ page }) => {
+    await page.route('**/api/state', route => route.fulfill({ json: state }));
+    await page.route('**/api/auth/login-code', route => route.fulfill({ json: { code: 'ABC1234567', pollToken: 'poll', waLink: 'https://wa.me/15556318672' } }));
+    await page.route('**/api/auth/login-code/poll', route => route.fulfill({ json: { status: 'ok', session: 'login-session' } }));
+    await page.route('**/api/auth/me', route => route.fulfill({ json: { phone: '+40712345678', role: 'passenger' } }));
+    await page.route('**/api/auth/logout', route => failure ? route.abort('failed') : route.fulfill({ json: { ok: true } }));
+    await page.goto('/join');
+    await page.getByRole('button', { name: 'Conectează-te cu WhatsApp' }).click();
+    await page.getByRole('button', { name: 'Deconectare' }).click();
+    await expect(page.getByRole('button', { name: 'Conectează-te cu WhatsApp' })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('clarion.session'))).toBeNull();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Conectează-te cu WhatsApp' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Deconectare' })).toHaveCount(0);
+  });
+}
+test('flightless join opens START without requiring boarding pass', async ({ page }) => {
+  await page.route('**/api/state', route => route.fulfill({ json: state }));
+  await page.goto('/join');
+  await expect(page.getByLabel('Număr zbor')).toHaveCount(0);
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Deschide WhatsApp' })).toHaveAttribute('href', 'https://wa.me/15556318672?text=START');
+});
+test('login link exchange restores the account and removes the single-use link', async ({ page }) => {
+  await page.route('**/api/state', route => route.fulfill({ json: state }));
+  await page.route('**/api/auth/link', route => route.fulfill({ json: { session: 'link-session' } }));
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { phone: '+40712345678', role: 'passenger', flight: 'W6 3412' } }));
+  await page.goto('/join?login=single-use');
+  await expect(page.getByRole('button', { name: 'Deconectare' })).toBeVisible();
+  await expect(page).toHaveURL(/\/join$/);
+  expect(await page.evaluate(() => localStorage.getItem('clarion.session'))).toBe('link-session');
 });
