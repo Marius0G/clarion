@@ -278,6 +278,21 @@ Gri deschis, plat, o culoare = un singur sens. Normalul e o rampă de gri, nu ve
 - `webSocketClose` din `worker/src/index.ts` aruncă eroare la codul 1006. Trebuie tratat ca 1005, cu `ws.close(1000)`.
 - `SIM_SPEED` în `worker/wrangler.toml` e 60, iar demo-ul cere 10.
 
+### D32. Alertele adminului (ISA-18.2)
+O alertă pornește când o zonă trece de țintă acum (D20), când prognoza o trece în următoarele 60 min, când densitatea trece de pragul de siguranță (Still: ~3/m² în mișcare, 5/m² pe loc), la un raport nou al unui angajat (D11), la un zbor cu pasageri încă înainte de securitate aproape de închiderea porții, și la pierderea camerelor (zonă devenită „necunoscut”).
+- **Priorități:** P1 ■ roșu (densitate periculoasă, evacuare, raport de securitate), P2 ▲ portocaliu (peste țintă acum, zbor în pericol), P3 ● galben (prognoză peste țintă, cameră pierdută). Mereu formă + număr + text, niciodată doar culoare.
+- **Stări:** neconfirmată (clipește doar P1/P2), confirmată (fixă, rămâne pe ecran), revenită la normal dar neconfirmată (tot cere click), amânată (cu timer și motiv; revine neconfirmată la expirare).
+- Alerta se leagă de zonă pe hartă și de sfatul din D28. Confirmarea o face adminul cu un click. Se păstrează în jurnalul din D28.
+- Calculul e în backend, din `flow.report`, `forecast`, `density`, `flight.update` și rapoarte. Niciodată din `truth.report` (D0).
+
+### D33. Pagina pasagerului: coada, unde e el, logat
+Extinde `/m/<token>` (există deja). Pasagerul vede, fără să întrebe pe WhatsApp:
+- **Coada lui acum și prognoza:** check-in-ul grupului zborului lui (D8) și securitatea, cu timpul de acum și cel estimat la ora la care ajunge el, în benzi ca la Hamburg (0–3, 4–10, >10 min) plus cifra. Tonul e cel din D22.
+- **Unde se află:** etapa estimată (D9: înainte de securitate, după, la poartă) pe harta T2, cu ruta spre ghișeu sau poartă și timpul pe fiecare segment (D6b, D7). Harta folosește vederea stivuită din D27, simplificată.
+- **Zborul:** poartă, status, ora la care se închide poarta, cu schimbările evidențiate.
+- **Logat:** pagina se deschide cu sesiunea din D3 (link unic din WhatsApp sau `LOGIN`). Fără sesiune, cere login cu WhatsApp. Token-ul vechi din URL rămâne pentru compatibilitate.
+- La evacuare, pagina arată doar ruta spre ieșire și punctul de adunare.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
