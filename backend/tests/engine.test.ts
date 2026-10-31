@@ -137,6 +137,20 @@ describe("state machine and dispatch", () => {
       [...roles].sort(),
     );
   });
+  it("does not suspend flights whose time has already passed", async () => {
+    const hour = 3600000;
+    const flight = (name: string, dir: "dep" | "arr", offset: number) => {
+      const time = new Date(Date.now() + offset * hour).toISOString();
+      return { flight: name, dir, city: "Test", iata: "TST", sched: time, est: time, status: "scheduled" as const };
+    };
+    const e = new Engine();
+    e.updateFlights(
+      [flight("OLD1", "dep", -2), flight("OLD2", "arr", -2), flight("NEXT", "dep", 2)],
+      "fids",
+    );
+    await suspend(e);
+    expect(e.state.flights.map((f) => f.status)).toEqual(["departed", "landed", "suspended"]);
+  });
   it("supports waves disabled", async () => {
     const e = new Engine({ wavesEnabled: false });
     await suspend(e);
