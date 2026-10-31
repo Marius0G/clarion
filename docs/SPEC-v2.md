@@ -298,3 +298,12 @@ Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu f
 3. **`flow.report` din vision (D0, D5b):** confirmă câmpurile și descrie pe scurt cum se calculează numărarea, așteptarea și prognoza.
 4. **Efectul comenzilor (D12):** câți pasageri/minut procesează o linie sau un ghișeu, ce procent mută `redirect` și cum urmează agenții `agent.route` la `evacuate`.
 5. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` din demo.
+
+### Răspunsuri de la Marius
+
+**1. `terminal.json`: livrat** în `docs/contract/terminal.json`, cu aceeași formă ca `TerminalPlan`, dar neîncercat încă în locul lui `buildPlan()`. 120 de noduri, 444 de muchii, id-urile din D26. `walkSec` vine din graful de mers al simulării, la viteza liberă de 1,34 m/s; peste el se aplică A8. Coordonate în metri, Unity world: x spre est, y = z din Unity = nord. 28 de muchii sunt `inferred` (linii drepte în afara terminalului, nemersuite). Verificat pe 19 rute față de graful simulării: 18 sunt în 9 %, iar cea mai mare abatere e `U_SECURITY_QUEUE` → `U_SECURITY` (26 s față de 15 s). Interiorul se mai mută cu câțiva metri până la demo: fișierul se regenerează, iar id-urile rămân.
+
+Ce schimbă pentru backend:
+1. **Grupurile de ghișee:** în Unity sunt trei grupuri fizice de câte 4 ghișee (1-4, 5-8, 9-12), alocate pe zbor după intervalul orar, nu pe companie. Tabelul din D26 (W6 1-6, RO 7-8, FR 9-10, OTHER 11-12) nu există în Unity. `flight.update` va trimite `check_in:1..3` cu ghișeele reale. `check_in:W6/RO/FR` rămân aliasuri, iar `check_in:OTHER` nu are ghișee. `deskGroups` din `mapIds.ts` trebuie aliniat.
+2. **Liniile pe dashboard:** `SimStore.laneRows` folosește id-ul trimis exact, iar `initialLanes` are `security`, în timp ce dashboard-ul citește și trimite `U_SECURITY_QUEUE`. La început `sim.lanes['U_SECURITY_QUEUE']` e null, iar după „+1 linie” merge 0 → 1 în loc de 2 → 3. Unity deschide linia corect, dar numărul afișat e greșit. Soluția: normalizare cu `mapNodeId` în `sent()` și `snapshot`.
+3. **Liniile inițiale:** valorile reale sunt securitate 2 și `check_in:N` câte 3 ghișee, în `terminal.json.initialLanes`. `backend/src/terminal.ts` are încă valorile vechi.
