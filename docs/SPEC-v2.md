@@ -206,6 +206,9 @@ Pe `/join` pasagerul alege limba (Română / English). Pe WhatsApp o poate schim
 ### D24. Reset demo, fără buton vizibil
 `POST /api/demo/reset` (token de operator) golește pasagerii legați (reali și simulați), token-urile de join și de pagină, rapoartele, evacuarea, comenzile, liniile (înapoi la valorile din plan) și istoricul mesajelor, apoi trimite lui Unity `sim.command { reset: true }`. Nu apare pe dashboard; se rulează din terminal (`npm run demo:reset` în `worker/`). Runbook-ul pitch-ului se stabilește mai târziu.
 
+### D25. Emoji doar la ce nu e urgent
+Harness-ul WhatsApp din Moni rămâne (reacție cu emoji la ~2 din 3 mesaje, baloane scurte, typing). Mesajele urgente nu au nici reacție, nici emoji în text: evacuarea, zbor anulat sau întârziat, schimbare de poartă, rapoartele angajaților și confirmările lor. Restul (cozi, situația, informații despre zbor, salut, mulțumiri) păstrează emoji-urile.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
