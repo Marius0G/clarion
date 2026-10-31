@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { frames, points, worldToPx, zones, type Level, type MapPoint, type MapZone, type Pt } from './data'
 import { fmt, frameOf, inRing, ringPath } from './geometry'
 import { zoneDetail } from './details'
@@ -89,7 +89,42 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   const here = zones.filter(z => z.level === level)
   const interior = level !== 'X'
   const lit = new Set(highlight)
-  const click = (id: string) => onZone?.(id)
+  const [view, setView] = useState<[number, number, number, number]>([0, 0, fr.width, fr.height])
+  useEffect(() => setView([0, 0, fr.width, fr.height]), [fr.width, fr.height])
+  const svgRef = useRef<SVGSVGElement>(null)
+  const drag = useRef<{ x: number; y: number; v: [number, number, number, number]; moved: boolean } | null>(null)
+  const dragged = useRef(false)
+  const click = (id: string) => { if (!dragged.current) onZone?.(id) }
+  const zoomBy = (k: number, cx?: number, cy?: number) => setView(([x, y, w, h]) => {
+    const nw = Math.min(fr.width, Math.max(fr.width / 8, w * k)), nh = nw * (fr.height / fr.width)
+    const px = cx ?? x + w / 2, py = cy ?? y + h / 2
+    const nx = px - ((px - x) * nw) / w, ny = py - ((py - y) * nh) / h
+    return [Math.min(Math.max(nx, 0), fr.width - nw), Math.min(Math.max(ny, 0), fr.height - nh), nw, nh]
+  })
+  const toSvg = (clientX: number, clientY: number): Pt => {
+    const r = svgRef.current!.getBoundingClientRect()
+    return [view[0] + ((clientX - r.left) / r.width) * view[2], view[1] + ((clientY - r.top) / r.height) * view[3]]
+  }
+  // Pinch / ctrl+wheel zooms; a plain wheel keeps scrolling the page.
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const r = el.getBoundingClientRect()
+      setView(v => {
+        const cx = v[0] + ((e.clientX - r.left) / r.width) * v[2], cy = v[1] + ((e.clientY - r.top) / r.height) * v[3]
+        const k = Math.exp(e.deltaY * 0.01)
+        const nw = Math.min(fr.width, Math.max(fr.width / 8, v[2] * k)), nh = nw * (fr.height / fr.width)
+        const nx = cx - ((cx - v[0]) * nw) / v[2], ny = cy - ((cy - v[1]) * nh) / v[3]
+        return [Math.min(Math.max(nx, 0), fr.width - nw), Math.min(Math.max(ny, 0), fr.height - nh), nw, nh]
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [fr.width, fr.height])
+  const zoomed = view[2] < fr.width - 1
 
   const zoneEls: ReactNode[] = []
   const labels: ReactNode[] = []
@@ -129,8 +164,22 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   const routeD = route && route.length > 1 ? `M${route.map(p => `${fmt(p[0])},${fmt(p[1])}`).join('L')}` : null
   const end = route?.[route.length - 1]
 
-  return <svg className={`t2map ${interior ? 'interior' : 'exterior'} ${className ?? ''}`} viewBox={`0 0 ${fr.width} ${fr.height}`}
-    role="group" aria-label={fr.title} data-testid={`t2-map-${level}`}>
+  return <div className={`t2-wrap ${className ?? ''}`}>
+  <svg ref={svgRef} className={`t2map ${interior ? 'interior' : 'exterior'}${zoomed ? ' zoomed' : ''}`} viewBox={view.map(fmt).join(' ')}
+    role="group" aria-label={fr.title} data-testid={`t2-map-${level}`}
+    onPointerDown={e => { if (!zoomed || e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, v: view, moved: false }; dragged.current = false }}
+    onPointerMove={e => {
+      const d = drag.current
+      if (!d) return
+      const r = svgRef.current!.getBoundingClientRect()
+      const dx = e.clientX - d.x, dy = e.clientY - d.y
+      if (!d.moved && Math.hypot(dx, dy) < 4) return
+      if (!d.moved) { d.moved = true; dragged.current = true; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId) }
+      const nx = d.v[0] - (dx / r.width) * d.v[2], ny = d.v[1] - (dy / r.height) * d.v[3]
+      setView([Math.min(Math.max(nx, 0), fr.width - d.v[2]), Math.min(Math.max(ny, 0), fr.height - d.v[3]), d.v[2], d.v[3]])
+    }}
+    onPointerUp={() => { drag.current = null; setTimeout(() => { dragged.current = false }, 0) }}
+    onDoubleClick={e => { const [x, y] = toSvg(e.clientX, e.clientY); zoomBy(zoomed ? 1 / 0.5 : 0.5, x, y) }}>
     <defs>
       <pattern id={`t2-tiles-${m}`} width={1.2 * m} height={1.2 * m} patternUnits="userSpaceOnUse">
         <path d={`M${1.2 * m},0V${1.2 * m}H0`} className="p-tile" />
@@ -171,11 +220,31 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(Math.max(0.35 * m, 2.2))} /> })}
     </g>
     <g className="t2-labels">{labels}</g>
-    <g className="t2-north" transform={`translate(${fr.width - fs * 2} ${fs * 2.2})`} aria-hidden="true">
+    {!zoomed && <><g className="t2-north" transform={`translate(${fr.width - fs * 2} ${fs * 2.2})`} aria-hidden="true">
       <path d={`M0,${-fs * 1.2}L${fs * 0.55},${fs * 0.5}L0,${fs * 0.15}L${-fs * 0.55},${fs * 0.5}Z`} /><text y={fs * 1.6} fontSize={fs * 0.8}>N</text>
     </g>
     <g className="t2-scale" transform={`translate(${fs * 1.2} ${fr.height - fs * 1.2})`} aria-hidden="true">
       <path d={`M0,0H${25 * m}M0,${-fs * 0.3}V${fs * 0.3}M${25 * m},${-fs * 0.3}V${fs * 0.3}`} /><text x={25 * m + fs * 0.4} y={fs * 0.3} fontSize={fs * 0.8}>25 m</text>
-    </g>
+    </g></>}
   </svg>
+  <div className="t2-zoom" role="group" aria-label="Zoom">
+    <button type="button" onClick={() => zoomBy(0.66)} aria-label="Mărește">+</button>
+    <button type="button" onClick={() => zoomBy(1.5)} aria-label="Micșorează" disabled={!zoomed}>−</button>
+    <button type="button" onClick={() => setView([0, 0, fr.width, fr.height])} aria-label="Toată harta" disabled={!zoomed}>⤢</button>
+  </div>
+  </div>
+}
+
+/** Legend: zone states plus the icons drawn on the map. */
+export function MapLegend({ lang = 'ro' }: { lang?: 'ro' | 'en' }) {
+  const ro = lang === 'ro'
+  const items: [string, string][] = [
+    ['s-normal', 'Normal'], ['s-near', ro ? 'Ocupat' : 'Busy'], ['s-full', ro ? 'Plin' : 'Full'], ['s-none', ro ? 'Fără date' : 'No data'],
+    ['approx', ro ? 'Poziție aproximativă' : 'Approximate'],
+  ]
+  const icons: [string, string][] = [['i-door', ro ? 'Ușă' : 'Door'], ['i-exit', ro ? 'Ieșire urgență' : 'Emergency exit'], ['i-vert', ro ? 'Scări / lift' : 'Stairs / lift'], ['i-info', ro ? 'Informații' : 'Information']]
+  return <ul className="t2-legend">
+    {items.map(([c, t]) => <li key={c}><i className={`sw ${c}`} />{t}</li>)}
+    {icons.map(([c, t]) => <li key={c}><i className={`ic ${c}`} />{t}</li>)}
+  </ul>
 }

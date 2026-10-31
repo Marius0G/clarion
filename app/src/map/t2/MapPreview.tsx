@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { levelNames, levels, type Level } from './data'
-import { TerminalMap } from './TerminalMap'
+import { MapLegend, TerminalMap } from './TerminalMap'
 
 /** /harta: the detailed T2 map on its own, for checking the drawing against Marius's package. */
 export default function MapPreview() {
@@ -18,5 +18,6 @@ export default function MapPreview() {
       {zone && <span style={{ marginLeft: 'auto', opacity: .8 }}>{zone}</span>}
     </div>
     <TerminalMap level={level} cameras={cameras} base={base} selected={zone} onZone={setZone} />
+    <MapLegend />
   </div>
 }
