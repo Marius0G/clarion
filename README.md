@@ -1,130 +1,97 @@
 # Clarion
 
-Clarion coordonează informarea când Aeroportul Craiova oprește zborurile. Dispecerul confirmă suspendarea și aprobă mesaje pentru pasageri, rude, taxiuri și personal. La revenire poate deschide accesul în 3 valuri: întâi personalul, urgențele și transportul, apoi cei deja în zonă, apoi restul.
+Crowd control pentru Aeroportul Craiova. Clarion urmărește aglomerația din terminal prin camere și o transformă în trei lucruri:
 
-Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Ținta este notificarea în primul minut de la confirmare. Citirea și reacția oamenilor se măsoară separat. Detecția rămâne internă. Pistă închisă nu înseamnă terminal închis. Statusul zborului aparține companiei aeriene.
+- **Pentru pasageri, pe WhatsApp:** la ce oră să fie la intrarea în terminal, cât se stă la check-in, la securitate și până la poartă, schimbările zborului lor și, în criză, ruta de ieșire.
+- **Pentru angajați:** raportează o problemă în cuvinte simple și află în cât timp ajunge echipa de intervenție.
+- **Pentru admin:** un singur ecran cu harta terminalului, oamenii, cozile și deciziile directe (deschide o linie, evacuează o zonă).
 
-- [`docs/SPEC.md`](docs/SPEC.md): specul echipei, cu rolurile, termenele și legătura cu Unity. Citește-l primul.
-- [`docs/clarion-sinteza-si-plan-control-tower.pdf`](docs/clarion-sinteza-si-plan-control-tower.pdf): sinteza și planul Clarion, ultima versiune. `app/PM/control-tower-plan.pdf` este versiunea dinainte de alegerea numelui; secțiunile încep la aceleași pagini.
+Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Specul echipei: [`docs/SPEC-v2.md`](docs/SPEC-v2.md).
+
+## Cum funcționează
+
+```
+Unity 3D: terminalul, oamenii, camerele virtuale (mediul)
+   │ imagini de la camere                          ▲ deciziile adminului, rute, mesaje
+   ▼                                               │
+Serviciul de vision (Python): oameni detectați, cozi, timpi, prognoză, evacuare
+   │ flow.report, crowd.positions, evac.plan
+   ▼
+Backend (Cloudflare Worker + Durable Object) ──▶ ecranul adminului, pagina pasagerului, WhatsApp
+```
+
+Clarion lucrează ca un sistem real: vede terminalul doar prin camere, plus orarul zborurilor și deciziile adminului. Simularea Unity e doar mediul. Ea știe adevărul exact (cozile și timpii reali), pe care îl trimite separat, numai ca să măsurăm cât de corecte sunt estimările și cât ajută Clarion. Adevărul nu intră niciodată în decizii, rute sau mesaje.
+
+## Algoritmi
+
+Detecție YOLO pe imaginile camerelor, cu o corecție învățată pentru cozile dense; un filtru Kalman pe fiecare zonă, pentru număr și flux; așteptarea calculată din oamenii din coadă și viteza liniilor deschise; prognoza la 30–120 de minute din orarul zborurilor și un model de coadă; timpul de evacuare și împărțirea pe ieșiri dintr-un flux maxim pe graful terminalului. Modelele ML sunt antrenate pe zile simulate, în care știm adevărul.
+
+Detalii: [`docs/SPEC-v2.md`](docs/SPEC-v2.md), secțiunea „Algoritmi”. Varianta pentru pitch: [`docs/pitch/algoritmi.md`](docs/pitch/algoritmi.md).
+
+## Starea la 31 octombrie, seara
+
+Proiectul a trecut sâmbătă după-amiază de la alerte la crowd control. Ce e în repo acum:
+
+| Piesă | Stare |
+|---|---|
+| Ecranul adminului (harta terminalului, zone, decizii) | în lucru, pe pagina principală |
+| Abonarea pe `/join`, cu boarding pass și Google Wallet | în lucru |
+| Agentul WhatsApp | în lucru, portat din proiectul Moni (vezi mai jos) |
+| Backend: Worker, WebSocket pentru Unity și vision, comenzile către Unity | în lucru |
+| Serviciul de vision și algoritmii | în lucru |
+| Legătura Unity ↔ backend | în lucru |
+
+Tabelul se actualizează până la predarea finală, duminică la 15:00.
 
 ## Demo
 
 | Ecran | URL |
 |---|---|
-| Consolă | https://clarion-craiova.pages.dev |
-| Abonare | https://clarion-craiova.pages.dev/join |
-| QR pentru juriu | https://clarion-craiova.pages.dev/join/qr |
-| Clonă 2D pentru teste și urgențe | https://clarion-craiova.pages.dev/twin |
-| Panou public de zboruri | https://clarion-craiova.pages.dev/panou.html?backend=ORIGINEA_API |
-| Numărător de vehicule la T2 | https://clarion-craiova.pages.dev/numarator.html |
+| Ecranul adminului | https://clarion-craiova.pages.dev |
+| Abonare pasager | https://clarion-craiova.pages.dev/join |
 
-Fluxul de scenă: juriul scanează QR-ul afișat la `/join/qr`, alege rolul și acceptă canalul. Deschide WhatsApp și **trimite** mesajul precompletat către Clarion, **+40 700 000 000**. Operatorul apasă **Confirmă suspendarea**, apoi **Aprobă mesajele**, selectează rolurile și apasă **Aprobă și trimite**. Telefoanele primesc alerta. Unity 3D arată reacțiile agenților; Marius prezintă numai rezultate A/B validate din Unity. `/twin` este o clonă 2D pentru teste și urgențe (2D clone for testing and emergencies).
+WhatsApp folosește un număr de test Meta, **+1 555 631 8672**, care trimite doar către numerele adăugate în consola Meta. De aceea, demo-ul de pe scenă se face pe telefoanele echipei.
 
-**Stare la revizia documentației, 31 octombrie:** deploy-ul și fluxul pe telefon trebuie verificate înainte de scenă. Rezerva este înregistrarea locală. Vezi [runbook](docs/pitch/runbook.md).
+## Local
 
-## Arhitectură și backend
-
-Twin → backend → canale și consolă. Consola trimite deciziile înapoi la backend. Abonarea și răspunsurile de pe telefon actualizează aceeași stare.
-
-- **Cloudflare:** frontend pe Pages; backend în [`worker/`](worker/README.md), Worker cu Durable Object și stare SQLite. HTTP și WebSocket folosesc aceeași instanță. Secretele se configurează în Cloudflare.
-- **Rezervă:** [`backend/`](backend/README.md), Node pe laptop, port 8787, conectat la hotspot. Folosește același motor de stare și mesaje. Starea Worker-ului nu se copiază automat pe laptop.
-- **Selectare:** adaugă `?backend=` cu originea API codificată în URL. Exemplu local: `http://localhost:5173/?backend=http%3A%2F%2Flocalhost%3A8787`. Aplică aceeași origine la `/join`, `/join/qr` și `/twin`. Alegerea se păstrează în browser; verifică fiecare dispozitiv.
-
-Originea publică a Worker-ului se ia din deploy-ul real, nu se ghicește. Valorile implicite Pages sunt `VITE_BACKEND_HTTP` și `VITE_BACKEND_URL`, setate înainte de build. Pentru Pages plus backend pe laptop trebuie un **tunel HTTPS** către portul 8787. HTTPS nu poate folosi direct un API HTTP de pe hotspot. Mută și webhook-ul WhatsApp la tunel. Telegram pe Node folosește polling; Worker-ul folosește webhook. Un singur backend trebuie să primească actualizările botului.
-
-Unity 3D este baza proiectului și sursa evenimentelor în demo și video. `/twin` este o clonă 2D pentru teste și urgențe (2D clone for testing and emergencies). Vorbește [contractul](app/PM/CONTRACT.md), extins de [docs/SPEC.md §5](docs/SPEC.md#5-sim-api): evenimente de incident, `agent.register`, `agent.update`, `metric.report`; primește `alert.sent`, `agent.notified`, `wave.green` și `state`. Unity se conectează ca `client=twin`; nu porni simultan Unity și clona 2D. Alegem o singură sursă de evenimente pe incident. Modelul 2D și modelul `sim-ab/` au rezultate distincte. Doar pentru teste sau urgențe, în `/twin`, alege **Cu Clarion**, acoperire **50%**, apoi **▶ Auto**. Confirmarea și aprobarea rămân în consolă. **Run A/B (20 seeds)** deschide rezultatele pereche, pentru acoperire 20%, 50% și 80%.
-
-Codul Unity scris la hackathon intră în `twin/ClarionTwin/`. Cele 12 persona ale simulării sunt în [`sim/personas.json`](sim/personas.json); valorile lor sunt ipoteze, marcate ca atare. Modelul 3D al orașului rămâne într-un repo privat.
-
-## Local, în 3 comenzi
-
-Node **22.12+ din seria 22** și npm. Din rădăcina repo-ului, câte o comandă în trei terminale:
+Node **22.12+**, din seria 22, și npm. Din rădăcina repo-ului, în terminale separate:
 
 ```sh
-(cd backend && npm ci && npm run dev)
-(cd app && npm ci && npm run dev -- --host 0.0.0.0 --port 5173)
-(cd sim-ab && npm ci && npm run ab)
+(cd backend && npm ci && npm run dev)            # backend pe http://localhost:8787
+(cd app && npm ci && npm run dev)                # ecranul adminului pe http://localhost:5173
+(cd backend && npm run demo:terminal)            # un Unity fals, ca ecranul să aibă date fără simulare
 ```
 
-Backend: `http://localhost:8787/health`. Consolă: `http://localhost:5173/`. Abonare: `http://localhost:5173/join`. QR: `http://localhost:5173/join/qr`. Twin: `http://localhost:5173/twin`. Comanda 3 produce rezultatele A/B în `sim-ab/out/`; nu declanșează incidentul live.
+Fără credențiale, canalele reale rulează în mod dry-run. Configurarea e în [backend/README.md](backend/README.md) și [worker/README.md](worker/README.md). Secretele stau doar în Cloudflare și în `.env` local, niciodată în repo.
 
-Fără credențiale, canalele reale sunt în mod dry-run. Node încarcă automat `backend/.env` și fișierul `.env` al echipei din rădăcină. Cu credențiale, aprobarea poate trimite mesaje reale. Configurarea este în [backend/README.md](backend/README.md) și [worker/README.md](worker/README.md). Nu publica secrete sau fișierele de stare.
+## Structura
 
-Pentru repetiția cu operator: din `backend/`, `npm run demo:pitch`. Trimite evenimentele scenariului și așteaptă deciziile omului. Nu îl porni simultan cu scenariul twin. `npm run demo` este automat: resetează incidentul și apasă inclusiv aprobările. Nu îl rula peste demo-ul manual. Telefoanele nu pot folosi `localhost` pentru a ajunge la laptop; folosește adresa publică verificată.
-
-## Canale
-
-| Canal | Ce face demo-ul |
+| Folder | Ce conține |
 |---|---|
-| WhatsApp | Canal real principal, numărul Clarion +40 700 000 000. Catalog RO/EN în `whatsapp/templates.json`. Template-urile cer aprobare Meta; trimiterea la aprobare nu înseamnă acceptare. Mesajul inițiat de jurat deschide fereastra de 24 h pentru răspunsuri libere. |
-| Telegram | Rezervă reală. Abonare separată, cu acord; utilizatorul apasă **Start** în bot. „Am înțeles” confirmă citirea. |
-| SMSLink | Rezervă reală doar cu credențiale, destinație și acord testate. Fără linkuri în SMS. Selectorul SMS din `/join` este momentan dezactivat. |
-| Waze | Feed CIFS `ROAD_CLOSED` simulat la `/waze/cifs.json`. Nu este publicat în Waze. |
-| Web push și Google Wallet | Adaptoare simulate. Nu sunt notificări push sau pass-uri Wallet reale. |
-| RO-Alert | Ciornă în consolă. Nu emitem alerte; decizia revine ISU. |
+| `app/` | Frontend React: ecranul adminului, `/join`, harta |
+| `backend/` | Backend Node pentru rulare locală, cu același motor ca Worker-ul |
+| `worker/` | Backend-ul public pe Cloudflare (Worker + Durable Object) |
+| `whatsapp/` | Template-urile WhatsApp |
+| `docs/` | Specul, algoritmii și materialele de pitch |
 
-Verificare template-uri, din rădăcină: `node whatsapp/submit-templates.mjs --status`, cu secretele echipei încărcate. În fereastra de 24 h adaptorul folosește text liber. În afara ei trimite doar template-uri acceptate și disponibile pentru rol și limbă. Rezerva Telegram/SMS cere abonare separată.
+Simularea Unity 3D și camerele virtuale sunt într-un repo privat, pentru că folosesc imagini de la terți. Istoricul lui se poate arăta organizatorului la cerere.
 
-Contoarele disting încercările, livrările și citirile. În metrica backend, livrarea înseamnă acceptarea de către furnizor; nu dovedește afișarea pe telefon. Primul minut începe la confirmarea suspendării. Endpoint-urile sunt deduplicate; un grup Telegram este un endpoint, nu numărul membrilor. Treptele de acoperire se suprapun și nu se adună. Estimarea Waze de 10 șoferi/minut este o ipoteză de demo.
+## Ce exista înainte
 
-## Ce susțin datele A/B
+- **WhatsApp și login:** stratul WhatsApp (webhook, agent, mesaje) și autentificarea cu telefon și Google sunt portate din Moni, proiectul lui Bogdan de la Nexxt 2026 (repo privat), și adaptate pentru Clarion.
+- **Modele și biblioteci:** YOLO (Ultralytics, AGPL-3.0), ByteTrack, LightGBM și restul dependențelor din `package.json`. Nu sunt creația echipei.
+- **Date publice:** geometria din OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0) și numărul de pasageri din Eurostat (577.693 în 2025).
 
-Sursa: [`sim-ab/out/results.json`](sim-ab/out/results.json), `coverage=0.5`, `waves=false`. A = fără alerte, B = cu alerte. Aceeași populație în fiecare pereche, 20 de seed-uri. **Simulare necalibrată**, cu orar ilustrativ. Intervalele sunt p05-p95 empirice între seed-uri, nu intervale de încredere.
+Restul codului a fost scris în timpul evenimentului; vezi istoricul commit-urilor.
 
-| Metrică | Rezultat la 50% acoperire | p05-p95 |
-|---|---:|---:|
-| Porniri inutile evitate, A−B | 4 mașini | 2-7,05 |
-| Drum inutil evitat, A−B | 137,92 km | 76,21-179,81 |
-| Timp inutil evitat, A−B | 229,86 vehicul-minute | 127,01-299,68 |
-| Persoane simulate notificate în primul minut, B | 294,5 | 275,85-326,45 |
-| Câștig ISU/SMURD până la T2, A−B | 1,06 min | 0,60-1,65 |
+## Confidențialitate
 
-Pentru scenă: **4 porniri inutile evitate, circa 138 km și 230 vehicul-minute. Aproximativ 295 de persoane simulate notificate în primul minut.** Acestea sunt mediane, nu o rulare individuală. Kilometrii includ și drumurile scurtate ale mașinilor deja pornite; nu provin doar din cele 4 porniri evitate. Vehicul-minute nu înseamnă minute per pasager. Mediana citirilor din primul minut este doar 1.
+- Camerele produc doar numărători, fluxuri și puncte anonime pe hartă. Nu recunoaștem fețe și nu urmărim persoane de la o cameră la alta.
+- Abonarea cere acordul pasagerului. Scannerul citește boarding pass-ul în browser; imaginea nu se trimite backend-ului.
+- Nu punem în repo numere de telefon, capturi cu date personale sau fișiere `.env`. Datele de test se șterg după eveniment.
 
-ISU/SMURD rămâne linia secundară: **circa 1,1 minute, interval 0,6-1,7**. Rezultatul este necalibrat până la numărătoarea de **2 × 15 minute la rampele T2** și rerulare. Modelul nu demonstrează reducerea vârfului de la bordură prin valuri: 12 vehicule în ambele variante. Datele complete și sensibilitățile sunt în [sim-ab/README.md](sim-ab/README.md) și [ipoteze](sim-ab/ASSUMPTIONS.md).
+Repo-ul nu are încă un fișier LICENSE, deci publicarea nu acordă o licență pentru cod.
 
-Rezultatul A/B din Unity 3D se adaugă aici numai după validare, cu acoperire, seed-uri, mediană, interval, unități și ipoteze. Cifrele de mai sus provin din `sim-ab/` și nu sunt rezultate Unity.
+## Termene
 
-## Ce exista înainte / ce am construit în 48 h
-
-| Înainte | Contribuția din repo pentru hackathon |
-|---|---|
-| Nimic din simularea Unity. Eventualele asset-uri 3D terțe se declară în inventarul de licențe. | Modelul 3D al orașului, construit în timpul evenimentului și păstrat într-un repo privat. Simularea Unity: agenți, reacții, legătura cu backend-ul și rulările A/B. Codul nou intră în `twin/ClarionTwin/`, persona în `sim/`. |
-| Date publice și servicii externe. Nu sunt creația echipei. | Hartă React/MapLibre, GeoJSON locale, straturi T2 și intervenție, coridor SCJU, grilă și puncte operaționale aproximative; vreme/METAR cu rezervă locală. |
-| Nimic din aplicație: codul a început în timpul evenimentului, vezi istoricul commit-urilor. | Consolă cu confirmare, aprobare pe rol, prezență, contoare, cronologie, ciornă RO-Alert, valuri și redeschidere. Panou public de zboruri, numărător pentru T2 și clonă 2D `/twin` pentru teste și urgențe. Exercițiile inițiale și scenariile generale rămân în repo. |
-| API-uri de mesagerie și formate publice. | Backend Node, Worker/Durable Object, stare persistentă, contract HTTP/WS, mesaje RO/EN, WhatsApp și webhook-uri, Telegram, SMSLink; adaptoare simulate Waze/push/Wallet. |
-| Orar și date externe de referință. | Adaptoare FIDS/OpenSky, cache și orar ilustrativ etichetat; suprapuneri simulate de suspendare/deviere. |
-| Formatul boarding pass BCBP. | `/join`, `/join/qr`, alegere rol/canal, acord, mesaj WhatsApp precompletat, activare Telegram, link pentru rude, scanner local unde browserul îl suportă. |
-| Cercetare și ipoteze declarate în documentele sursă. | `sim-ab/`, 20 de perechi de seed-uri, export JSON/CSV, sensibilități, teste, scenarii automate și de pitch, contract, documentație și materiale de prezentare. |
-
-Prezența codului nu dovedește livrarea pe un telefon sau aprobarea Meta. Lista de scenă include doar ce trece pre-flight. Modelul 3D este într-un repo privat, iar istoricul lui poate fi arătat organizatorului la cerere. Inventarul licențelor pentru asset-uri se verifică separat, cu Marius.
-
-## Date și licențe
-
-Sursele și datele de colectare sunt în [`docs/research/`](docs/research/) și [`bogdan-research/`](bogdan-research/). Datele de intrare nu sunt măsurători ale eficienței Clarion.
-
-| Sursă | Utilizare și condiții |
-|---|---|
-| OpenStreetMap / Overpass | Geometrie, clădiri, drumuri, servicii. **© OpenStreetMap contributors, ODbL 1.0**. Păstrează atribuirea și licența pentru datele derivate. [Condiții OSM](https://www.openstreetmap.org/copyright). |
-| CARTO Dark Matter | Hartă de fundal. Atribuire CARTO și OSM. Termenii serviciului sunt separați de ODbL. [Termeni CARTO](https://www.carto.com/legal). |
-| Eurostat | Referință de cerere: 577.693 pasageri în 2025, conform cercetării repo-ului. Reutilizare cu sursa indicată, sub rezerva excepțiilor setului. Calculele Clarion sunt ale echipei; Eurostat nu răspunde de ele. [Politică Eurostat](https://ec.europa.eu/eurostat/web/main/help/copyright-notice). |
-| CNAIR/CESTRIN | Referință DN65: 13.957 vehicule/zi, date 2022. Licența setului nu este consemnată în repo; nu presupunem drept de redistribuire. |
-| OSRM | Rutare și timpi fără trafic. Datele OSM și condițiile serviciului de rutare rămân distincte. Nu este trafic măsurat la T2. |
-| FIDS CRA | Orar din `fids.flightradar.live/api/schedules/{departures|arrivals}/CRA`. În caz de eșec: **FIXTURE** ilustrativ. Nu pretindem licență deschisă sau integrare oficială cu aeroportul/Wizz. |
-| OpenSky | Aeronave în apropiere. Acces supus condițiilor furnizorului; fără drepturi de redistribuire presupuse. Lipsa feed-ului nu blochează demo-ul. |
-| Open-Meteo și Aviation Weather Center | Vreme și METAR LRCV, cu snapshot local etichetat. Open-Meteo: date CC BY 4.0, cu reguli separate de acces API. [Condiții Open-Meteo](https://open-meteo.com/en/terms). Condițiile AWC trebuie verificate pentru redistribuire. |
-| Grilă, puncte operaționale, orar de rezervă și A/B | Generate de echipă; aproximări și ipoteze etichetate. Nu sunt hărți aeronautice sau proceduri autorizate. |
-
-Repo-ul nu include un fișier LICENSE general la această revizie. Publicarea pe GitHub nu acordă automat o licență pentru întregul cod. Asset-urile 3D cer inventar și licențe proprii înainte de redistribuire.
-
-## GDPR
-
-Abonarea cere acord pe canal. Scannerul citește local; imaginea, codul brut, numele și PNR-ul nu sunt trimise backend-ului. Se folosesc zborul, data și ruta, plus rolul, limba și destinația canalului. Camera cere HTTPS sau localhost; citirea unui boarding pass real trebuie testată pe telefon.
-
-Regula produsului este expirarea la 48 h după zbor. Backend-ul elimină abonările expirate. Datele juriului trebuie șterse după eveniment din starea Node/Worker și copiile echipei, printr-o operațiune verificată. **Resetarea incidentului păstrează abonările** și nu ține loc de ștergere. Nu pune numere, chat ID-uri, capturi cu date personale sau `.env` în repo/video public. Înainte de pilot se verifică retenția completă, furnizorii și informarea persoanelor.
-
-## Documente și termene
-
-[Spec de echipă](docs/SPEC.md), [spec de produs](app/PM/SPEC.md), [contract](app/PM/CONTRACT.md), [plan](docs/clarion-sinteza-si-plan-control-tower.pdf), [pitch](docs/pitch/pitch-final.md), [pre-pitch](docs/pitch/pre-pitch-90s.md), [slide-uri](docs/pitch/slides.md), [video](docs/pitch/video.md), [măsurători T2](docs/masuratori/README.md), [Q&A](docs/pitch/qa.md), [checklist](docs/pitch/checklist-sambata.md), [runbook](docs/pitch/runbook.md).
-
-Sâmbătă **31 octombrie, 22:00**: repo public înregistrat în UserHub. Duminică **1 noiembrie, 15:00**: cod final; **15:00-17:00** pre-pitch; **17:00-19:00** pitch. Ore locale, Craiova. Pilotul gratuit de 30 de zile este o propunere. Nu avem aici dovada unui client sau parteneriat semnat.
+Sâmbătă, **31 octombrie, 22:00**: repo public, înregistrat în UserHub. Duminică, **1 noiembrie, 15:00**: cod final, apoi pre-pitch și pitch.
