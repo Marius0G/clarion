@@ -250,6 +250,7 @@ export class Tower extends DurableObject<Env> {
             const input = JSON.parse(await bodyText(request, 1024));
             if (!input || typeof input !== 'object' || Array.isArray(input) ||
               ((!demo || input.flight !== undefined) && (typeof input.flight !== 'string' || input.flight.length > 20)) ||
+              (input.lang !== undefined && input.lang !== 'ro' && input.lang !== 'en') ||
               (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 80)))
               return json({ error: 'Flight and optional first name required' }, 400);
             const view = airportView(this.engine.sim, () => this.twins().length > 0);
@@ -259,7 +260,7 @@ export class Tower extends DurableObject<Env> {
             if (!flight) return json({ error: 'Unknown flight' }, 404);
             const boarding = demo ? boardingFromSchedule(flight, input.name) : undefined;
             const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-            const pending: PendingJoin = { flight: flight.flight, expiresAt: Date.now() + JOIN_TTL_MS,
+            const pending: PendingJoin = { lang: input.lang ?? 'ro', flight: flight.flight, expiresAt: Date.now() + JOIN_TTL_MS,
               ...(input.name?.trim() && { name: input.name.trim().split(/\s+/)[0] }) };
             const link = waLink(flight.flight, token, this.env.WHATSAPP_NUMBER);
             const pass = boarding ? await this.wallet.boardingPass(token, boarding, new Date(pending.expiresAt).toISOString(), link) : undefined;

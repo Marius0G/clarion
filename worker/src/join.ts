@@ -3,7 +3,7 @@ import type { WaStore } from './wa/index.js';
 import { flightKey } from './wa/flights.js';
 
 export const JOIN_TTL_MS = 24 * 60 * 60 * 1000;
-export interface PendingJoin { flight: string; name?: string; expiresAt: number }
+export interface PendingJoin { lang?: 'ro' | 'en'; flight: string; name?: string; expiresAt: number }
 export const joinKey = (token: string) => `join:${token}`;
 export const waLink = (flight: string, token: string, number = '15556318672') =>
   `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent(`START ${flight} ${token}`)}`;

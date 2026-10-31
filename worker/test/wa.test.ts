@@ -263,3 +263,76 @@ describe('WhatsAppAgent turn', () => {
     expect(blocked.calls).toEqual([]);
   });
 });
+
+describe('passenger language (D23)', () => {
+  const phone = '+40712345678';
+  function languageHarness(key = '') {
+    const store = new MemoryStore();
+    const calls: any[] = [];
+    const airport = view({ security: { waiting: 12, waitMin: 10, forecast: [{ inMin: 60, waitMin: 20 }] } });
+    const agent = new WhatsAppAgent({ WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_NUMBER_ID: 'PN1', ANTHROPIC_API_KEY: key }, store, airport, {
+      pause: 0, fetcher: async (url, init) => {
+        const body = JSON.parse(String(init?.body)); calls.push({ url, body });
+        return Response.json(String(url).includes('anthropic') ? { content: [{ type: 'text', text: 'Your gate closes at 09:10.' }] } : {});
+      },
+    });
+    const texts = () => calls.filter(c => c.body.type === 'text').map(c => c.body.text.body as string);
+    return { agent, store, calls, texts, airport };
+  }
+  it.each(['English', 'eNgLiSh', 'EN', 'en'])('persists %s and switches back with Romanian aliases', async choice => {
+    const { agent, texts } = languageHarness();
+    await agent.inbound(inbound(choice));
+    expect(await agent.profile(phone)).toMatchObject({ lang: 'en' });
+    expect(texts().at(-1)).toBe('I will reply in English.');
+    await agent.inbound(inbound('hello'));
+    expect(texts().at(-1)).toContain('Craiova Airport');
+    for (const ro of ['Română', 'rOmÂnĂ', 'RO']) {
+      await agent.inbound(inbound(ro));
+      expect(await agent.profile(phone)).toMatchObject({ lang: 'ro' });
+      expect(texts().at(-1)).toBe('Voi răspunde în română.');
+    }
+  });
+  it('applies an English join token before START, situation and bag replies, and rehydrates it for the page', async () => {
+    const { agent, store, texts } = languageHarness();
+    const token = 'e'.repeat(48);
+    await store.put(joinKey(token), { flight: W6.flight, lang: 'en', expiresAt: Date.now() + JOIN_TTL_MS });
+    await agent.inbound(inbound(`START ${W6.flight} ${token}`));
+    expect(await agent.profile(phone)).toMatchObject({ lang: 'en', verified: true });
+    expect(texts()[0]).toContain('Connected ✈️');
+    expect(texts()[1]).toContain('Security: 10 min now');
+    expect(texts()[1]).toContain('simulation time');
+    const p = await agent.profile(phone);
+    expect(await agent.messaging.passenger(p!.pageToken!)).toMatchObject({ lang: 'en', queues: expect.arrayContaining([expect.objectContaining({ label: 'Security', source: 'forecast' })]) });
+    await agent.inbound(inbound('RO'));
+    expect(await agent.messaging.passenger(p!.pageToken!)).toMatchObject({ lang: 'ro' });
+  });
+  it('passes the chosen language in the system prompt despite Romanian conversation history', async () => {
+    const { agent, calls } = languageHarness('key');
+    await agent.inbound(inbound('salut'));
+    await agent.inbound(inbound('English'));
+    await agent.inbound(inbound('gate?'));
+    const request = calls.filter(c => String(c.url).includes('anthropic')).at(-1).body;
+    expect(JSON.stringify(request.system)).toContain('Passenger language: English. You MUST answer entirely in this language');
+  });
+  it('localizes automatic flight changes, admin decisions, staff and evacuation', async () => {
+    const { agent, store, texts, airport } = languageHarness();
+    await agent.inbound(inbound('English'));
+    await agent.inbound(inbound(`START ${W6.flight}`));
+    airport.provisional = () => false;
+    airport.flights = () => [{ ...W6, status: 'delayed', delayMin: 30 }];
+    await agent.messaging.flightsChanged();
+    expect(texts().at(-1)).toContain('is delayed by 30 min');
+    expect(texts().at(-1)).toContain('Gate 2 closes');
+    expect(agent.messaging.evacuateText(['security'], 'en')).toContain('Evacuation: Security closed');
+    await store.delete(`msg:last:wa:${phone}`);
+    await agent.messaging.adminChanged({ type: 'close', zone: 'security' });
+    expect(texts().at(-1)).toContain('Security: the area is closed.');
+    await agent.messaging.plan({ id: 'evac-en', blocked: ['security'], clearSec: 20,
+      exits: [{ exit: 'exit_1', people: 10, clearSec: 20 }], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
+    expect(texts().at(-1)).toContain('Exit via Exit 1: Entrance → Exit 1');
+    await agent.inbound(inbound('STAFF CRAIOVA2026'));
+    expect(texts().at(-1)).toContain('registered as airport staff');
+    await agent.inbound(inbound('unattended bag near gate 2'));
+    expect(texts().at(-1)).toContain('The response team has been notified');
+  });
+});

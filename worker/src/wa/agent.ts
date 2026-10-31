@@ -1,3 +1,4 @@
+import { say, type Lang } from './texts.js';
 // The Claude agent behind Clarion's WhatsApp, ported from Moni src/agent/agent.js (SPEC-v2 D2, D15).
 // Same loop, bubbles and reaction pacing; Clarion's prompt and tools instead of Moni's money ones.
 // Without ANTHROPIC_API_KEY, reply() answers deterministically from the same tools so the demo still works.
@@ -9,8 +10,7 @@ export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 /** For short proactive messages (flight changes, D15); not used by the reply loop. */
 export const WAKE_MODEL = 'claude-haiku-5-5';
 const MAX_TOOL_TURNS = 5;
-export const FALLBACK = 'Am o problemă tehnică. Informațiile nu sunt disponibile acum.';
-const TANGLED = 'Hmm, m-am încurcat puțin 😅 Poți să o spui altfel?';
+export const FALLBACK = say('ro', 'fallback');
 
 export interface HistoryEntry { role: 'user' | 'clarion'; text: string; at: string }
 export const hasLlm = (env: WaEnv) => Boolean(env.ANTHROPIC_API_KEY);
@@ -33,7 +33,7 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 </never>`;
 
 const STYLE = `<style>
-- Română, cu diacritice, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
+- Folosește limba aleasă în <context>, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
 - Răspunsul în primul balon. De obicei unul sau două baloane, separate de o linie care conține doar ---; fiecare
   balon are 1-2 propoziții scurte. Fără liste, markdown sau linii lungi.
 - Orele le dai ca „14:20” și spui o dată că sunt în ora din <context> (ora simulării în demo).
@@ -84,6 +84,7 @@ Clarion: [react]🙏
 /** What Clarion knows about this person: clock, flight, bag. */
 export function contextBlock(profile: Profile, clock: Clock) {
   const lines = [
+    `Passenger language: ${profile.lang === 'en' ? 'English' : 'Romanian'}. You MUST answer entirely in this language, including after a switch; translate tool notes and ignore the language of earlier messages and examples.`,
     `Acum: ${clockText(clock.now)} (${clockLabel(clock)})`,
     `Rol: ${profile.role === 'staff' ? 'angajat al aeroportului' : 'pasager'}`,
     `Zbor: ${profile.flight ?? 'necunoscut încă'}${profile.flight && profile.verified === false ? ' (spus în chat, nevalidat)' : ''}`,
@@ -149,7 +150,7 @@ async function runTool(tools: Tools, block: any) {
 
 const textOf = (data: any) => (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim();
 
-async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: any[], tools: Tools, used: string[]) {
+async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: any[], tools: Tools, used: string[], lang?: Lang) {
   const model = env.CLAUDE_MODEL || DEFAULT_MODEL;
   // The persona is the same for everyone: cached. The per-person context goes after the cache breakpoint.
   const system = [
@@ -158,7 +159,7 @@ async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: a
   ];
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const data = await callClaude(env, fetcher, { model, max_tokens: 1024, system, messages, tools: TOOL_SPECS, output_config: { effort: 'low' } });
-    if (data.stop_reason === 'refusal') return 'Aici nu te pot ajuta, dar pentru zbor și aeroport sunt aici oricând 🙂';
+    if (data.stop_reason === 'refusal') return say(lang, 'refusal');
     if (data.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: data.content }); continue; }
     if (data.stop_reason === 'tool_use') {
       messages.push({ role: 'assistant', content: data.content });
@@ -171,7 +172,7 @@ async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: a
   }
   // Out of tool turns: one last call with tools off, answering from what was already looked up.
   const last = await callClaude(env, fetcher, { model, max_tokens: 1024, system, tools: TOOL_SPECS, tool_choice: { type: 'none' }, messages });
-  return textOf(last) || TANGLED;
+  return textOf(last) || say(lang, 'tangled');
 }
 
 const isWords = (b: string) => !isReaction(b) && !/^[\p{Extended_Pictographic}‍️\s]+$/u.test(b);
@@ -219,59 +220,59 @@ export interface ReplyInput { env: WaEnv; fetcher: Fetch; profile: Profile; cloc
 /** Clarion's answer to one message, as bubbles. @returns used = tool names called, for the log. */
 export async function reply({ env, fetcher, profile, clock, history, text, tools }: ReplyInput): Promise<{ bubbles: string[]; used: string[] }> {
   const used: string[] = [];
-  if (!hasLlm(env)) return { bubbles: await fallbackReply(text, tools, used, profile.role), used };
+  if (!hasLlm(env)) return { bubbles: await fallbackReply(text, tools, used, profile.role, profile.lang), used };
   try {
     const context = contextBlock(profile, clock);
     const messages = buildMessages(history, text);
-    let bubbles = toBubbles(await runAgent(env, fetcher, context, messages, tools, used));
+    let bubbles = toBubbles(await runAgent(env, fetcher, context, messages, tools, used, profile.lang));
     if (!bubbles.some(isWords) && !ACK.test(text)) {
-      const again = toBubbles(await runAgent(env, fetcher, context, [...messages, { role: 'assistant', content: bubbles.join('\n---\n') || '(nimic)' }, { role: 'user', content: '(Clarion, a venit doar un emoji. Răspunde-mi în cuvinte.)' }], tools, used));
-      bubbles = again.some(isWords) ? again : [...bubbles, TANGLED];
+      const again = toBubbles(await runAgent(env, fetcher, context, [...messages, { role: 'assistant', content: bubbles.join('\n---\n') || '(nimic)' }, { role: 'user', content: '(Clarion, a venit doar un emoji. Răspunde-mi în cuvinte.)' }], tools, used, profile.lang));
+      bubbles = again.some(isWords) ? again : [...bubbles, say(profile.lang, 'tangled')];
     }
     return { bubbles: paceReactions(bubbles, history), used };
   } catch (e) {
     console.error(JSON.stringify({ wa: 'agent-error', error: String((e as Error)?.message ?? e).slice(0, 200) }));
-    return { bubbles: [FALLBACK], used };
+    return { bubbles: [say(profile.lang, 'fallback')], used };
   }
 }
 
 /** Deterministic answers without an API key, from the same tools, so the demo path still works. */
-export async function fallbackReply(text: string, tools: Tools, used: string[] = [], role: Profile['role'] = 'passenger'): Promise<string[]> {
+export async function fallbackReply(text: string, tools: Tools, used: string[] = [], role: Profile['role'] = 'passenger', lang?: Lang): Promise<string[]> {
   const t = String(text || '').toLowerCase();
   const call = async (name: string, input: unknown = {}) => { used.push(name); return tools[name]!(input) as Promise<any>; };
   // An employee's message is a report unless it is a greeting or a thank-you.
   if (role === 'staff' && !ACK.test(text) && !/^\s*(salut|bun[aă]|hei|hello)\b/i.test(text)) {
     const r = await call('reportIssue', { text });
-    if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? FALLBACK];
-    return [`Am primit (${r.id}): ${r.kind}, ${r.place}. ${r.note}`];
+    if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? say(lang, 'fallback')];
+    return [say(lang, 'staffReport', r.id, r.kind, r.place, r.note)];
   }
   const noFlight = (r: any) => r?.error === 'no_flight' || r?.error === 'unknown_flight';
-  const askFlight = 'Care este numărul zborului (ex: W6 3751)?';
+  const askFlight = say(lang, 'askFlight');
   const code = /\b([a-z][a-z0-9]|[0-9][a-z])\s?-?(\d{3,4})\b/i.exec(text)?.slice(1).join(' ').toUpperCase();
   const flightInfo = async () => {
     const r = await call('myFlight', code ? { flight: code } : {});
     if (noFlight(r)) return [askFlight];
-    return [`${r.flight} spre ${r.destination}: poarta ${r.gate}, plecare ${r.departure}, poarta se închide la ${r.gateCloseAt} (${r.clock}).${r.status === 'delayed' ? ` Întârziat ${r.delayMin} min.` : r.status === 'cancelled' ? ' Zborul e anulat.' : ''}`];
+    return [say(lang, 'flightInfo', r.flight, r.destination, r.gate, r.departure, r.gateCloseAt, r.clock, r.status === 'delayed' ? say(lang, 'delay', r.delayMin) : r.status === 'cancelled' ? say(lang, 'cancelled') : '')];
   };
-  if (/(trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire)/.test(t)) {
-    const r = await call('routeTo', { to: /ieșire|iesire/.test(t) ? 'exit' : /check|ghișeu|ghiseu/.test(t) ? 'check_in' : 'gate', ...(code && { flight: code }) });
+  if (/(route|exit|trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire)/.test(t)) {
+    const r = await call('routeTo', { to: /exit|ieșire|iesire/.test(t) ? 'exit' : /check|ghișeu|ghiseu/.test(t) ? 'check_in' : 'gate', ...(code && { flight: code }) });
     if (noFlight(r)) return [askFlight];
-    return [r.note ?? FALLBACK, ...(r.link ? [r.link] : [])];
+    return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
   }
   // Flight information follows routing requests.
-  if (/(poart|gate|întârzi|intarzi|anulat|status)/.test(t)) return flightInfo();
-  if (/(când|cand|ora |oră|plec|ajung|vin\b|să fiu|sa fiu)/.test(t)) {
+  if (/(poart|gate|delay|cancel|întârzi|intarzi|anulat|status)/.test(t)) return flightInfo();
+  if (/(when|time|când|cand|ora |oră|plec|ajung|vin\b|să fiu|sa fiu)/.test(t)) {
     const r = await call('whenToArrive', code ? { flight: code } : {});
     if (noFlight(r)) return [askFlight];
     if (r.note) return [r.note];
     return [r.situation,
-      ...(r.assumedCheckedBag ? ['Am socotit și predarea bagajului. Ai bagaj de cală?'] : [])];
+      ...(r.assumedCheckedBag ? [say(lang, 'bagAssumed')] : [])];
   }
-  if (/(coad|aglomer|securitate|lume|așteptare|asteptare)/.test(t)) {
+  if (/(queue|crowd|security|coad|aglomer|securitate|lume|așteptare|asteptare)/.test(t)) {
     const r = await call('queues');
     if (!r.available) return [r.note];
-    return [r.zones.slice(0, 3).map((z: any) => `${z.zone}: ${z.waitMin !== null ? `${Math.round(z.waitMin)} min acum` : 'timp necunoscut acum'}${z.forecast?.length ? `, ~${Math.round(z.forecast[0].waitMin)} min peste ${z.forecast[0].inMin} min` : ''}.`).join('\n')];
+    return [r.zones.slice(0, 3).map((z: any) => `${z.zone}: ${z.waitMin !== null ? say(lang, 'now', Math.round(z.waitMin)) : say(lang, 'unknownNow')}${z.forecast?.length ? say(lang, 'later', Math.round(z.forecast[0].waitMin), z.forecast[0].inMin) : ''}.`).join('\n')];
   }
-  if (/zbor/.test(t) || code) return flightInfo();
-  return ['Salut! Sunt Clarion, asistentul Aeroportului Craiova ✈️ Aici sunt disponibile cozile acum și prognoza, durata estimată până la poartă și informațiile despre zbor.'];
+  if (/flight|zbor/.test(t) || code) return flightInfo();
+  return [say(lang, 'greeting')];
 }

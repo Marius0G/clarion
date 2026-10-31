@@ -62,7 +62,7 @@ describe('passenger messaging in the Tower', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://clarion-craiova.pages.dev');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(await response.json()).toEqual({
-      simTime: 25200,
+      lang: 'ro', simTime: 25200,
       flight: { flight: 'W6 3751', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', gateCloseAt: '09:10', status: 'scheduled', delayMin: 0 },
       arriveBy: '08:30', entranceToGateMin: 38,
       queues: [
@@ -158,4 +158,29 @@ it('evaluates bound passengers on flow.report and rate-limits repeated reports',
   v.ws.send(envelope('flow.report', { zones: [{ zone: 'security', waiting: 50, waitMin: 5, forecast: [{ inMin: 60, waitMin: 40 }] }] }));
   await expect.poll(async () => (await (await api('/api/sim')).json() as any).flow.security.forecast[0].waitMin).toBe(40);
   expect(u.of('agent.message').filter(m => m.agentId === 'flow-agent' && m.kind === 'arrive')).toHaveLength(1);
+});
+
+it('join language reaches START, /api/me, automatic delays and simulated passengers', async () => {
+  const u = await twin();
+  u.ws.send(envelope('flight.update', { flights: [flight()] }));
+  await expect.poll(async () => (await (await api('/api/sim')).json() as any).flights[0].flight).toBe('W6 3751');
+  for (const path of ['/api/join', '/api/join/demo']) {
+    expect((await api(path, { flight: 'W6 3751', lang: 'fr' }, '')).status).toBe(400);
+  }
+  const join = await (await api('/api/join', { flight: 'W6 3751', lang: 'en' }, '')).json() as any;
+  const before = graph.length;
+  await whatsapp(`START W6 3751 ${join.token}`);
+  const newTexts = () => graph.slice(before).filter(b => b.type === 'text').map(b => b.text.body as string);
+  await expect.poll(() => newTexts().some(t => t.includes('Connected ✈️')), { timeout: 10000 }).toBe(true);
+  // The phone may already have a page from earlier tests; language is always rehydrated from its current profile.
+  const all = texts().filter(t => t.includes('/m/'));
+  const token = /\/m\/([a-f0-9-]+)/.exec(all.at(-1)!)![1];
+  await expect.poll(async () => (await (await api(`/api/me?token=${token}`, undefined, '')).json() as any).lang).toBe('en');
+  u.ws.send(envelope('agent.register', { agentId: 'english-sim', role: 'passenger', channel: 'sim', flight: 'W6 3751', lang: 'en' }));
+  await expect.poll(() => u.of('agent.message').some(m => m.agentId === 'english-sim' && m.text.includes('Security'))).toBe(true);
+  const simToken = /\/m\/([a-f0-9-]+)/.exec(u.of('agent.message').find(m => m.agentId === 'english-sim').text)![1];
+  expect(await (await api(`/api/me?token=${simToken}`, undefined, '')).json()).toMatchObject({ lang: 'en' });
+  u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin: 45 })] }));
+  await expect.poll(() => newTexts().some(t => t.includes('is delayed by 45 min')), { timeout: 10000 }).toBe(true);
+  await expect.poll(() => u.of('agent.message').some(m => m.agentId === 'english-sim' && m.text.includes('is delayed by 45 min'))).toBe(true);
 });

@@ -1,8 +1,9 @@
+import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
 import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
-import { ISSUE_LABELS, classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
+import { classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
 
 export interface ZoneRow {
   density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
@@ -17,7 +18,7 @@ export interface AirportView {
   blocked?(): readonly string[];
 }
 export interface Profile {
-  phone: string; role: 'passenger' | 'staff';
+  lang?: Lang; phone: string; role: 'passenger' | 'staff';
   flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
   hasCheckedBag?: boolean; lastInboundAt?: number; name?: string;
 }
@@ -30,23 +31,7 @@ export const MARGIN_MIN = 10;
 // Used only when neither a forecast nor a live wait exists for a zone (no Unity, no history yet).
 export const DEFAULT_WAIT_MIN: Record<string, number> = { bag_drop: 12, check_in: 15, security: 15 };
 
-const ZONE_NAMES: Record<string, string> = {
-  check_in: 'Check-in', bag_drop: 'Predare bagaje', security: 'Control de securitate',
-  arrivals_hall: 'Sala de sosiri', taxi_rank: 'Stația de taxi', kerb: 'Zona de oprire',
-};
-/** "check_in:2" -> "Check-in, grupul 2" (desk group, D8); "check_in:W6" -> "Check-in W6" (legacy per airline). */
-export function zoneName(zone: string) {
-  const [base, suffix] = zone.split(':');
-  const name = ZONE_NAMES[base!] ?? base;
-  if (!suffix) return name!;
-  return /^\d+$/.test(suffix) ? `${name}, grupul ${suffix}` : `${name} ${suffix}`;
-}
-/** Readable node: "gate_2" -> "Poarta 2", "exit_1" -> "Ieșirea 1", "check_in:2" -> "Check-in, grupul 2". */
-export function nodeName(id: string) {
-  const n = /^(gate|exit)_(\d+)$/.exec(id);
-  if (n) return `${n[1] === 'gate' ? 'Poarta' : 'Ieșirea'} ${n[2]}`;
-  return ({ entrance: 'Intrarea', airside: 'Zona de plecări', team_post: 'Postul echipei' } as Record<string, string>)[id] ?? zoneName(id);
-}
+export { zoneName, nodeName } from './texts.js';
 
 /** The flight's own queues: its desk group (D8: check_in:2 / bag_drop:2), else the airline's (legacy check_in:W6). */
 export function ownZones(flight: Pick<Flight, 'airline' | 'checkIn'> | undefined) {
@@ -96,8 +81,8 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
     if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ zone: bagZone.key, step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
     const s = waitAt(secZone.row, 'security', inMin);
     out.push({ zone: secZone.key, step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
-    out.push({ zone: 'walk', step: `Drum până la poarta ${gateName(flight.gate)}`, min: walk ? Math.ceil(walk.totalSec / 60) : GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: walk ? 'traseu live' : 'constantă' });
-    out.push({ zone: 'margin', step: 'Marjă', min: MARGIN_MIN, source: 'constantă' });
+    out.push({ zone: 'walk', step: copy.gateWalk(undefined, flight), min: walk ? Math.ceil(walk.totalSec / 60) : GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: walk ? 'traseu live' : 'constantă' });
+    out.push({ zone: 'margin', step: say('ro', 'margin'), min: MARGIN_MIN, source: 'constantă' });
     return out;
   };
   let plan = steps(0);
@@ -121,23 +106,17 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
 }
 
 /** D22: one situation description shared by tools, WhatsApp and simulated passengers. */
-export function situationText(plan: ReturnType<typeof arrivalPlan>) {
-  const queues = plan.queues.map(q => {
-    const now = q.nowMin === null ? null : `${Math.round(q.nowMin)} min acum`;
-    // Only a real forecast adds a second number; "acum" or a standard estimate would just repeat or guess.
-    const later = q.source === 'prognoză' ? `~${q.forecastMin} min la ${q.forecastAt}` : q.nowMin === null ? `~${q.forecastMin} min (estimare)` : null;
-    return `${q.label}: ${[now, later].filter(Boolean).join(', ')}.`;
-  }).join(' ');
-  return `${queues} Poarta ${plan.gate} se închide la ${plan.gateCloseAt}. Cu situația de acum, de la intrare la poartă ~${plan.totalMin} min, inclusiv ${MARGIN_MIN} min marjă (${plan.clock}).`;
+export function situationText(plan: ReturnType<typeof arrivalPlan>, lang?: Lang) {
+  return copy.situation(lang, plan);
 }
 
-function flightView(f: Flight, clock: Clock, provisional: boolean) {
+function flightView(f: Flight, clock: Clock, provisional: boolean, lang?: Lang) {
   return {
     flight: f.flight, airline: f.airline, destination: f.destination, gate: gateName(f.gate),
     departure: clockText(etd(f)), gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin,
     ...(f.delayMin > 0 && { scheduledDeparture: clockText(f.std) }),
-    checkIn: f.checkIn ? [zoneName(f.checkIn)] : f.checkInDesks.map(zoneName), now: clockText(clock.now), clock: clockLabel(clock),
-    ...(provisional && { note: 'Orar provizoriu de test, nu orarul real al aeroportului.' }),
+    checkIn: f.checkIn ? [zoneName(f.checkIn, lang)] : f.checkInDesks.map(n => zoneName(n, lang)), now: clockText(clock.now), clock: say(lang, clock.sim ? 'simClock' : 'realClock'),
+    ...(provisional && { note: say(lang, 'provisional') }),
   };
 }
 
@@ -155,9 +134,9 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
-    if (!wanted) return { error: 'no_flight', hint: 'Cere-i numărul zborului (ex: W6 3751).' } as const;
+    if (!wanted) return { error: 'no_flight', hint: say(p.lang, 'flightHint') } as const;
     const f = findFlight(view.flights(), wanted);
-    if (!f) return { error: 'unknown_flight', flight: wanted, hint: 'Zborul nu e în orarul de azi. Roagă-l să verifice numărul.' } as const;
+    if (!f) return { error: 'unknown_flight', flight: wanted, hint: say(p.lang, 'unknownFlightHint') } as const;
     // A flight number given in chat binds the person too, unverified (no Wallet token).
     if (!p.flight) await save({ flight: f.flight, airline: f.airline, verified: false });
     return { flight: f };
@@ -165,28 +144,28 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
   return {
     async myFlight(input: { flight?: string }) {
       const r = await resolve(input?.flight);
-      return 'error' in r ? r : flightView(r.flight, view.clock(), view.provisional());
+      return 'error' in r ? r : flightView(r.flight, view.clock(), view.provisional(), profile().lang);
     },
     async whenToArrive(input: { flight?: string; hasCheckedBag?: boolean }) {
       const r = await resolve(input?.flight);
       if ('error' in r) return r;
       if (typeof input?.hasCheckedBag === 'boolean') await save({ hasCheckedBag: input.hasCheckedBag });
       const f = r.flight;
-      if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: 'Zborul e anulat. Informațiile despre alternative sunt disponibile la compania aeriană.' };
-      if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: 'Zborul a plecat deja.' };
+      if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: say(profile().lang, 'cancelledNote') };
+      if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: say(profile().lang, 'departedNote') };
       const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.());
-      return { ...plan, situation: situationText(plan), status: f.status, delayMin: f.delayMin };
+      return { ...plan, situation: situationText(plan, profile().lang), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
       const flow = view.flow(), clock = view.clock(), p = profile();
       const mine = new Set(ownZones(p.flight ? findFlight(view.flights(), p.flight) : p.airline ? { airline: p.airline } : undefined));
       const zones = Object.entries(flow).map(([zone, z]) => ({
-        zone: zoneName(zone), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
+        zone: zoneName(zone, p.lang), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
         ...(z.forecast?.length && { forecast: z.forecast.map(p => ({ inMin: p.inMin, waitMin: p.waitMin })) }),
         ...(mine.has(zone) && { yours: true }),
       }));
-      if (!zones.length) return { available: false, note: 'Nu am date live despre cozi acum.', now: clockText(clock.now), clock: clockLabel(clock) };
-      return { available: true, zones, now: clockText(clock.now), clock: clockLabel(clock) };
+      if (!zones.length) return { available: false, note: say(profile().lang, 'noQueues'), now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
+      return { available: true, zones, now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
     },
     async routeTo(input: { to?: string; flight?: string }) {
       const to = input?.to ?? 'gate';
@@ -202,24 +181,24 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
       }
       const best = targets.map(id => route(terminalGraph, 'entrance', id, density, blocked))
         .filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
-      if (!best) return { status: 'unavailable', note: 'Nu există un traseu liber cunoscut. Personalul are informații despre traseele disponibile.' };
+      if (!best) return { status: 'unavailable', note: say(profile().lang, 'noRoute') };
       const minutes = Math.ceil(best.totalSec / 60);
       return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1),
-        steps: best.nodes.map(nodeName), note: `De la intrare: ${best.nodes.map(nodeName).join(' → ')}. ~${minutes} min.`,
+        steps: best.nodes.map(n => nodeName(n, profile().lang)), note: say(profile().lang, 'route', best.nodes.map(n => nodeName(n, profile().lang)).join(' → '), minutes),
         ...(pageLink && { link: await pageLink() }), provisional: terminalGraph.provisional };
     },
     async reportIssue(input: { text?: string; kind?: string; location?: string }) {
-      if (profile().role !== 'staff') return { error: 'staff_only', note: 'Doar angajații aeroportului pot raporta incidente aici.' };
+      if (profile().role !== 'staff') return { error: 'staff_only', note: say(profile().lang, 'staffOnly') };
       const text = String(input?.text ?? '').trim();
-      if (!text) return { error: 'empty', hint: 'Cere-i angajatului ce s-a întâmplat și unde.' };
-      if (!report) return { error: 'unavailable', note: 'Nu pot trimite raportul acum. Sună la dispecerat.' };
+      if (!text) return { error: 'empty', hint: say(profile().lang, 'whereIssue') };
+      if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
       const node = matchNode(`${input?.location ?? ''} ${text}`, view.flights());
       const path = node ? route(terminalGraph, 'team_post', node, zoneDensities(view.flow(), zoneAreas), view.blocked?.()) : null;
       const etaMin = path ? Math.ceil(path.totalSec / 60) : null;
       const r = await report({ kind, node, etaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
-      return { status: 'sent', id: r.id, etaMin, kind: ISSUE_LABELS[kind], place: node ? nodeName(node) : 'loc neprecizat',
-        note: `Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. ${etaMin === null ? 'ETA indisponibil: loc necunoscut sau traseu blocat.' : `Echipa ajunge în ~${etaMin} min`}` };
+      return { status: 'sent', id: r.id, etaMin, kind: profile().lang === 'en' ? EN_ISSUES[kind] : RO_ISSUES[kind], place: node ? nodeName(node, profile().lang) : say(profile().lang, 'unknownPlace'),
+        note: say(profile().lang, 'reportSent', etaMin === null ? say(profile().lang, 'noEta') : say(profile().lang, 'eta', etaMin)) };
     },
   };
 }

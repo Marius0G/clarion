@@ -1,4 +1,5 @@
 export type PassengerData = {
+  lang?: 'ro' | 'en'
   simTime: number | null
   flight: {
     flight: string

@@ -5,9 +5,7 @@ import type { WaStore } from './index.js';
 
 export const ISSUE_KINDS = ['bagaj_abandonat', 'medical', 'securitate', 'aglomerare', 'altele'] as const;
 export type IssueKind = typeof ISSUE_KINDS[number];
-export const ISSUE_LABELS: Record<IssueKind, string> = {
-  bagaj_abandonat: 'bagaj abandonat', medical: 'urgență medicală', securitate: 'problemă de securitate', aglomerare: 'aglomerare', altele: 'incident',
-};
+export { RO_ISSUES as ISSUE_LABELS } from './texts.js';
 /** The exact shape the dashboard pins read. */
 export interface Report { id: string; at: string; kind: IssueKind; node: string | null; text: string; status: 'open' | 'closed'; etaMin?: number | null }
 

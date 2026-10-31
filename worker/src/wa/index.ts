@@ -1,10 +1,11 @@
 import { clearPrefix } from '../reset-store.js';
+import { say, language } from './texts.js';
 import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
 //   wa:profile:<phone> -> Profile           wa:ctx:<phone> -> { history }        wa:last:<phone> -> ms of last inbound (24h window)
-import { reply, FALLBACK, type HistoryEntry } from './agent.js';
-import { clockLabel, clockText, closeAt, findFlight, gateName } from './flights.js';
+import { reply, type HistoryEntry } from './agent.js';
+import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
 import { Reports } from './reports.js';
 import { toolsFor, type AirportView, type Profile } from './tools.js';
@@ -25,9 +26,7 @@ export interface WaStore {
 }
 
 const HISTORY_KEEP = 20;
-const TEXT_ONLY = 'Deocamdată citesc doar mesaje text. Ce informații despre aeroport sau zbor te interesează?';
 const DELETE_DATA = /^\s*(sterge|șterge)(-mi)?\s+(toate\s+)?datele(\s+mele)?\s*[.!]*\s*$|^\s*delete\s+(all\s+)?my\s+data\s*[.!]*\s*$/i;
-const BAG_BUTTONS = [{ id: 'bag:yes', title: 'Da, am bagaj' }, { id: 'bag:no', title: 'Doar de mână' }];
 
 /** "STAFF <code>" -> the code (D11). */
 export function parseStaff(text: string) {
@@ -88,7 +87,7 @@ export class WhatsAppAgent {
       .then(() => this.turn(m))
       .catch(async e => {
         console.error(JSON.stringify({ wa: 'turn-crashed', id: m.id, error: String((e as Error)?.message ?? e).slice(0, 200) }));
-        await this.wa.sendText(m.phone, FALLBACK).catch(() => {});
+        await this.wa.sendText(m.phone, say((await this.profile(m.phone))?.lang, 'fallback')).catch(() => {});
       });
     this.chains.set(m.phone, next);
     void next.finally(() => { if (this.chains.get(m.phone) === next) this.chains.delete(m.phone); });
@@ -103,7 +102,7 @@ export class WhatsAppAgent {
     if (quick) await this.wa.sendReaction(m.phone, m.id, quick);
 
     const key = `wa:profile:${m.phone}`;
-    let profile: Profile = { phone: m.phone, role: 'passenger', ...(await this.store.get<Profile>(key)) };
+    let profile: Profile = { phone: m.phone, role: 'passenger', lang: 'ro', ...(await this.store.get<Profile>(key)) };
     const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
       profile = { ...profile, ...patch }; await this.store.put(key, profile);
@@ -114,13 +113,15 @@ export class WhatsAppAgent {
     await this.store.put(`wa:last:${m.phone}`, m.at);
     await save({ lastInboundAt: m.at, ...(m.name && { name: m.name }) });
 
-    if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, TEXT_ONLY); return; }
+    if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
+    const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
+    if (chosen) { await save({ lang: chosen }); await this.wa.sendText(m.phone, say(chosen, 'language')); return; }
     // ş (cedilla, older keyboards) is matched as ș.
     if (DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
       if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);
       for (const k of [key, `wa:ctx:${m.phone}`, `wa:last:${m.phone}`]) await this.store.delete(k);
       await this.messaging.removePhone(m.phone);
-      await this.wa.sendText(m.phone, 'Gata, am șters tot ce știam despre tine și zborul tău. Dacă vrei să reîncepi, scrie-mi oricând.');
+      await this.wa.sendText(m.phone, say(profile.lang, 'deleted'));
       return;
     }
     const ctxKey = `wa:ctx:${m.phone}`;
@@ -136,8 +137,8 @@ export class WhatsAppAgent {
       const ok = staff.toUpperCase() === (this.env.STAFF_CODE || DEFAULT_STAFF_CODE).toUpperCase();
       if (ok) await save({ role: 'staff' });
       const text = ok
-        ? 'Gata, ești înregistrat ca angajat al aeroportului 👷 Scrie-mi orice problemă vezi în terminal (ex: „bagaj abandonat lângă check-in 2”) și o trimit imediat pe harta din dashboard.'
-        : 'Codul de angajat nu e corect. Verifică-l cu coordonatorul de tură și scrie din nou STAFF <cod>.';
+        ? say(profile.lang, 'staffRegistered')
+        : say(profile.lang, 'staffCodeInvalid');
       await this.wa.sendText(m.phone, text);
       await remember('STAFF ***', [text]);
       return;
@@ -146,7 +147,7 @@ export class WhatsAppAgent {
     if (start) {
       const flight = findFlight(this.view.flights(), start.flight);
       if (!flight) {
-        const text = `Nu găsesc zborul ${start.flight} în orarul de azi. Numărul zborului apare pe boarding pass.`;
+        const text = say(profile.lang, 'unknownFlight', start.flight);
         await this.wa.sendText(m.phone, text);
         await remember(m.text, [text]);
         return;
@@ -154,14 +155,15 @@ export class WhatsAppAgent {
       const pending = await consumeJoin(this.store, start.token, flight.flight);
       if (!pending) console.warn(JSON.stringify({ wa: 'unverified-start', from: masked(m.phone), flight: flight.flight }));
       await save({ flight: flight.flight, airline: flight.airline, token: start.token, verified: Boolean(pending),
+        ...(pending && { lang: language(pending.lang) }),
         ...(pending?.name && { name: pending.name }) });
       const clock = this.view.clock();
-      const text = `Gata ✈️ Te-am conectat la zborul ${flight.flight} spre ${flight.destination}. Poarta ${gateName(flight.gate)} se închide la ${clockText(closeAt(flight))} (${clockLabel(clock)}).`;
-      const ask = 'Ai bagaj de cală? Estimarea include cozile corespunzătoare.';
+      const text = say(profile.lang, 'startConnected', flight.flight, flight.destination, gateName(flight.gate), clockText(closeAt(flight)), say(profile.lang, clock.sim ? 'simClock' : 'realClock'));
+      const ask = say(profile.lang, 'bagQuestion');
       await this.wa.sendReaction(m.phone, m.id, '✈️');
       await this.wa.sendText(m.phone, text);
       await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
-      await this.wa.sendButtons(m.phone, ask, BAG_BUTTONS);
+      await this.wa.sendButtons(m.phone, ask, [{ id: 'bag:yes', title: say(profile.lang, 'bagYes') }, { id: 'bag:no', title: say(profile.lang, 'bagNo') }]);
       await remember(`START ${flight.flight}`, [text, ask]);
       return;
     }
@@ -169,7 +171,7 @@ export class WhatsAppAgent {
     let text = m.text;
     if (m.replyId === 'bag:yes' || m.replyId === 'bag:no') {
       await save({ hasCheckedBag: m.replyId === 'bag:yes' });
-      text = `${m.replyId === 'bag:yes' ? 'Am bagaj de cală.' : 'Am doar bagaj de mână.'} Când trebuie să fiu la aeroport?`;
+      text = say(profile.lang, m.replyId === 'bag:yes' ? 'bagQueryYes' : 'bagQueryNo');
     }
 
     const started = Date.now();
