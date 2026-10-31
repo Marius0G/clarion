@@ -1,3 +1,4 @@
+import { extractFacts, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
 import { say, language } from './texts.js';
@@ -5,7 +6,7 @@ import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
 //   wa:profile:<phone> -> Profile           wa:ctx:<phone> -> { history }        wa:last:<phone> -> ms of last inbound (24h window)
-import { reply, type HistoryEntry } from './agent.js';
+import { reply, foldHistory, type HistoryEntry } from './agent.js';
 import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
 import { Reports } from './reports.js';
@@ -26,7 +27,6 @@ export interface WaStore {
   delete(key: string): Promise<boolean>;
 }
 
-const HISTORY_KEEP = 20;
 const DELETE_DATA = /^\s*(sterge|șterge)(-mi)?\s+(toate\s+)?datele(\s+mele)?\s*[.!]*\s*$|^\s*delete\s+(all\s+)?my\s+data\s*[.!]*\s*$/i;
 
 /** "STAFF <code>" -> the code (D11). */
@@ -110,7 +110,7 @@ export class WhatsAppAgent {
 
     const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
-      profile = { ...profile, ...patch }; await this.store.put(key, profile);
+      profile = { ...profile, ...patch, ...(patch.needs && { needs: { ...profile.needs, ...patch.needs } }) }; await this.store.put(key, profile);
       // Bound to a flight or staff: from now on part of the fan-out (flight changes, evacuation).
       if (patch.flight || patch.role === 'staff') await this.messaging.addPhone(m.phone);
     };
@@ -130,11 +130,13 @@ export class WhatsAppAgent {
       return;
     }
     const ctxKey = `wa:ctx:${m.phone}`;
-    const ctx = (await this.store.get<{ history: HistoryEntry[] }>(ctxKey)) ?? { history: [] };
-    const remember = (user: string, bubbles: string[]) => {
+    const ctx = (await this.store.get<PassengerContext>(ctxKey)) ?? { history: [] };
+    const alerts = await this.store.get<PassengerContext['alerts']>(`msg:alerts:wa:${m.phone}`) ?? [];
+    ctx.alerts = alerts.filter(a => a.kind === 'flight' || a.kind === 'evacuate');
+    const remember = async (user: string, bubbles: string[]) => {
       const at = new Date().toISOString();
       const entries: HistoryEntry[] = [{ role: 'user', text: user, at }, ...bubbles.map(text => ({ role: 'clarion' as const, text, at }))];
-      return this.store.put(ctxKey, { history: [...ctx.history, ...entries].slice(-HISTORY_KEEP) });
+      return this.store.put(ctxKey, { ...ctx, ...await foldHistory(this.env, this.fetcher, ctx, entries) });
     };
 
     const staff = parseStaff(m.text);
@@ -159,7 +161,7 @@ export class WhatsAppAgent {
       }
       const pending = await consumeJoin(this.store, start.token, flight.flight);
       if (!pending) console.warn(JSON.stringify({ wa: 'unverified-start', from: masked(m.phone), flight: flight.flight }));
-      await save({ flight: flight.flight, airline: flight.airline, token: start.token, verified: Boolean(pending),
+      await save({ flight: flight.flight, gate: gateName(flight.gate), airline: flight.airline, token: start.token, verified: Boolean(pending),
         ...(pending && { lang: language(pending.lang) }),
         ...(pending?.name && { name: pending.name }) });
       const clock = this.view.clock();
@@ -179,6 +181,15 @@ export class WhatsAppAgent {
       text = say(profile.lang, m.replyId === 'bag:yes' ? 'bagQueryYes' : 'bagQueryNo');
     }
 
+    await save(extractFacts(redact(text)));
+    const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';
+    if (/bagaj de cală|checked baggage/i.test(lastQuestion) && /^(da|nu|yes|no)[.! ]*$/i.test(text.trim())) {
+      await save({ hasCheckedBag: /^(da|yes)/i.test(text.trim()) });
+      text = say(profile.lang, profile.hasCheckedBag ? 'bagQueryYes' : 'bagQueryNo');
+    }
+    const code = /\b([a-z][a-z0-9]|[0-9][a-z])\s?-?(\d{3,4})\b/i.exec(text)?.slice(1).join(' ').toUpperCase();
+    const spokenFlight = code && findFlight(this.view.flights(), code);
+    if (spokenFlight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
     const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r),
       pageLink: async () => {
@@ -187,7 +198,13 @@ export class WhatsAppAgent {
         if (stored?.pageToken) profile.pageToken = stored.pageToken;
         return link;
       } });
-    const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, text: redact(text), tools });
+    const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
+      const result = await fn(input);
+      const note = lookupNote(name, result);
+      if (note) ctx.notes = [...(ctx.notes ?? []), { at: `${new Date().toISOString()} (airport clock ${clockText(this.view.clock().now)})`, tool: name, note }].slice(-NOTES_MAX);
+      return result;
+    }]));
+    const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools });
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
     await this.wa.sendReplies(m.phone, bubbles, m.id);
     if (!initiallyBound && profile.flight) {

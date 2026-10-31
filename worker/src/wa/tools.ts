@@ -1,3 +1,4 @@
+import { factPatch } from './context.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
 import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
@@ -20,6 +21,8 @@ export interface AirportView {
 export interface Profile {
   lang?: Lang; phone: string; role: 'passenger' | 'staff';
   flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
+  groupSize?: number; needs?: { kids?: boolean; reducedMobility?: boolean; other?: string };
+  gate?: string; lastWaitEstimate?: { at: string; totalMin: number };
   hasCheckedBag?: boolean; lastInboundAt?: number; name?: string;
 }
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
@@ -138,10 +141,18 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
     const f = findFlight(view.flights(), wanted);
     if (!f) return { error: 'unknown_flight', flight: wanted, hint: say(p.lang, 'unknownFlightHint') } as const;
     // A flight number given in chat binds the person too, unverified (no Wallet token).
-    if (!p.flight) await save({ flight: f.flight, airline: f.airline, verified: false });
+    if (p.flight !== f.flight) await save({ flight: f.flight, airline: f.airline, verified: false });
+    await save({ gate: gateName(f.gate) });
     return { flight: f };
   };
   return {
+    async rememberFact(input: { key?: unknown; value?: unknown }) {
+      const patch = factPatch(input?.key, input?.value);
+      if (!patch) return { error: 'invalid_fact' };
+      if (patch.needs) patch.needs = { ...profile().needs, ...patch.needs };
+      await save(patch);
+      return { remembered: true, key: input.key, value: input.value };
+    },
     async myFlight(input: { flight?: string }) {
       const r = await resolve(input?.flight);
       return 'error' in r ? r : flightView(r.flight, view.clock(), view.provisional(), profile().lang);
@@ -154,6 +165,7 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
       if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: say(profile().lang, 'cancelledNote') };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: say(profile().lang, 'departedNote') };
       const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.());
+      await save({ lastWaitEstimate: { at: clockText(view.clock().now), totalMin: plan.totalMin } });
       return { ...plan, situation: situationText(plan, profile().lang), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
