@@ -38,6 +38,13 @@ describe('mechanical WhatsApp lab checks', () => {
     expect(matchesLanguage('The gate is open.', 'ro')).toBe(false);
     expect(matchesLanguage('https://example.test/airport', 'ro')).toBe(true);
   });
+  it('treats loanwords and gate codes as neutral without accepting English prose as Romanian', () => {
+    for (const text of ['Boarding pass', 'Check-in', 'Gate G2', 'Ai un boarding pass pentru zborul de acum.', 'Check-in: 5 minute. Poarta G2.']) {
+      expect(matchesLanguage(text, 'ro'), text).toBe(true);
+    }
+    expect(matchesLanguage('Your boarding pass is for the flight from the airport.', 'ro')).toBe(false);
+    expect(matchesLanguage('The check-in is now open at gate G2.', 'en')).toBe(true);
+  });
   it('rejects malformed inputs and prototype script names', () => {
     for (const input of [null, [], { script: '__proto__' }, { script: 'constructor' }, { texts: [] }, { texts: [2] }, { texts: [''] }, { texts: Array(21).fill('hi') }, { keep: 'yes' }, { phone: '+40712345678', keep: true, texts: ['English'] }, { phone: 'lab-e2e-' + '-'.repeat(36), keep: true, texts: ['English'] }, { phone: 'lab-e2e-11111111-1111-4111-8111-111111111111', texts: ['English'] }, { script: 'gate', texts: ['hi'] }]) expect(() => validateInput(input)).toThrow();
   });
@@ -54,6 +61,22 @@ describe('isolated lab mechanism', () => {
     expect(report.results.staffIssue!.transcript.at(-1)!.tools).toContain('reportIssue');
     expect(report.results.evacuation!.transcript.at(-1)!.replies.join(' ')).toMatch(/evacua/i);
     expect(report.pass, JSON.stringify(report.failed.map(n => [n, report.results[n]!.violations]))).toBe(true);
+  });
+  it.each([[], [{ ...view.flights()[0]!, flight: 'W4 3625', status: 'departed' as const }]])('isolates built-in flights, clock and evacuation from a replaced schedule %j', async flights => {
+    const store = new Store();
+    const live = { ...view, flights: () => flights, clock: () => ({ now: 23 * 3600, sim: true }), blocked: () => ['security', 'gate_2'] };
+    const before = structuredClone({ flights, clock: live.clock(), blocked: live.blocked() });
+    const report = await runLab({}, live, {}, store, async () => { throw Error('Unexpected network'); });
+    expect(report.pass, JSON.stringify(report.failed.map(n => report.results[n]!.violations))).toBe(true);
+    expect(report.results.startFlight!.stored.profile).toMatchObject({ flight: 'W6 3751', verified: true });
+    expect(report.results.evacuation!.transcript[1]!.replies.join(' ')).toMatch(/evacua/i);
+    expect({ flights, clock: live.clock(), blocked: live.blocked() }).toEqual(before);
+    expect(store.data.size).toBe(0);
+  });
+  it('keeps custom runs on the supplied flight schedule', async () => {
+    const live = { ...view, flights: () => [{ ...view.flights()[0]!, flight: 'W4 3625' }] };
+    const report = await runLab({}, live, { texts: ['START W4 3625'] }, new Store());
+    expect(report.results.custom!.stored.profile).toMatchObject({ flight: 'W4 3625', verified: true });
   });
   it('captures model errors and turns them into failed checks without sending Graph traffic', async () => {
     const report = await runLab({ ANTHROPIC_API_KEY: 'test' }, view, { texts: ['Cât se așteaptă la securitate?'] }, new Store(), async () => { throw Error('Model unavailable'); });

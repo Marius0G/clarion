@@ -1,4 +1,5 @@
 import { WhatsAppAgent, DEFAULT_STAFF_CODE, parseStart, type WaStore } from './index.js';
+import type { Flight } from './flights.js';
 import type { AirportView } from './tools.js';
 import { type Fetch, type WaEnv, isReaction } from './transport.js';
 import { type WaEvent } from './events.js';
@@ -6,7 +7,17 @@ import { consumeJoin } from '../join.js';
 import { urgentText } from './urgency.js';
 
 interface Step { text: string; tool?: string; unknown?: boolean; evacuate?: boolean; urgent?: boolean }
-const start = { text: 'START W6 3751' };
+// Private fixture for built-in scripts only; never inserted into the Tower schedule.
+const LAB_FLIGHT: Flight = { flight: 'W6 3751', airline: 'W6', destination: 'Londra Luton',
+  std: 10 * 3600, gateCloseAt: 9.5 * 3600, gate: 'gate_2', checkIn: 'check_in:1',
+  checkInDesks: ['checkin_1', 'checkin_2', 'checkin_3', 'checkin_4'], status: 'scheduled', delayMin: 0, pax: 1 };
+const start = { text: `START ${LAB_FLIGHT.flight}` };
+function sandboxView(view: AirportView): AirportView {
+  const flights = [structuredClone(LAB_FLIGHT)];
+  const flow = structuredClone(view.flow());
+  return { clock: () => ({ now: 8 * 3600, sim: true }), flights: () => flights,
+    flow: () => flow, provisional: () => true, blocked: () => [] };
+}
 export const SCRIPTS: Record<string, Step[]> = {
   startFlight: [start, { text: 'Care este statusul zborului meu?', tool: 'myFlight' }],
   security: [{ text: 'Cât se așteaptă acum la securitate?', tool: 'queues' }],
@@ -30,7 +41,9 @@ const ro = /\b(este|sunt|poarta|securitate|acum|zborul|aeroport|minute|timp|pent
 const en = /\b(the|is|are|your|you|security|now|flight|airport|minutes|for|to|from|with|don't|know|gate|baggage|parking|information|i|will|reply|english)\b/giu;
 /** Lexical smoke check, not a language classifier or a semantic judge. URLs and reactions are excluded. */
 export function matchesLanguage(text: string, lang: 'ro' | 'en') {
-  const plain = normalize(text.replace(/https?:\/\/\S+/g, ''));
+  const plain = normalize(text.replace(/https?:\/\/\S+/g, ''))
+    // Shared airport vocabulary is neutral, including short label-only bubbles.
+    .replace(/\bboarding[ -]pass(?:-ul)?\b|\bcheck[ -]in(?:-ul)?\b|\bgate\s+(?:[a-z]?\d+[a-z]?)\b|\b[a-z]\d+[a-z]?\b/g, '');
   if (!/\p{L}/u.test(plain)) return true;
   const r = plain.match(ro)?.length ?? 0, e = plain.match(en)?.length ?? 0;
   return lang === 'ro' ? r > e : e > r;
@@ -83,7 +96,7 @@ export async function runLab(env: WaEnv, view: AirportView, input: LabInput, per
   validateInput(input);
   const results: Record<string, Awaited<ReturnType<typeof runScript>>> = {};
   for (const name of input.texts ? ['custom'] : input.script ? [input.script] : Object.keys(SCRIPTS)) {
-    results[name] = await runScript(env, view, input.texts?.map(text => ({ text })) ?? SCRIPTS[name]!, Boolean(input.keep), persistent, fetcher, input.phone);
+    results[name] = await runScript(env, input.texts ? view : sandboxView(view), input.texts?.map(text => ({ text })) ?? SCRIPTS[name]!, Boolean(input.keep), persistent, fetcher, input.phone);
   }
   const failed = Object.keys(results).filter(n => results[n]!.violations.length);
   return { pass: !failed.length, failed, results };
