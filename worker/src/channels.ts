@@ -1,5 +1,9 @@
 import { dryRun, type Adapter } from '../../backend/src/channels/types.js';
-export interface Secrets {
+import { Wallet, type WalletEnv, type WalletStore } from '../../backend/src/wallet.js';
+export function createWallet(env: WalletEnv, saved: WalletStore | undefined, persist: (store: WalletStore) => Promise<void>) {
+  return new Wallet(env, { saved, persist });
+}
+export interface Secrets extends WalletEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
   TELEGRAM_BOT_USERNAME?: string;

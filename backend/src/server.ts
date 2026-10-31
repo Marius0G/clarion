@@ -12,6 +12,7 @@ import { Telegram } from "./channels/telegram.js";
 import { sms } from "./channels/sms.js";
 import { whatsapp, verifyWhatsApp } from "./channels/whatsapp.js";
 import { webpush } from "./channels/webpush.js";
+import { Wallet } from "./channels/wallet.js";
 import { wazeFeed } from "./channels/waze.js";
 import { aircraftNearLrcv, FidsAdapter } from "./data/flights.js";
 import type { Envelope } from "./types.js";
@@ -46,6 +47,9 @@ export function loadBackendEnv(
   if (existsSync(teamEnv)) loadEnvFile(teamEnv);
 }
 export function createControlTower() {
+  const wallet = new Wallet(process.env, process.env.STATE_FILE
+    ? `${process.env.STATE_FILE}.wallet.json`
+    : fileURLToPath(new URL('../data/wallet.json', import.meta.url)).replace('/dist/data/', '/data/'));
   const telegram = new Telegram();
   const telegramReady = telegram.initialize().catch(() => {
     console.warn(
@@ -133,6 +137,10 @@ export function createControlTower() {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
       const twins = () => [...clients].filter(([ws, kind]) => kind === "twin" && ws.readyState === WebSocket.OPEN);
+      if (req.method === 'POST' && url.pathname === '/api/wallet/pass') {
+        const body = await jsonBody(req);
+        res.end(JSON.stringify(await ordered(() => wallet.pass(engine, body?.subscriptionId)))); return;
+      }
       if (req.method === "GET" && url.pathname === "/api/sim") {
         res.end(JSON.stringify(engine.sim.snapshot(twins().length > 0, engine.state.metrics))); return;
       }
@@ -215,7 +223,7 @@ export function createControlTower() {
         const body = (await jsonBody(req)) as Envelope;
         if (!body.type?.startsWith("console."))
           throw new Error("Console action required");
-        await ordered(() => engine.handle(body, "console"));
+        await ordered(() => wallet.handle(engine, body, "console"));
         res.end(JSON.stringify(engine.snapshot()));
         return;
       }
@@ -255,7 +263,7 @@ export function createControlTower() {
       ws.on("message", (raw) => {
         void ordered(async () => {
           try {
-            await engine.handle(JSON.parse(raw.toString()), clients.get(ws));
+            await wallet.handle(engine, JSON.parse(raw.toString()), clients.get(ws));
           } catch (error) {
             ws.send(
               JSON.stringify({

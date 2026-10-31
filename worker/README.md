@@ -68,6 +68,9 @@ Set deployment secrets only with `npx wrangler secret put NAME`, entered at its 
 | `WHATSAPP_APP_SECRET` | Meta app secret for POST HMAC verification; webhook POSTs fail closed until configured. |
 | `SMSLINK_CONNECTION_ID` | SMSLink connection ID. |
 | `SMSLINK_PASSWORD` | SMSLink connection password. |
+| `GOOGLE_WALLET_ISSUER_ID` | Google Wallet demo issuer ID. |
+| `GOOGLE_WALLET_SA_EMAIL` | Service account authorized in the Wallet issuer console. |
+| `GOOGLE_WALLET_SA_KEY` | Service account PKCS#8 private key PEM; multiline or literal `\n`. Never log it. |
 
 Legacy `WA_TOKEN` / `WA_PHONE_NUMBER_ID` remain accepted aliases for canonical WhatsApp names. Canonical names take precedence. `WA_API_VERSION` appeared in the previous backend example; the shared WhatsApp sender pins `v23.0`, so this variable is no longer used. Do not set both name families unnecessarily.
 
@@ -82,6 +85,9 @@ npx wrangler secret put WHATSAPP_VERIFY_TOKEN
 npx wrangler secret put WHATSAPP_APP_SECRET
 npx wrangler secret put SMSLINK_CONNECTION_ID
 npx wrangler secret put SMSLINK_PASSWORD
+npx wrangler secret put GOOGLE_WALLET_ISSUER_ID
+npx wrangler secret put GOOGLE_WALLET_SA_EMAIL
+npx wrangler secret put GOOGLE_WALLET_SA_KEY
 ```
 
 Simulation configuration is nonsecret and lives in `[vars]`: `SIM_SPEED`, `SIM_SEED`, `AUTO_CONFIRM`, `WAVES_ENABLED`, `WAVE_COUNT`, `WAVE_MINUTES`. Defaults match Node; auto-confirm stays off.
@@ -135,3 +141,11 @@ Unity connects as `/ws?client=twin`; `/twin` is a 2D clone for testing and emerg
 `sim.status` and `agent.batch` populate an ephemeral telemetry store (500 rows/message, 5,000 stored agents). Registered rows also update presence, with one state broadcast. `GET /api/sim` and `GET /api/sim/agents?role=&location=&action=` are public. `POST /api/sim/command` sends only to live twin sockets: 202 when connected, 409 otherwise. Telemetry is empty after Worker hibernation; connectivity still reflects live sockets.
 
 Set optional `DEMO_TOKEN` in the Node environment or as a Cloudflare Worker secret (never `VITE_*`). Console/twin WS URLs use `?token=`, and `/api/action` and `/api/sim/command` use `Authorization: Bearer <token>`. Browser `?token=` is saved in localStorage; `?token=` with an empty value clears it. Viewer sockets, subscriptions, state/sim reads and webhook authentication retain their existing public/provider behavior. `backendFetch` in the app's backend client adds Bearer authentication for operator HTTP calls. Demo scripts inherit `DEMO_TOKEN`, including `demo:pitch`.
+
+## Google Wallet (demo)
+
+`POST /api/wallet/pass { subscriptionId }` requires an active, consented subscription and returns `{ saveUrl, demo }`. With all three Wallet secrets, it signs an RS256 save JWT containing a generic Clarion class and object using WebCrypto. Keep the issuer account in **Google Wallet demo mode** and authorize the service account and demo test users in the Wallet console; credentials do not enable publishing. Without any required secret, `demo: true` returns `/join/wallet-demo?sub=<id>`, relative to the frontend origin. The page itself is outside this implementation. Opening a save URL is not proof the user saved the pass.
+
+Wallet registrations and UTC-calendar-day attempt counts survive hibernation in DO storage (Node uses a sibling wallet JSON file). Only subscriptions that requested a pass receive updates. Console-confirmed suspension/recovery/reopening and confirmed flight diversions trigger updates; Unity proposals alone do not. Expired subscriptions are skipped. Counts reserve an attempt before network I/O and do not reset on incident reset; max three notification attempts per pass per UTC day, matching the original stub. Google may independently enforce its rolling 24-hour quota. REST failures are best effort, log only a fixed warning, and do not roll back incident actions. OAuth tokens are cached in memory, never persisted. Enable the Wallet Objects API and grant the service account access to the issuer before testing credentials.
+
+References: [save JWTs](https://developers.google.com/wallet/generic/use-cases/jwt), [service account OAuth](https://developers.google.com/identity/protocols/oauth2/service-account), [message notifications](https://developers.google.com/wallet/generic/use-cases/trigger-push-notifications).

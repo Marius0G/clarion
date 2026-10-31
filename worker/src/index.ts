@@ -8,7 +8,8 @@ import { webpush } from '../../backend/src/channels/webpush.js';
 import { wazeFeed } from '../../backend/src/channels/waze.js';
 import { aircraftNearLrcv, FidsAdapter } from '../../backend/src/data/flights.js';
 import { createStoredEngine } from './storage.js';
-import { createSms, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
+import { createSms, createWallet, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
+import type { Wallet, WalletStore } from '../../backend/src/wallet.js';
 
 export interface Env extends Secrets {
   TOWER: DurableObjectNamespace<Tower>;
@@ -73,6 +74,7 @@ export default {
 
 export class Tower extends DurableObject<Env> {
   private engine!: Engine;
+  private wallet!: Wallet;
   private telegram: Telegram;
   private queue: Promise<unknown> = Promise.resolve();
   private seenWhatsApp: string[] = [];
@@ -88,6 +90,8 @@ export class Tower extends DurableObject<Env> {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
       const saved = row ? JSON.parse(row.value) : undefined;
+      this.wallet = createWallet(env, await ctx.storage.get<WalletStore>('wallet'),
+        store => ctx.storage.put('wallet', store));
       this.seenWhatsApp = await ctx.storage.get<string[]>('whatsappIds') ?? [];
       this.telegram.botUsername = await ctx.storage.get<string>('telegramUsername') ?? null;
       this.engine = createStoredEngine(saved, store => {
@@ -122,7 +126,7 @@ export class Tower extends DurableObject<Env> {
     this.nextFidsRefresh = now + 300000;
   }
   private async handle(event: Envelope, client: Client) {
-    await this.engine.handle(event, client);
+    await this.wallet.handle(this.engine, event, client);
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
     if (event.type === 'console.reset') {
@@ -210,6 +214,10 @@ export class Tower extends DurableObject<Env> {
           }
         }
         if (request.method === 'POST') {
+          if (path === '/api/wallet/pass') {
+            const input = JSON.parse(await bodyText(request));
+            return json(await this.wallet.pass(this.engine, input?.subscriptionId));
+          }
           if (path === '/webhooks/telegram') {
             if (!this.env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'Telegram webhook secret not configured' }, 503);
             if (!await equalSecret(request.headers.get('X-Telegram-Bot-Api-Secret-Token'), this.env.TELEGRAM_WEBHOOK_SECRET))
