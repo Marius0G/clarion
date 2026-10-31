@@ -1,0 +1,19 @@
+name = "clarion-backend"
+main = "src/index.ts"
+compatibility_date = "2026-10-30"
+workers_dev = true
+
+[durable_objects]
+bindings = [{ name = "TOWER", class_name = "Tower" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Tower"]
+
+[vars]
+SIM_SPEED = "60"
+SIM_SEED = "control-tower"
+AUTO_CONFIRM = "false"
+WAVES_ENABLED = "true"
+WAVE_COUNT = "3"
+WAVE_MINUTES = "10"
