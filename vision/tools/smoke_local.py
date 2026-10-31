@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -43,11 +44,18 @@ def wait_for(client, predicate, seconds=20.0):
 
 
 def main() -> int:
-    env = {**os.environ, "CLARION_URL": URL, "DEMO_TOKEN": TOKEN, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "CLARION_URL": URL, "DEMO_TOKEN": TOKEN, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "PYTHONPATH": str(VISION)}
     twin_log = open(VISION / "smoke_twin.log", "w", encoding="utf-8")
     vision_log = open(VISION / "smoke_vision.log", "w", encoding="utf-8")
     twin = subprocess.Popen([sys.executable, "tools/fake_twin.py"], cwd=VISION, env=env, stdout=twin_log, stderr=subprocess.STDOUT)
-    vision = subprocess.Popen([sys.executable, "-m", "clarion_vision.service", "--source", "synthetic", "--speed", "10"], cwd=VISION, env=env, stdout=vision_log, stderr=subprocess.STDOUT)
+    source = os.environ.get("SMOKE_SOURCE", "synthetic")
+    channel = None
+    arguments = ["--source", source]
+    if source == "live":                 # the same camera files Unity writes, from the synthetic airport
+        tmp = tempfile.mkdtemp(prefix="cctv_live_")
+        channel = subprocess.Popen([sys.executable, "tools/fake_cctv_live.py", tmp], cwd=VISION, env=env, stdout=subprocess.DEVNULL)
+        arguments += ["--live-dir", tmp]
+    vision = subprocess.Popen([sys.executable, "-m", "clarion_vision.service", *arguments], cwd=VISION, env=env, stdout=vision_log, stderr=subprocess.STDOUT)
     try:
         with httpx.Client(base_url=URL, timeout=5.0, trust_env=False) as client:
             sim = wait_for(client, lambda s: s.get("vision") and s.get("connected") and s.get("flow"), 40.0)
@@ -90,6 +98,9 @@ def main() -> int:
         twin.terminate()
         vision.wait(10)
         twin.wait(10)
+        if channel:
+            channel.terminate()
+            channel.wait(10)
         twin_log.close()
         vision_log.close()
     log = (VISION / "smoke_vision.log").read_text(encoding="utf-8")

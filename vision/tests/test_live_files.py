@@ -7,7 +7,12 @@ import pytest
 
 from clarion_vision.config import UNITY_REPO
 from clarion_vision.geometry import Calib, in_ring, ring_samples
+from clarion_vision.queues import load_queues
+from clarion_vision.sources.base import load_camera_specs
 from clarion_vision.sources.live_files import JsonlReplaySource, LiveFilesSource, read_json
+from clarion_vision.sources.synthetic import SyntheticAirport
+from clarion_vision.terminal import load_terminal
+from tools.fake_cctv_live import Channel, floor_homography, pose
 
 
 def calib_doc(level="U", scale=0.01):
@@ -88,7 +93,42 @@ def test_ring_helpers():
     assert xs.size >= 9
 
 
+def test_the_whole_channel_round_trip_returns_the_same_floor_points(tmp_path):
+    """Synthetic people -> boxes through each camera's real pose -> the channel's files -> LiveFilesSource -> the same floor points."""
+    terminal = load_terminal()
+    specs, queues = load_camera_specs(), load_queues(lane_limits=terminal.lane_limits)
+    air = SyntheticAirport(queues, specs, terminal, seed=2, start_s=8.5 * 3600, recall=1.0)
+    channel = Channel(tmp_path)
+    source = LiveFilesSource(tmp_path)
+    assert source.detector == "synthetic" and source.camera_specs()
+    for _ in range(40):
+        tick = air.step(5.0)
+    channel.write_tick(tick, 10.0)
+    got = source.read(None)
+    assert got is not None and got.t_s == pytest.approx(tick.t_s, abs=1e-3) and set(got.cameras) == set(tick.cameras)
+    matched = 0
+    for camera, points in got.cameras.items():
+        originals = {p.track: p for p in tick.cameras[camera]}
+        for p in points:
+            q = originals[p.track]
+            assert (p.x - q.x) ** 2 + (p.z - q.z) ** 2 < 0.05 ** 2
+            matched += 1
+    assert matched > 20
+
+
 REAL = UNITY_REPO / "data/interim/cctv/cctv_103143_s1_20261031_153004_selftest/cctv_security_queue/calib.json"
+
+
+@pytest.mark.skipif(not REAL.exists(), reason="labelled export not on this machine")
+def test_the_stand_in_channel_uses_the_same_calibration_math_as_unity():
+    data = json.loads(REAL.read_text(encoding="utf-8"))
+    camera = {"yaw": data["yaw_deg"], "pitch": data["pitch_deg"], "position": data["position"]}
+    R, t = pose(camera)
+    assert np.allclose(R, np.asarray(data["R_world_to_cam"]), atol=1e-2)
+    assert np.allclose(t, np.asarray(data["t_world_to_cam"]), atol=0.5)
+    H = floor_homography(np.asarray(data["K"]), np.asarray(data["R_world_to_cam"]), np.asarray(data["t_world_to_cam"]), data["floors"]["U"]["floor_y"])
+    expected = np.asarray(data["floors"]["U"]["H_floor_to_image"])
+    assert np.allclose(H / np.abs(H).max(), expected / np.abs(expected).max(), atol=1e-3)
 
 
 @pytest.mark.skipif(not REAL.exists(), reason="labelled export not on this machine")

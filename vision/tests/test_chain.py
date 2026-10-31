@@ -92,7 +92,15 @@ def test_tracks_the_queue_and_measures_mu(parts):
     assert max(truths) > 15, "the scenario must build a queue"
     assert abs(np.mean(errors)) < 0.25 * np.mean(truths) + 3 and np.std(errors) < 0.4 * np.mean(truths) + 5, (np.mean(errors), np.std(errors), np.mean(truths))
     mu = chain.tracks["security"].head.mu
-    assert mu == pytest.approx(3.2, rel=0.35)                          # the world's rate is 3.2, the prior 2.5
+    assert mu == pytest.approx(3.2, rel=0.35)                          # the world's rate is 3.2, the prior 1.6
+
+
+def test_idle_lanes_do_not_pull_the_rate_down(parts):
+    """A nearly empty queue with 3 desks: exits per lane-minute would read far below a desk's real speed if idle desks counted."""
+    air, chain, _ = world(parts, start_s=8.0 * 3600)
+    run(air, chain, 3600, dt=5.0)
+    assert air.served["checkin_group_1"], "the scenario must serve people"
+    assert chain.tracks["checkin_group_1"].head.mu > 0.4                   # the world's desk does 0.75/min
 
 
 def test_opening_a_lane_changes_the_wait_at_once(parts):
@@ -119,6 +127,15 @@ def test_camera_down_coverage_falls_sd_grows_then_unknown(parts):
     assert not any(r["zone"] == "U_SECURITY_QUEUE" for r in chain.report(air.flights).rows)
 
 
+def test_no_schedule_no_forecast_and_no_advice(parts):
+    air, chain, _ = world(parts, start_s=8.0 * 3600, load=1.3)
+    run(air, chain, 300)
+    with_schedule = next(r for r in chain.report(air.flights).rows if r["zone"] == "U_SECURITY_QUEUE")
+    without = next(r for r in chain.report([]).rows if r["zone"] == "U_SECURITY_QUEUE")
+    assert "forecast" in with_schedule and "forecast" not in without and "advice" not in without
+    assert without["waitMin"] == with_schedule["waitMin"]
+
+
 def test_clock_restart_resets_the_filters(parts):
     air, chain, _ = world(parts)
     run(air, chain, 300)
@@ -135,7 +152,7 @@ def test_tracks_invalid_means_no_flows_but_counts_still_work(parts):
         tick.tracks_valid = False
         chain.ingest(tick, air.flights)
     assert chain.tracks["security"].head.exits == 0
-    assert chain.tracks["security"].head.mu == pytest.approx(2.5)
+    assert chain.tracks["security"].head.mu == pytest.approx(chain.tracks["security"].spec.mu0)
     assert abs(chain.tracks["security"].filter.n - air.true_queue("security")) < 15
 
 

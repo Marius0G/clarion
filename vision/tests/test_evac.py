@@ -88,7 +88,7 @@ def test_real_terminal_in_time_and_valid(terminal):
     assert 30 < plan["clearSec"] < 1500 and r.t90_s <= r.clear_s
     routes = {x["from"]: x for x in r.routes}
     # The nodes the backend looks for (routeFor in worker/src/wa/messaging.ts)
-    for node in ("gate_2", "U_CORRIDOR_EAST", "U_SECURITY_QUEUE", "check_in:RO", "G_CHECKIN_QUEUE", "G_DEPARTURES"):
+    for node in ("gate_2", "U_CORRIDOR_EAST", "U_SECURITY_QUEUE", "check_in:2", "G_CHECKIN_QUEUE", "G_DEPARTURES"):
         assert node in routes, node
     closed = blocked_nodes(terminal, ["G_CHECKIN_QUEUE"])
     for route in r.routes:
@@ -115,5 +115,6 @@ def test_nobody_inside_still_gives_routes(terminal):
 
 def test_alias_ids_block_the_physical_zone(terminal):
     assert "U_SECURITY_QUEUE" in blocked_nodes(terminal, ["security"])
-    nodes = blocked_nodes(terminal, ["check_in:2"])
-    assert "check_in:RO" in nodes and "checkin_7" in nodes and "G_CHECKIN_QUEUE" not in nodes
+    for alias in ("check_in:2", "check_in:RO", "bag_drop:2"):
+        nodes = blocked_nodes(terminal, [alias])
+        assert "check_in:2" in nodes and "checkin_5" in nodes and "G_CHECKIN_QUEUE" not in nodes

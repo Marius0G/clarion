@@ -34,7 +34,7 @@ class Backend:
         delay = 1.0
         while not self.stop:
             try:
-                async with websockets.connect(self.config.ws_url, max_size=8 * 1024 * 1024, open_timeout=10) as ws:
+                async with websockets.connect(self.config.ws_url, max_size=8 * 1024 * 1024, open_timeout=10, proxy=None) as ws:
                     self.ws = ws
                     self.connected.set()
                     delay = 1.0

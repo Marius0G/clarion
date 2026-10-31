@@ -9,13 +9,17 @@ ID_ALIASES = {
     "arrivals_hall": "G_MEETING", "taxi_rank": "X_TAXI_RANK", "kerb": "X_KERB_DEPARTURES",
     "exit_1": "door_exit_west", "exit_2": "door_exit_mid", "team_post": "G_INFO",
 }
-_NUM_TO_GROUP = {"1": "W6", "2": "RO", "3": "FR", "4": "OTHER"}
-_GROUP_TO_NUM = {v: k for k, v in _NUM_TO_GROUP.items()}
+GROUPS = ("1", "2", "3")                                  # three physical groups of 4 desks, assigned per flight by time slot
+GROUP_ALIASES = {"W6": "1", "RO": "2", "FR": "3"}         # legacy per-airline names; check_in:OTHER has no desks
 NODE_ID = re.compile(r"^(?:[a-z][a-z0-9_]{0,39}(?:_[GU])?(:[A-Za-z0-9_-]{1,16})?|[A-Z][A-Z0-9_]{0,39})$")
 
 
 def is_node_id(value) -> bool:
     return isinstance(value, str) and NODE_ID.match(value) is not None
+
+
+def _group(name: str) -> str | None:
+    return name if name in GROUPS else GROUP_ALIASES.get(name.upper())
 
 
 def map_node_id(node: str) -> str:
@@ -25,9 +29,8 @@ def map_node_id(node: str) -> str:
         return f"U_GATE_{gate.group(1)}"
     group = re.match(r"^(?:check_in|bag_drop):(.+)$", node)
     if group:
-        g = group.group(1)
-        name = _NUM_TO_GROUP.get(g) or (g.upper() if g.upper() in _GROUP_TO_NUM else "OTHER")
-        return f"check_in:{name}"
+        g = _group(group.group(1))
+        return f"check_in:{g}" if g else node
     return ID_ALIASES.get(node, node)
 
 
@@ -39,8 +42,8 @@ def lanes_key(zone: str) -> str | None:
         return "security"
     m = re.match(r"^(?:check_in|bag_drop):(.+)$", zone)
     if m:
-        g = m.group(1).upper()
-        return f"check_in:{_GROUP_TO_NUM.get(g, g)}"
+        g = _group(m.group(1))
+        return f"check_in:{g}" if g else None
     m = re.match(r"^checkin_group_(\d+)$", zone)
     if m:
         return f"check_in:{m.group(1)}"

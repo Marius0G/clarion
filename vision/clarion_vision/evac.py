@@ -53,11 +53,14 @@ class EvacPlanResult:
     no_route: list[str] = field(default_factory=list)
     allocator: str = "flow"
     solve_ms: float = 0.0
+    people_estimated: float = 0.0
 
     def to_contract(self, command_id: str) -> dict:
+        """The contract's fields, plus how much of the crowd no camera saw: `partlyEstimated`, `peopleSeen`, `peopleEstimated`."""
         return {"id": command_id, "blocked": self.blocked, "clearSec": round(self.clear_s, 1),
                 "exits": [{"exit": e["exit"], "people": int(round(e["people"])), "clearSec": round(e["clear_s"], 1)} for e in self.exits],
-                "routes": self.routes}
+                "routes": self.routes, "partlyEstimated": self.people_estimated > 0.5,
+                "peopleSeen": int(round(self.people - self.people_estimated)), "peopleEstimated": int(round(self.people_estimated))}
 
 
 def blocked_nodes(terminal: Terminal, blocked: list[str]) -> set[str]:
@@ -288,8 +291,11 @@ def _greedy(graph: Graph, sources: dict[str, float], trees: dict[str, dict[str, 
 
 
 def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[str], density: dict[str, float] | None = None,
-                    reaction_s: float = 30.0, step_s: float = 5.0, min_sum_limit_s: float = 1.0) -> EvacPlanResult:
+                    reaction_s: float = 30.0, step_s: float = 5.0, min_sum_limit_s: float = 1.0, estimated: dict[str, float] | None = None) -> EvacPlanResult:
+    """`people`: seen by the cameras. `estimated`: the zones they cannot see, kept apart so the plan can say how much of it is a guess."""
     started = time.perf_counter()
+    estimated = {z: n for z, n in (estimated or {}).items() if n > 0 and z in terminal.nodes and terminal.nodes[z].level in INDOOR and z not in people}
+    people = {**people, **estimated}
     closed = blocked_nodes(terminal, blocked)
     graph = Graph(terminal, closed, density)
     trees = {d: graph.reverse_tree(d) for d in graph.exits}
@@ -370,6 +376,7 @@ def plan_evacuation(terminal: Terminal, people: dict[str, float], blocked: list[
     routes, no_route = _routes(terminal, graph, trees, reachable, alloc, exits_out, closed)
     result = EvacPlanResult(clear_s, t90_s, total_people, sorted(exits_out.values(), key=lambda r: r["exit"]), routes, list(blocked),
                             zone_clear, unreachable, no_route, allocator)
+    result.people_estimated = sum(n for z, n in estimated.items() if z in sources)
     result.solve_ms = (time.perf_counter() - started) * 1000.0
     return result
 

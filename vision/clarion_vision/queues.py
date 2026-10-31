@@ -26,12 +26,13 @@ class QueueSpec:
     curve: str                # presentation curve, forecast.CURVES
 
 
-# Priors in people/min per lane, from common airport figures, replaced by measurement within minutes (wait.HeadRate).
+# Priors in people/min per lane, replaced by measurement within minutes (wait.HeadRate). From one simulated run: security
+# 1.63 exits per lane-minute while people wait; bag drop 82 s per passenger at a desk.
 _PARAMS = {
-    "security": dict(zone="U_SECURITY_QUEUE", lanes_key="security", target_min=10.0, mu0=2.5, default_lanes=2, max_lanes=4, curve="security"),
-    "checkin_group_1": dict(zone="check_in:1", lanes_key="check_in:1", target_min=15.0, mu0=0.6, default_lanes=3, max_lanes=4, curve="check_in"),
-    "checkin_group_2": dict(zone="check_in:2", lanes_key="check_in:2", target_min=15.0, mu0=0.6, default_lanes=3, max_lanes=4, curve="check_in"),
-    "checkin_group_3": dict(zone="check_in:3", lanes_key="check_in:3", target_min=15.0, mu0=0.6, default_lanes=3, max_lanes=4, curve="check_in"),
+    "security": dict(zone="U_SECURITY_QUEUE", lanes_key="security", target_min=10.0, mu0=1.6, default_lanes=2, max_lanes=4, curve="security"),
+    "checkin_group_1": dict(zone="check_in:1", lanes_key="check_in:1", target_min=15.0, mu0=0.73, default_lanes=3, max_lanes=4, curve="check_in"),
+    "checkin_group_2": dict(zone="check_in:2", lanes_key="check_in:2", target_min=15.0, mu0=0.73, default_lanes=3, max_lanes=4, curve="check_in"),
+    "checkin_group_3": dict(zone="check_in:3", lanes_key="check_in:3", target_min=15.0, mu0=0.73, default_lanes=3, max_lanes=4, curve="check_in"),
     "passport_departures": dict(zone="U_PASSPORT_DEP", lanes_key=None, target_min=None, mu0=3.0, default_lanes=2, max_lanes=2, curve="passport"),
     "passport_arrivals": dict(zone="G_ARRIVALS_PASSPORT", lanes_key=None, target_min=None, mu0=3.0, default_lanes=2, max_lanes=2, curve="none"),
 }

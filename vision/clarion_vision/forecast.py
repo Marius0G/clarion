@@ -65,10 +65,18 @@ class Curve:
         z = (math.log(self.cutoff_min) - mu) / self.sigma
         return out * self.share / max(0.5 * math.erfc(z / math.sqrt(2)), 1e-6)
 
+    def presented_by(self, minutes_before: float) -> float:
+        """Share of the flight's passengers who have reached this point with `minutes_before` still to go."""
+        if minutes_before <= self.cutoff_min:
+            return self.share
+        tail = lambda x: 0.5 * math.erfc((math.log(x) - math.log(self.median_min)) / (self.sigma * math.sqrt(2)))
+        return self.share * tail(minutes_before) / max(tail(self.cutoff_min), 1e-6)
 
-# Priors, not measurements. Re-fit on simulated days (A11) when batch runs exist.
-CURVES = {"security": Curve(85.0, 0.35, 25.0), "check_in": Curve(125.0, 0.30, 40.0, share=0.45),
-          "passport": Curve(70.0, 0.35, 25.0)}
+
+# Starting points. Set from one simulated run (seed 0: security median 117 min before departure, sigma 0.34; bag drop and
+# check-in 128 min, sigma 0.23), where nearly everyone passes the desks. ml/calibrate.py re-fits them on the training seeds.
+CURVES = {"security": Curve(115.0, 0.35, 25.0), "check_in": Curve(128.0, 0.25, 40.0, share=0.9),
+          "passport": Curve(100.0, 0.35, 25.0)}
 
 
 def arrival_rates(flights: list[Flight], now_s: float, curve: Curve, horizon_min: int = 120,

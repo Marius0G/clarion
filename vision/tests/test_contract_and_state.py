@@ -38,7 +38,7 @@ def test_density_is_clamped_and_positions_capped():
 
 def test_evac_plan_validated():
     good = {"id": "c1", "blocked": ["G_CHECKIN_QUEUE"], "clearSec": 120.0, "exits": [{"exit": "door_exit_west", "people": 10, "clearSec": 60.0}],
-            "routes": [{"from": "check_in:RO", "exit": "door_exit_west", "nodes": ["check_in:RO", "door_exit_west"]}]}
+            "routes": [{"from": "check_in:2", "exit": "door_exit_west", "nodes": ["check_in:2", "door_exit_west"]}]}
     assert json.loads(contract.evac_plan(good))["type"] == "evac.plan"
     with pytest.raises(ValueError):
         contract.evac_plan({**good, "routes": []})
@@ -76,10 +76,10 @@ def test_lane_book_merges_aliases_and_follows_the_longest_group():
 
 def test_ids():
     assert map_node_id("security") == "U_SECURITY_QUEUE"
-    assert map_node_id("check_in:2") == "check_in:RO" and map_node_id("bag_drop:FR") == "check_in:FR"
+    assert map_node_id("check_in:2") == "check_in:2" and map_node_id("bag_drop:FR") == "check_in:3" and map_node_id("check_in:RO") == "check_in:2"
     assert map_node_id("G2") == "U_GATE_2" and map_node_id("gate_10") == "U_GATE_10"
     assert lanes_key("check_in:W6") == "check_in:1" and lanes_key("checkin_group_3") == "check_in:3"
-    assert lanes_key("U_GATE_1") is None
+    assert lanes_key("U_GATE_1") is None and lanes_key("check_in:OTHER") is None
 
 
 def test_the_token_never_reaches_a_log_line():

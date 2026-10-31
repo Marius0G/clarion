@@ -39,8 +39,13 @@ class FrameDetector:
         self.model = Ultralytics(weights)
         self.device, self.imgsz, self.conf = device, imgsz, conf
         self.extra = {} if str(device) == "cpu" else {"quantize": 16}
+        self.last_boxes = np.empty((0, 6))
 
     def detect(self, image: np.ndarray) -> np.ndarray:
+        self.last_boxes = self._detect(image)
+        return self.last_boxes
+
+    def _detect(self, image: np.ndarray) -> np.ndarray:
         result = self.model.track(image, persist=True, tracker="bytetrack.yaml", classes=[0], conf=self.conf, imgsz=self.imgsz,
                                   device=self.device, verbose=False, **self.extra)[0]
         boxes = result.boxes

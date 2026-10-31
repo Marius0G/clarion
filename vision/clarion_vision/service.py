@@ -17,6 +17,7 @@ from .state import LaneBook
 from .terminal import load_terminal
 
 log = logging.getLogger("clarion.vision")
+CAMERAS_SILENT_S = 10.0     # real seconds without a camera tick: Unity is off or paused
 
 
 class Service:
@@ -31,12 +32,35 @@ class Service:
         self.blocked: set[str] = set()
         self.ticks = 0
         self.last_plan_ms = None
+        self.last_tick_wall: float | None = None
+        self.last_command_wall = -1e9
+        self.silent_logged = False
         log.info("graph: %s, %d nodes, %d edges, %d exits; start lanes %s", self.terminal.source, len(self.terminal.nodes),
                  len(self.terminal.edges), len(self.terminal.exits), self.terminal.initial_lanes)
 
+    def _corrections(self, source: CameraSource | None):
+        """A2, A4, A5 from models/ when trained. A2 learned one detector's bias, so it stays off under another detector."""
+        if self.args.no_ml or source is None:
+            return None
+        from .ml.calibrate import load_calibration
+        from .ml.runtime import MODEL_DIR, Corrections
+        calibration = load_calibration(MODEL_DIR)
+        if calibration:
+            log.info("calibration from %s simulated runs: %s", calibration.get("seeds_used"), calibration.get("curves"))
+        corrections = Corrections.maybe()
+        if corrections is None:
+            log.info("ML corrections: off, no models trained")
+            return None
+        trained = corrections.meta.get("detector")
+        if trained and trained != source.detector:
+            corrections.count_model = None
+        log.info("ML corrections: on, trained on %s (seeds %s); count correction %s", trained or "?", corrections.meta.get("train_seeds"), "on" if corrections.count_model else "off")
+        return corrections
+
     def _chain(self, source: CameraSource | None, cctv=None) -> Chain:
         specs = source.camera_specs() if source else load_camera_specs()
-        return Chain(self.terminal, specs, load_queues(cctv, lane_limits=self.terminal.lane_limits), self.book, corrections=None)
+        corrections = self._corrections(source)      # first: it loads the calibration the queues start from
+        return Chain(self.terminal, specs, load_queues(cctv, lane_limits=self.terminal.lane_limits), self.book, corrections=corrections)
 
     def _open_source(self) -> None:
         kind = self.args.source
@@ -60,6 +84,7 @@ class Service:
     # -------------------------------------------------------------- ops.command
     async def on_command(self, cmd: dict) -> None:
         kind, cid = cmd.get("type"), cmd.get("id")
+        self.last_command_wall = time.monotonic()
         log.info("ops.command %s %s", kind, {k: v for k, v in cmd.items() if k not in ("type", "id")})
         if kind == "staff" and cid:
             self.book.apply(cid, cmd.get("zone") or "", int(cmd.get("delta") or 0), self.chain.longest_group)
@@ -79,16 +104,15 @@ class Service:
     async def send_plan(self, command_id: str) -> None:
         """Answer within 2 s (A10). The solver runs in a thread, the socket stays alive."""
         started = time.perf_counter()
-        people, density, unseen = self.chain.zone_people()
+        people, density, estimated = self.chain.evacuation_sources(self.backend.sim.flights)
         blocked = sorted(self.blocked)
-        result = await asyncio.to_thread(plan_evacuation, self.terminal, people, blocked, density)
+        result = await asyncio.to_thread(plan_evacuation, self.terminal, people, blocked, density, estimated=estimated)
         data = result.to_contract(command_id)
         ok = await self.backend.send(contract.evac_plan(data), "evac.plan")
         self.last_plan_ms = (time.perf_counter() - started) * 1000
-        log.info("evac.plan %s in %.0f ms: %.0f people seen, clear %.0f s, t90 %.0f s, %d exits, %d routes, allocator %s; blocked %s; "
-                 "indoor zones no camera sees (counted as 0, not invented): %d%s",
-                 "sent" if ok else "NOT SENT", self.last_plan_ms, result.people, result.clear_s, result.t90_s, len(result.exits), len(result.routes),
-                 result.allocator, blocked, len(unseen), f"; unreachable {result.unreachable}" if result.unreachable else "")
+        log.info("evac.plan %s in %.0f ms: %.0f people seen + %.0f estimated in %d zones no camera sees, clear %.0f s, t90 %.0f s, %d exits, %d routes, allocator %s; blocked %s%s",
+                 "sent" if ok else "NOT SENT", self.last_plan_ms, result.people - result.people_estimated, result.people_estimated, len(estimated), result.clear_s, result.t90_s,
+                 len(result.exits), len(result.routes), result.allocator, blocked, f"; unreachable {result.unreachable}" if result.unreachable else "")
 
     # -------------------------------------------------------------- loops
     async def ingest_loop(self) -> None:
@@ -105,6 +129,7 @@ class Service:
             if tick is not None:
                 self.chain.ingest(tick, sim.flights)
                 self.ticks += 1
+                self.last_tick_wall = time.monotonic()
             else:
                 await asyncio.sleep(0.1)
 
@@ -114,14 +139,14 @@ class Service:
             started = time.monotonic()
             sim = self.backend.sim
             self.book.sync(sim.staff_ops, self.chain.longest_group)
-            if not sim.staff_ops and self.book.applied and sim.sim_time is None:
-                self.book.reset()                              # POST /api/demo/reset
-            if not self.evacuating:
-                self.blocked = set(sim.blocked)
-            elif not sim.blocked and self.backend.sim_ok and sim.sim_time is None:
-                self.evacuating, self.blocked = False, set()   # POST /api/demo/reset
+            self._follow_reset(sim, started)
             report = self.chain.report(sim.flights)
-            if report is not None:
+            # Silent cameras report nothing: the backend then shows the zones as unknown, not the last numbers as if live.
+            silent = self.last_tick_wall is None or started - self.last_tick_wall > CAMERAS_SILENT_S
+            if silent and report is not None and not self.silent_logged:
+                log.warning("no camera tick for %.0f s: not reporting", CAMERAS_SILENT_S)
+            self.silent_logged = silent
+            if report is not None and not silent:
                 if report.rows:
                     await self.backend.send(contract.flow_report(report.rows), "flow.report")
                 await self.backend.send(contract.crowd_positions(report.people), "crowd.positions")
@@ -130,6 +155,16 @@ class Service:
                 log.info("t=%s detector=%s zones=%d people=%d ticks=%d sent=%s backend_errors=%d", report.t_s if report else None, self.chain.detector or "-",
                          len(report.rows) if report else 0, len(report.people) if report else 0, self.ticks, dict(self.backend.sent), len(self.backend.errors))
             await asyncio.sleep(max(0.0, self.config.report_period_s - (time.monotonic() - started)))
+
+    def _follow_reset(self, sim, now: float) -> None:
+        """POST /api/demo/reset empties the backend's commands and blocked zones. Vision hears of it only through the poll, so
+        recent commands get a few seconds' grace: a poll that left before a command must not undo it."""
+        if self.backend.sim_ok and not sim.staff_ops and self.book.applied and now - self.last_command_wall > 5.0:
+            self.book.reset()
+        if not self.evacuating:
+            self.blocked = set(sim.blocked)
+        elif self.backend.sim_ok and not sim.blocked and now - self.last_command_wall > 5.0:
+            self.evacuating, self.blocked = False, set()
 
     async def run(self) -> None:
         tasks = [self.backend.run(), self.backend.poll(self.config.poll_period_s), self.ingest_loop(), self.report_loop()]
@@ -143,6 +178,7 @@ def main() -> None:
     ap.add_argument("--weights", default=None)
     ap.add_argument("--device", default="auto", help="yolo only: 0, cpu, or auto (the GPU only when Unity leaves room)")
     ap.add_argument("--hybrid", action="store_true", help="yolo only: the other cameras keep the simulated detector")
+    ap.add_argument("--no-ml", action="store_true", help="the physics alone, even when models/ has trained corrections")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--speed", type=float, default=10.0, help="synthetic only: sim seconds per real second")
     args = ap.parse_args()

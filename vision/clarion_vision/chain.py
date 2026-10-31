@@ -3,6 +3,7 @@ advice (A7). `ingest` runs on every camera tick, `report` builds the contract ro
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -16,6 +17,7 @@ from .queues import QueueSpec
 from .sources.base import CameraSpec, FloorPoint, Tick
 from .state import LaneBook
 from .terminal import Terminal
+from .unseen import estimate_unseen
 from .wait import HeadRate, wait_minutes, wait_p90
 
 COVERAGE_MIN = 0.10       # a zone seen less than this is treated as not seen
@@ -23,6 +25,8 @@ BLIND_MAX_S = 600.0       # after a camera drops: keep reporting from flows at m
 SD_UNKNOWN = 12.0         # ...and while the filter's sd stays under this, then the zone is unknown
 MERGE_RADIUS_M = 0.7      # two cameras' points this close are one person
 SAMPLES_MAX = 1500
+TREND_SAMPLE_S, TREND_WINDOW_S = 30.0, 300.0
+KIND_CODE = {"security": 0, "check_in": 1, "passport": 2}
 # Rows whose wait is the queue's in front of them. Without a wait the dashboard shows them as unknown (D20).
 SERVICE_WAIT_FROM = {"U_SECURITY": "U_SECURITY_QUEUE", "G_CHECKIN_DESKS": "G_CHECKIN_QUEUE"}
 
@@ -114,6 +118,7 @@ class QueueTrack:
     coverage: float = 0.0
     last_n: float | None = None
     features: dict = field(default_factory=dict)
+    history: deque = field(default_factory=deque)
 
 
 @dataclass
@@ -229,9 +234,13 @@ class Chain:
         track.coverage = cov
         lanes = self._lanes(spec)
         points = [p for p in merged if p.level == spec.level]
-        count = 0
+        count, mean_h, mean_conf = 0, 0.0, 0.0
         if points:
-            count = int(in_ring(np.array([p.x for p in points]), np.array([p.z for p in points]), spec.ring).sum())
+            inside = in_ring(np.array([p.x for p in points]), np.array([p.z for p in points]), spec.ring)
+            count = int(inside.sum())
+            if count:
+                mean_h = float(np.mean([p.box_h for p, ok in zip(points, inside) if ok]))
+                mean_conf = float(np.mean([p.conf for p, ok in zip(points, inside) if ok]))
 
         # Flows: the working camera that sees the queue's head and most of the queue. Its tracks only, or one person counts
         # twice. No such camera, or tracks that jumped: no flows this tick, and mu keeps its last measurement.
@@ -246,16 +255,20 @@ class Chain:
             ledger = track.ledgers.setdefault(camera, TrackLedger(spec))
             entries, exits = ledger.step(t, tick.cameras.get(camera, []), dt)
 
+        # A lane counts as working only when someone is there for it: with 1 person and 3 lanes, two stand idle.
         busy = track.filter.n >= 1.0
         if dt > 0 and flows_seen:
-            track.head.add(t, exits, dt, lanes, busy)
+            track.head.add(t, exits, dt, min(lanes, max(track.filter.n, 1.0)), busy)
         mu = track.head.mu
         if flows_seen:
             track.filter.predict(dt, left=exits, left_var=0.25 * exits)
         else:
             track.filter.predict(dt, left=mu * lanes * dt / 60.0 if busy else 0.0)
+        n_cameras = sum(1 for c in self.active if "q:" + spec.queue in self.masks.get(c, {}))
+        count_features = {"kind": KIND_CODE.get(spec.curve, 3), "count": count, "coverage": cov, "density_seen": count / max(spec.area_m2 * cov, 1.0),
+                          "mean_box_h": mean_h, "mean_conf": mean_conf, "n_cameras": n_cameras}
         if cov >= COVERAGE_MIN:
-            corrected = self.corrections.count(spec, count, cov, tick) if self.corrections else None
+            corrected = self.corrections.count(count_features) if self.corrections else None
             if corrected is None:
                 track.filter.update_count(count / cov, count_variance(count, cov))
             else:
@@ -271,7 +284,11 @@ class Chain:
             expected = float(arrival_rates(flights, t, curve, 0, self._select(spec))[0]) * dt / 60.0 if curve and flights else 0.0
             track.scale.add(expected, grew + (exits if flows_seen else (mu * lanes * dt / 60.0 if busy else 0.0)))
             track.last_n = n
-        track.features = {"count": count, "coverage": cov, "camera": camera, "entries": entries, "exits": exits, "lanes": lanes}
+            if not track.history or t - track.history[-1][0] >= TREND_SAMPLE_S:
+                track.history.append((t, n))
+                while t - track.history[0][0] > TREND_WINDOW_S:
+                    track.history.popleft()
+        track.features = count_features
 
     # ------------------------------------------------------------------ the reported rows
     def longest_group(self) -> str | None:
@@ -288,16 +305,25 @@ class Chain:
         lanes = self._lanes(spec)
         queue, sd = track.filter.n, track.filter.sd
         mu, sd_mu = track.head.mu, track.head.sd
-        wait = wait_minutes(queue, mu, lanes)
+        raw_wait = wait_minutes(queue, mu, lanes)
         p90 = wait_p90(queue, sd, mu, sd_mu, lanes)
         curve_spec = CURVES.get(spec.curve)
-        lam = arrival_rates(flights, t, curve_spec, 120, self._select(spec)) * track.scale.factor if curve_spec else np.zeros(121)
+        select = self._select(spec)
+        lam = arrival_rates(flights, t, curve_spec, 120, select) * track.scale.factor if curve_spec else np.zeros(121)
         curve = wait_curve(queue, lam, mu, lanes)
-        correction = self.corrections.forecast(spec) if self.corrections else None
+        old_t, old_n = track.history[0] if track.history else (t, queue)
+        features = {"kind": KIND_CODE.get(spec.curve, 3), "wait": raw_wait, "queue": queue, "sd": sd, "mu": mu, "lanes": lanes, "lam_now": float(lam[0]),
+                    "lam_filter": track.filter.lam * 60.0, "trend": (queue - old_n) / max(t - old_t, 60.0) * 60.0, "scale": track.scale.factor,
+                    "departures_next_hour": float(sum(f.pax for f in flights if select(f) and f.status not in ("cancelled", "departed") and t < f.etd_s <= t + 3600.0))}
+        wait, correction = raw_wait, None
         if self.corrections:
-            wait = self.corrections.wait(spec, wait, lam, mu, lanes, track)
-        adv = advise(queue, lam, mu, lanes, spec.target_min, spec.max_lanes, t) if spec.target_min and spec.lanes_key else None
-        return dict(queue=queue, sd=sd, mu=mu, lanes=lanes, wait=wait, p90=max(p90, wait), forecast=forecast_points(curve, correction), advice=adv, lam=lam)
+            wait = self.corrections.wait(features)
+            correction = self.corrections.forecast(features, lam)
+        # No schedule or no arrival model: no forecast, rather than a queue that only drains. The backend then uses its history (D5b).
+        knows_arrivals = curve_spec is not None and bool(flights)
+        adv = advise(queue, lam, mu, lanes, spec.target_min, spec.max_lanes, t) if knows_arrivals and spec.target_min and spec.lanes_key else None
+        return dict(queue=queue, sd=sd, mu=mu, lanes=lanes, wait=wait, p90=max(p90 + wait - raw_wait, wait), forecast=forecast_points(curve, correction) if knows_arrivals else None,
+                    advice=adv, lam=lam, raw_wait=raw_wait, raw_curve=curve, features=features)
 
     def report(self, flights: list[Flight]) -> Report | None:
         if self.last_t is None:
@@ -339,8 +365,9 @@ class Chain:
             return
         hall["waitMin"] = round(max(waits[z]["wait"] for z in groups), 2)
         hall["waitMinP90"] = round(max(waits[z]["p90"] for z in groups), 2)
-        hall["forecast"] = [{"inMin": points[0]["inMin"], "waitMin": max(p["waitMin"] for p in points)}
-                            for points in zip(*(waits[z]["forecast"] for z in groups))]
+        forecasts = [waits[z]["forecast"] for z in groups if waits[z]["forecast"]]
+        if forecasts:
+            hall["forecast"] = [{"inMin": points[0]["inMin"], "waitMin": max(p["waitMin"] for p in points)} for points in zip(*forecasts)]
         advices = [waits[z]["advice"] for z in groups if waits[z]["advice"]]
         if advices:
             hall["advice"] = max(advices, key=lambda a: a["waitMinIfNot"])
@@ -358,3 +385,11 @@ class Chain:
             elif zone.level in ("G", "U"):
                 unseen.append(zone_id)
         return people, density, unseen
+
+    def evacuation_sources(self, flights: list[Flight]) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+        """For A9 only: people per zone seen, density where seen, and a low-confidence estimate for the zones no camera sees."""
+        people, density, unseen = self.zone_people()
+        security = self.tracks.get("security")
+        before = (security.filter.n if security else 0.0) + people.get("U_SECURITY", 0.0)
+        estimated = estimate_unseen(self.terminal, people, unseen, flights, self.last_t or 0.0, CURVES["security"], security.scale.factor if security else 1.0, before)
+        return people, density, estimated
