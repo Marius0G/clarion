@@ -42,7 +42,7 @@ describe('WhatsApp agent in the Tower', () => {
     }).then(r => r.json()) as { token: string };
     expect((await post(message('wamid.a', `START W6 3751 ${joined.token}`))).status).toBe(200);
     await expect.poll(() => texts().some(t => t.includes('W6 3751 spre Londra Luton')), { timeout: 10000 }).toBe(true);
-    expect(outbound.some(o => o.body?.type === 'interactive')).toBe(true);
+    await expect.poll(() => outbound.some(o => o.body?.type === 'interactive'), { timeout: 10000 }).toBe(true);
     // The public endpoint and signed webhook share the same durable token store.
     expect((await mf.dispatchFetch('https://worker.example/api/wallet/pass', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ joinToken: joined.token }),
