@@ -66,6 +66,9 @@ Set deployment secrets only with `npx wrangler secret put NAME`, entered at its 
 | `WHATSAPP_WABA_ID` | WABA account ID from `.env.example`; retained for setup, not needed by message sending. |
 | `WHATSAPP_VERIFY_TOKEN` | Private token chosen for Meta's GET verification callback. |
 | `WHATSAPP_APP_SECRET` | Meta app secret for POST HMAC verification; webhook POSTs fail closed until configured. |
+| `ANTHROPIC_API_KEY` | Claude key for the WhatsApp agent (`src/wa/`). Absent: deterministic Romanian answers from the same tools. |
+| `WA_ALLOWLIST` | Optional E.164 numbers (comma/space separated) the agent answers; unset answers everyone. |
+| `CLAUDE_MODEL` | Optional override of the agent model (default `claude-sonnet-5-5`). |
 | `SMSLINK_CONNECTION_ID` | SMSLink connection ID. |
 | `SMSLINK_PASSWORD` | SMSLink connection password. |
 | `GOOGLE_WALLET_ISSUER_ID` | Google Wallet demo issuer ID. |
@@ -83,6 +86,7 @@ npx wrangler secret put WHATSAPP_TOKEN
 npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
 npx wrangler secret put WHATSAPP_VERIFY_TOKEN
 npx wrangler secret put WHATSAPP_APP_SECRET
+npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put SMSLINK_CONNECTION_ID
 npx wrangler secret put SMSLINK_PASSWORD
 npx wrangler secret put GOOGLE_WALLET_ISSUER_ID

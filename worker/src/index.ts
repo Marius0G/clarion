@@ -10,8 +10,10 @@ import { aircraftNearLrcv, FidsAdapter } from '../../backend/src/data/flights.js
 import { createStoredEngine } from './storage.js';
 import { createSms, createWallet, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
 import type { Wallet, WalletStore } from '../../backend/src/wallet.js';
+import { WhatsAppAgent, type WaEnv } from './wa/index.js';
+import { airportView } from './wa/tower.js';
 
-export interface Env extends Secrets {
+export interface Env extends Secrets, WaEnv {
   TOWER: DurableObjectNamespace<Tower>;
   DEMO_TOKEN?: string;
   SIM_SPEED?: string; SIM_SEED?: string; AUTO_CONFIRM?: string;
@@ -78,6 +80,7 @@ export class Tower extends DurableObject<Env> {
   private telegram: Telegram;
   private queue: Promise<unknown> = Promise.resolve();
   private seenWhatsApp: string[] = [];
+  private whatsapp: WhatsAppAgent;
   // Invoke Workers' global fetch with its own receiver, not as an adapter method.
   private fids = new FidsAdapter((input, init) => fetch(input, init));
   private nextFidsRefresh = 0;
@@ -86,6 +89,7 @@ export class Tower extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.telegram = new Telegram(env.TELEGRAM_BOT_TOKEN ?? '');
+    this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0));
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
@@ -257,6 +261,8 @@ export class Tower extends DurableObject<Env> {
                 change.value.messages = change.value.messages.filter((m: { id?: string }) => !m.id || !this.seenWhatsApp.includes(m.id));
               }
             await this.engine.whatsappWebhook(body);
+            // Clarion's agent answers after the 200, outside the request queue (SPEC-v2 D2).
+            this.ctx.waitUntil(this.whatsapp.inbound(body));
             for (const entry of body?.entry ?? []) for (const change of entry.changes ?? [])
               for (const m of change.value?.messages ?? []) if (typeof m.id === 'string') this.seenWhatsApp.push(m.id);
             this.seenWhatsApp = this.seenWhatsApp.slice(-2000);
