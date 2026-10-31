@@ -1,32 +1,67 @@
-import type { FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
+import type { Advice, FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
 import { flowState, type FlowState } from './flow'
-import { inside, staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
+import { staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
 
 export interface ZoneStat {
   id: string; name: string; kind: ZoneKind; staffed: boolean
-  /** flow.report `waiting`, else passenger dots inside the zone; null = unknown. */
+  /** Camera estimate (flow.report `waiting`); null = unknown: never seen, stale, or no feed. Never guessed from dots. */
   people: number | null
-  /** flow.report `staff`, else staff dots inside the zone; null = unknown. */
-  staff: number | null
-  waitMin: number | null; capacity: number | null; state: FlowState | null
+  /** Lanes / desks open, held by the backend (D12); null when it has no number for the zone. */
+  lanes: number | null
+  waitMin: number | null; state: FlowState | null
+  /** A7 lane advice, formatted; null when vision gave none. */
+  advice: string | null
 }
 
-/** Live Unity data only: a disconnected sim shows the plan with no numbers. */
+/** Load colour from the camera wait: under 10 min Normal, 10–20 Aproape, 20+ Plin. Legacy Unity rows fall back to capacity. */
+export const WAIT_NEAR_MIN = 10, WAIT_FULL_MIN = 20
+export function loadState(row: Pick<FlowRow, 'waiting' | 'waitMin' | 'capacity'>): FlowState | null {
+  if (row.waitMin != null) return row.waitMin >= WAIT_FULL_MIN ? 'full' : row.waitMin >= WAIT_NEAR_MIN ? 'near' : 'normal'
+  return flowState(row.waiting, row.capacity ?? null)
+}
+
+/** Camera data counts only while a feed (vision, or a legacy Unity) is online, and only fresh rows. */
+export function liveRow(sim: SimSnapshot | null, zone: string): FlowRow | null {
+  if (!sim || !(sim.vision || sim.connected)) return null
+  const row = sim.flow?.[zone]
+  return row && !row.stale ? row : null
+}
+
+/** Dots from the cameras (crowd.positions) while a feed is online. */
+export function liveDots(sim: SimSnapshot | null): Person[] {
+  return sim && (sim.vision || sim.connected) ? sim.positions?.people ?? [] : []
+}
+
 export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat[] {
-  const live = sim?.connected ? sim : null
-  const people: Person[] | null = live?.positions?.people ?? null
   return plan.zones.map(zone => {
-    const row: FlowRow | undefined = live?.flow?.[zone.id]
-    const dots = people && people.filter(p => inside([p.x, p.y], zone.polygon))
-    const count = (kind: Person['kind']) => dots ? dots.filter(p => p.kind === kind).length : null
-    const waiting = row ? row.waiting : count('pax')
-    const capacity = row?.capacity ?? null
+    const row = liveRow(sim, zone.id)
     return {
       id: zone.id, name: zone.name, kind: zone.kind, staffed: staffedKinds.includes(zone.kind),
-      people: waiting, staff: row?.staff ?? count('staff'), waitMin: row?.waitMin ?? null, capacity,
-      state: waiting == null ? null : flowState(waiting, capacity),
+      people: row ? row.waiting : null, lanes: sim?.lanes?.[zone.id] ?? null,
+      waitMin: row?.waitMin ?? null, state: row ? loadState(row) : null,
+      advice: row?.advice == null ? null : adviceText(row.advice, sim?.lanes?.[zone.id] ?? null),
     }
   })
+}
+
+/** Sim time as HH:MM: seconds become a clock, a string is shown as sent. */
+const hhmm = (by: number | string) => typeof by === 'number' ? simClock(by).slice(0, 5) : by
+const lanesWord = (n: number) => n === 1 ? 'o linie' : `${n} linii`
+
+/**
+ * A7 advice as one line. A sentence from vision is shown as given; `{ lanes, by, waitMinIfNot }` becomes
+ * „Deschide o linie până la 14:05, altfel 18 min”, with missing parts left out.
+ */
+export function adviceText(advice: Advice, lanesNow: number | null): string | null {
+  if (typeof advice === 'string') return advice.trim() || null
+  if (!advice || typeof advice !== 'object') return null
+  const target = Number.isFinite(advice.lanes) ? advice.lanes! : null
+  const wait = [advice.waitMinIfNot, advice.waitMin].find(v => typeof v === 'number' && Number.isFinite(v)) ?? null
+  const by = typeof advice.by === 'number' && Number.isFinite(advice.by) || (typeof advice.by === 'string' && advice.by) ? advice.by! : null
+  const extra = target != null && lanesNow != null ? target - lanesNow : null
+  const head = extra != null && extra > 0 ? `Deschide ${lanesWord(extra)}` : target != null ? `${target} ${target === 1 ? 'linie' : 'linii'}` : 'Deschide o linie'
+  const parts = [`${head}${by != null ? ` până la ${hhmm(by)}` : ''}`, wait != null ? `altfel ${Math.round(wait)} min` : null]
+  return parts.filter(Boolean).join(', ')
 }
 
 export type CommandStatus = 'sent' | 'acked' | 'offline' | 'auth' | 'invalid' | 'network'
@@ -38,12 +73,26 @@ export const commandStatusLabels: Record<CommandStatus, string> = {
 export function commandLabel(command: OpsCommand, plan: TerminalPlan) {
   const name = (id: string) => plan.zones.find(z => z.id === id)?.name ?? id
   switch (command.type) {
-    case 'staff': return `${name(command.zone)} ${command.delta > 0 ? '+' : '−'}${Math.abs(command.delta)} angajat`
+    case 'staff': return `${name(command.zone)} ${command.delta > 0 ? '+' : '−'}${Math.abs(command.delta)} ${Math.abs(command.delta) === 1 ? 'linie' : 'linii'}`
     case 'evacuate': return `Evacuare ${command.zones.map(name).join(', ')}`
     case 'redirect': return `Redirecționare ${name(command.from)} → ${name(command.to)}`
     case 'close': return `Închidere ${name(command.zone)}`
     case 'open': return `Deschidere ${name(command.zone)}`
   }
+}
+
+/** Camera estimate next to Unity's truth (D0, D16), for zones the truth covers. */
+export interface AccuracyRow { id: string; name: string; camPeople: number | null; truePeople: number; camWait: number | null; trueWait: number | null }
+export function accuracyRows(plan: TerminalPlan, sim: SimSnapshot | null): AccuracyRow[] {
+  const truth = sim?.truth?.zones
+  if (!truth) return []
+  const order = new Map(plan.zones.map((z, i) => [z.id, i]))
+  return Object.entries(truth)
+    .sort(([a], [b]) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9) || a.localeCompare(b))
+    .map(([id, t]) => {
+      const row = liveRow(sim, id)
+      return { id, name: plan.zones.find(z => z.id === id)?.name ?? id, camPeople: row?.waiting ?? null, truePeople: t.waiting, camWait: row?.waitMin ?? null, trueWait: t.waitMin }
+    })
 }
 
 /** D13: Unity simTime (seconds) as a clock, HH:MM:SS. */

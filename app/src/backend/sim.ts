@@ -3,7 +3,10 @@ import { backend } from './config'
 
 type Where = 'home' | 'road' | 'terminal' | 'kerb'
 export interface SimSnapshot {
+  /** Unity (client=twin) online. */
   connected: boolean
+  /** Camera service (client=vision) online; absent on older backends. */
+  vision?: boolean
   lastSeen: string | null
   run: { scenario: string | null; arm: 'A' | 'B' | null; coverage: number | null; seed: number | null }
   simTime: number | null
@@ -15,13 +18,25 @@ export interface SimSnapshot {
   flights?: TerminalFlight[]
   positions?: { people: Person[]; at: string } | null
   ops?: OpsRecord[]
+  /** D12: lanes / desks open per zone, held by the backend. */
+  lanes?: Record<string, number>
+  /** D0: Unity's truth, only for the accuracy panel. */
+  truth?: { zones: Record<string, { waiting: number; waitMin: number | null }>; at: string } | null
 }
 export type FlowZone = 'check_in' | 'bag_drop' | 'security' | 'arrivals_hall' | 'taxi_rank' | 'kerb'
 export interface FlowRow {
   waiting: number; capacity: number | null; waitMin: number | null; peak: number; updatedAt: string
   staff?: number | null; forecast?: { inMin: number; waitMin: number }[] | null
+  /** Contract v2 (vision). */
+  coverage?: number | null; waitingSd?: number | null; density?: number | null; waitMinP90?: number | null
+  advice?: Advice | null
+  /** No report for this zone lately: unknown, not the old number. */
+  stale?: boolean; source?: 'vision' | 'twin'
 }
-export interface Person { x: number; y: number; kind: 'pax' | 'staff' }
+/** A7 lane advice from vision: a sentence, or `{ lanes, by, waitMinIfNot }` (by = sim time). */
+export type Advice = string | { lanes?: number | null; by?: number | string | null; waitMinIfNot?: number | null; waitMin?: number | null }
+/** Feet point of a detected person, terminal metres. Vision sends no kind. */
+export interface Person { x: number; y: number; kind?: 'pax' | 'staff' }
 export interface TerminalFlight {
   flight: string; airline: string; destination: string; std: number | string; gate: string | null; checkInDesks: string[]
   gateCloseAt: number | string | null; status: 'scheduled' | 'boarding' | 'delayed' | 'cancelled' | 'departed'; delayMin: number; pax: number | null

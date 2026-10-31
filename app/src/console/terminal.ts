@@ -25,10 +25,10 @@ export const plan: TerminalPlan = {
   height: 60,
   zones: [
     { id: 'entrance', kind: 'entrance', name: 'Intrare', polygon: rect(0, 8, 14, 44) },
-    { id: 'check_in:W6', kind: 'check_in', name: 'Check-in W6', polygon: rect(16, 6, 20, 22) },
-    { id: 'bag_drop:W6', kind: 'bag_drop', name: 'Bagaje W6', polygon: rect(38, 6, 14, 22) },
-    { id: 'check_in:RO', kind: 'check_in', name: 'Check-in RO', polygon: rect(16, 32, 20, 22) },
-    { id: 'bag_drop:RO', kind: 'bag_drop', name: 'Bagaje RO', polygon: rect(38, 32, 14, 22) },
+    { id: 'check_in:1', kind: 'check_in', name: 'Check-in 1', polygon: rect(16, 6, 20, 22) },
+    { id: 'bag_drop:1', kind: 'bag_drop', name: 'Bagaje 1', polygon: rect(38, 6, 14, 22) },
+    { id: 'check_in:2', kind: 'check_in', name: 'Check-in 2', polygon: rect(16, 32, 20, 22) },
+    { id: 'bag_drop:2', kind: 'bag_drop', name: 'Bagaje 2', polygon: rect(38, 32, 14, 22) },
     { id: 'security', kind: 'security', name: 'Securitate', polygon: rect(55, 14, 14, 32) },
     { id: 'airside', kind: 'airside', name: 'Zona plecări', polygon: rect(72, 4, 28, 52) },
     { id: 'gate_1', kind: 'gate', name: 'Poarta 1', polygon: rect(102, 4, 18, 16) },
@@ -39,10 +39,10 @@ export const plan: TerminalPlan = {
   ],
   nodes: [
     { id: 'entrance', kind: 'entrance', x: 7, y: 30, zone: 'entrance' },
-    { id: 'check_in:W6', kind: 'check_in', x: 26, y: 17, zone: 'check_in:W6' },
-    { id: 'bag_drop:W6', kind: 'bag_drop', x: 45, y: 17, zone: 'bag_drop:W6' },
-    { id: 'check_in:RO', kind: 'check_in', x: 26, y: 43, zone: 'check_in:RO' },
-    { id: 'bag_drop:RO', kind: 'bag_drop', x: 45, y: 43, zone: 'bag_drop:RO' },
+    { id: 'check_in:1', kind: 'check_in', x: 26, y: 17, zone: 'check_in:1' },
+    { id: 'bag_drop:1', kind: 'bag_drop', x: 45, y: 17, zone: 'bag_drop:1' },
+    { id: 'check_in:2', kind: 'check_in', x: 26, y: 43, zone: 'check_in:2' },
+    { id: 'bag_drop:2', kind: 'bag_drop', x: 45, y: 43, zone: 'bag_drop:2' },
     { id: 'security', kind: 'security', x: 62, y: 30, zone: 'security' },
     { id: 'airside', kind: 'airside', x: 86, y: 30, zone: 'airside' },
     { id: 'gate_1', kind: 'gate', x: 111, y: 12, zone: 'gate_1' },
@@ -53,12 +53,12 @@ export const plan: TerminalPlan = {
     { id: 'team_post', kind: 'team_post', x: 60, y: 52 },
   ],
   edges: [
-    { from: 'entrance', to: 'check_in:W6', walkSec: 25 },
-    { from: 'entrance', to: 'check_in:RO', walkSec: 25 },
-    { from: 'check_in:W6', to: 'bag_drop:W6', walkSec: 15 },
-    { from: 'check_in:RO', to: 'bag_drop:RO', walkSec: 15 },
-    { from: 'bag_drop:W6', to: 'security', walkSec: 20 },
-    { from: 'bag_drop:RO', to: 'security', walkSec: 20 },
+    { from: 'entrance', to: 'check_in:1', walkSec: 25 },
+    { from: 'entrance', to: 'check_in:2', walkSec: 25 },
+    { from: 'check_in:1', to: 'bag_drop:1', walkSec: 15 },
+    { from: 'check_in:2', to: 'bag_drop:2', walkSec: 15 },
+    { from: 'bag_drop:1', to: 'security', walkSec: 20 },
+    { from: 'bag_drop:2', to: 'security', walkSec: 20 },
     { from: 'entrance', to: 'security', walkSec: 45 },
     { from: 'security', to: 'airside', walkSec: 25 },
     { from: 'airside', to: 'gate_1', walkSec: 30 },
@@ -71,7 +71,7 @@ export const plan: TerminalPlan = {
   ],
 }
 
-/** Zones where a person works a queue, so `+1 angajat` makes sense (D12 staff). */
+/** Zones where a person works a queue, so `+1 linie` makes sense (D12 staff, counted in lanes or desks). */
 export const staffedKinds: ZoneKind[] = ['check_in', 'bag_drop', 'security']
 
 /** Ray-casting point-in-polygon, metres. */
