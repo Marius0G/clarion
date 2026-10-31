@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 
 test('app shell, map canvas and layer toggles render', async ({ page }) => {
   const errors: string[] = []
@@ -26,4 +27,33 @@ test('app shell, map canvas and layer toggles render', async ({ page }) => {
   await expect(page.getByTestId('toggle-aeroway-runway')).not.toBeChecked()
 
   expect(errors).toEqual([])
+})
+
+test('snow candidate requires declaration and checklist completion enters timeline', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Snow or blizzard', exact: true }).click()
+  await page.getByRole('button', { name: 'Click map to set location' }).click()
+  await expect(page.getByTestId('map')).toHaveAttribute('data-ready','true', {timeout:30000})
+  await page.locator('.maplibregl-canvas').click({position:{x:350,y:200}})
+  await page.getByRole('button', {name:'Start',exact:true}).click()
+  await expect(page.getByTestId('status-pill')).toHaveText('Candidate')
+  await expect(page.locator('.playbook input').first()).toBeDisabled()
+  await page.getByRole('button',{name:'Declare',exact:true}).click()
+  await page.getByRole('button',{name:'Confirm Declare',exact:true}).click()
+  await page.locator('.playbook input').first().check()
+  await page.screenshot({ path: 'test-results/incident-console.png' })
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click()
+  await expect(page.getByTestId('timeline-entry').filter({hasText:'Checklist completed'})).toHaveCount(1)
+  await expect(page.getByTestId('timeline-entry').filter({hasText:'Declared · Snow or blizzard'})).toHaveCount(1)
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button',{name:'Export JSON'}).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('lrcv-simulation-timeline.json')
+  const exported = JSON.parse(await readFile((await download.path())!, 'utf8'))
+  expect(exported.simulated).toBe(true)
+  expect(exported.entries.some((e: { category: string }) => e.category === 'checklist')).toBe(true)
+  await page.emulateMedia({ media: 'print' })
+  await expect(page.getByTestId('scenario-rail')).toBeHidden()
+  await expect(page.getByTestId('timeline-entry').first()).toBeVisible()
+  await page.screenshot({ path: 'test-results/timeline-print.png', fullPage: true })
 })
