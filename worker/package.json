@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "lab": "node scripts/lab.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "build:test": "esbuild src/index.ts --bundle --format=esm --platform=browser --external:cloudflare:workers --outfile=dist/index.js",

@@ -1,3 +1,6 @@
+import { runLab, validateInput } from './wa/lab.js';
+import { labPage } from './wa/labpage.js';
+import { WaEvents } from './wa/events.js';
 import { boardingFromSchedule } from './demo.js';
 import { DurableObject } from 'cloudflare:workers';
 import { createWhatsApp,verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
@@ -81,6 +84,7 @@ export class Tower extends DurableObject<Env> {
   private pending = new Set<Promise<unknown>>();
   private seenWhatsApp: string[] = [];
   private whatsapp: WhatsAppAgent;
+  private waEvents: WaEvents;
   // Invoke Workers' global fetch with its own receiver, not as an adapter method.
   private fids = new FidsAdapter((input, init) => fetch(input, init));
   private nextFidsRefresh = 0;
@@ -88,8 +92,9 @@ export class Tower extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.waEvents = new WaEvents(ctx.storage);
     this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0),
-      { toUnity: (type, data) => this.toTwins(type, data) });
+      { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
@@ -207,7 +212,33 @@ export class Tower extends DurableObject<Env> {
       if (Date.now() >= this.nextFidsRefresh) await this.refreshFlights();
     });
   }
+  /** Lab work must not hold the engine queue while waiting for model replies. */
+  private async lab(request: Request, path: string): Promise<Response> {
+    try {
+      if (request.method === 'GET' && path === '/lab') return new Response(labPage(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      if (path.startsWith('/lab/')) {
+        if (!this.env.DEMO_TOKEN || !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (request.method === 'GET' && path === '/lab/events') return json({ events: await this.waEvents.list() });
+        if (request.method === 'POST' && path === '/lab/run') {
+          if (Number(request.headers.get('content-length')) > 50000) return json({ error: 'Lab payload too large' }, 413);
+          let input: unknown;
+          try { input = JSON.parse(await bodyText(request, 50000)); validateInput(input); }
+          catch (e) { return json({ error: String((e as Error).message) }, 400); }
+          const snapshot = await this.ordered(() => {
+            const view = airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0);
+            return structuredClone({ clock: view.clock(), flow: view.flow(), flights: view.flights(), provisional: view.provisional(), blocked: view.blocked?.() ?? [] });
+          });
+          return json(await runLab(this.env, { clock: () => snapshot.clock, flow: () => snapshot.flow,
+            flights: () => snapshot.flights, provisional: () => snapshot.provisional, blocked: () => snapshot.blocked }, input, this.ctx.storage));
+        }
+        return json({ error: 'Unknown lab endpoint' }, 404);
+      }
+    } catch (e) { return json({ error: String((e as Error).message) }, 500); }
+    return json({ error: 'Unknown lab endpoint' }, 404);
+  }
   async fetch(request: Request): Promise<Response> {
+    const path = new URL(request.url).pathname;
+    if (path === '/lab' || path.startsWith('/lab/')) return this.lab(request, path);
     return this.ordered(async () => {
       const url = new URL(request.url);
       const path = url.pathname;
