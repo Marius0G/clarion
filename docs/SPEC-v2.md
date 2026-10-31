@@ -200,6 +200,9 @@ Clarion nu îi spune pasagerului ce să facă („pleacă acum”, „fii la int
 - **Evacuarea** rămâne directă: zona, ruta, ieșirea. Acolo instrucțiunea e necesară.
 - Pagina `/m/<token>` urmează același ton: cozi acum și prognoză, nu „fii la intrare la HH:MM”. Calculul din A6 rămâne în backend și poate apărea ca estimare („cu situația de acum, drumul de la intrare la poartă ia ~35 min”).
 
+### D23. Limba o alege pasagerul
+Pe `/join` pasagerul alege limba (Română / English). Pe WhatsApp o poate schimba oricând („English” / „Română”), iar agentul răspunde în limba aleasă. Toate mesajele automate, inclusiv evacuarea, și pagina `/m/<token>` folosesc limba aleasă. Fără alegere: română. Principiul din D22 rămâne: punem toate datele la dispoziția pasagerului, el decide.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
