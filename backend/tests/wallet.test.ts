@@ -1,14 +1,14 @@
-import { beforeAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { Wallet, type WalletEnv, type WalletStore } from '../src/wallet.js';
-import { Engine } from '../src/engine.js';
+import { afterEach,beforeAll,describe,expect,it,vi } from 'vitest';
 import type { Outbound } from '../src/channels/types.js';
+import { Engine } from '../src/engine.js';
 import type { Envelope } from '../src/types.js';
+import { Wallet,type WalletEnv,type WalletStore } from '../src/wallet.js';
 let env: WalletEnv;
 let publicKey: CryptoKey;
 const event = (type: string, data = {}): Envelope => ({ type, ts: new Date().toISOString(), data });
 function fixture(options = {}) {
-  const engine = new Engine({ wavesEnabled: false, ...options });
-  const sub = engine.subscribe({ role: 'relative_arrivals', flight: 'W6 3412', channel: 'telegram', lang: 'ro', consent: true });
+  const engine = new Engine({ ...options });
+  const sub = engine.subscribe({ role: 'relative_arrivals', flight: 'W6 3412', channel: 'whatsapp', lang: 'ro', consent: true });
   return { engine, sub };
 }
 function parts(jwt: string) {
@@ -104,45 +104,5 @@ describe('shared Wallet', () => {
     expect(Object.values(saved!.counts)).toEqual([3]);
     const { engine, sub } = fixture();
     await expect(new Wallet({ ...env, GOOGLE_WALLET_SA_KEY: 'bad-pem-secret' }).pass(engine, sub.id)).rejects.toThrow('Wallet signing failed');
-  });
-  it('updates saved passes on confirmation, scopes diversion, and waits for console reopening', async () => {
-    const { engine, sub } = fixture();
-    const other = engine.subscribe({ role: 'taxi', channel: 'telegram', lang: 'ro', consent: true });
-    const wallet = new Wallet();
-    await wallet.pass(engine, sub.id);
-    await wallet.pass(engine, other.id);
-    const send = vi.spyOn(wallet, 'send').mockResolvedValue({ delivered: false, simulated: true });
-    await wallet.handle(engine, event('ops.suspended', { reason: 'drone', estimatedReopen: new Date(Date.now() + 600000).toISOString() }), 'twin');
-    expect(send).not.toHaveBeenCalled();
-    await wallet.handle(engine, event('console.confirm_suspension'), 'console');
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[0]![0]).toMatchObject({ destination: sub.id, text: expect.stringContaining('suspendate') });
-    await wallet.handle(engine, event('flight.diverted', { flight: 'W6 3412', from: 'BGY', to: 'OTP', eta: new Date(Date.now() + 3600000).toISOString() }), 'twin');
-    expect(send).toHaveBeenCalledTimes(3);
-    expect(send.mock.calls[2]![0]).toMatchObject({ destination: sub.id, text: expect.stringContaining('OTP') });
-    await wallet.handle(engine, event('ops.reopened'), 'twin');
-    expect(send).toHaveBeenCalledTimes(3);
-    await wallet.handle(engine, event('console.reopen'), 'console');
-    expect(send).toHaveBeenCalledTimes(5);
-    expect(send.mock.calls[3]![0].text).toContain('OTP');
-    await wallet.handle(engine, event('console.reopen'), 'console');
-    expect(send).toHaveBeenCalledTimes(7);
-    expect(send.mock.calls[6]![0].text).toContain('normale');
-    await wallet.handle(engine, event('console.reset'), 'console');
-    expect(send).toHaveBeenCalledTimes(7);
-  });
-  it('auto-confirm triggers updates while unsaved and expired subscriptions are skipped', async () => {
-    const { engine, sub } = fixture({ autoConfirm: true });
-    engine.subscribe({ role: 'taxi', channel: 'telegram', lang: 'ro', consent: true });
-    const expired = engine.subscribe({ role: 'staff', channel: 'telegram', lang: 'ro', consent: true });
-    const wallet = new Wallet();
-    await wallet.pass(engine, sub.id);
-    await wallet.pass(engine, expired.id);
-    expired.expiresAt = new Date(Date.now() - 1).toISOString();
-    const send = vi.spyOn(wallet, 'send').mockResolvedValue({ delivered: false, simulated: true });
-    await wallet.handle(engine, event('ops.suspended', { reason: 'weather', estimatedReopen: new Date(Date.now() + 600000).toISOString() }), 'twin');
-    expect(engine.state.phase).toBe('suspended');
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]![0].destination).toBe(sub.id);
   });
 });

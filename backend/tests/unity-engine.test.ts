@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe,expect,it,vi } from 'vitest';
 import { Engine } from '../src/engine.js';
 import { engineRuntime } from '../src/runtime.js';
 const event = (type: string, data = {}) => ({ type, ts: new Date().toISOString(), data });
@@ -9,16 +9,13 @@ describe('Unity shared engine', () => {
     const exists = vi.spyOn(engineRuntime, 'exists').mockReturnValue(false);
     try {
       const emit = vi.fn(); const e = new Engine({ file: 'test', emit });
-      await e.handle(event('agent.register', { agents: Array.from({ length: 400 }, (_, i) => ({ agentId: `u${i}`, role: 'taxi', channel: 'telegram' })) }), 'twin');
-      await e.handle(event('drone.detected', { nearRunway: '26', distanceM: 2000, bearingDeg: 90, source: 'radar' }), 'twin');
-      await e.handle(event('console.confirm_suspension'));
+      await e.handle(event('agent.register', { agents: Array.from({ length: 400 }, (_, i) => ({ agentId: `u${i}`, role: 'taxi', channel: 'whatsapp' })) }), 'twin');
       write.mockClear(); emit.mockClear();
-      await e.handle(event('console.approve_messages', { roles: ['taxi'] }));
-      expect(write).toHaveBeenCalledTimes(1);
-      expect(emit.mock.calls.filter(c => c[0] === 'state')).toHaveLength(1);
-      expect(e.receipts).toHaveLength(400);
       write.mockClear(); emit.mockClear();
-      e.tick(Math.max(...e.receipts.map(r => r.actAt!)) + 1);
+      e.receipts = e.agents.map(a => ({ id: a.agentId, recipient: a.agentId, messageId: 'm', role: a.role, delivered: true, read: false, simulated: true, notifiedAt: new Date().toISOString(), readAt: 1, actAt: 2 }));
+      e.state.counters.taxi.sent = e.state.counters.taxi.delivered = 400;
+      write.mockClear(); emit.mockClear();
+      e.tick(3);
       expect(write).toHaveBeenCalledTimes(1);
       expect(emit.mock.calls.filter(c => c[0] === 'state')).toHaveLength(1);
       expect(e.state.counters.taxi.read).toBe(400);
@@ -56,7 +53,7 @@ describe('Unity shared engine', () => {
   });
   it('does not broadcast state when registered rows repeat unchanged presence', async () => {
     const emit = vi.fn(); const e = new Engine({ emit });
-    await e.handle(event('agent.register', { agents: [{ agentId: 'u0', role: 'taxi', channel: 'telegram' }] }), 'twin');
+    await e.handle(event('agent.register', { agents: [{ agentId: 'u0', role: 'taxi', channel: 'whatsapp' }] }), 'twin');
     await e.handle(event('agent.batch', { updates: [row(0)] }), 'twin');
     emit.mockClear();
     await e.handle(event('agent.batch', { updates: [{ ...row(0), phone: 'acting', thought: 'same place' }] }), 'twin');

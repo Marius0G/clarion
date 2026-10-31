@@ -12,17 +12,10 @@ export const roles = [
   "public",
 ] as const;
 export type Role = (typeof roles)[number];
-/** Recovery order decided by the team: services and transport, then people nearby, then everyone else. */
-export const waveRoles: readonly (readonly Role[])[] = [
-  ["staff", "isu_smurd", "taxi", "rideshare", "rent_a_car_ubt"],
-  ["passenger_road", "passenger_terminal", "relative_arrivals"],
-  ["passenger_home", "public", "alt_airport"],
-];
-export const channels = ["telegram", "sms", "whatsapp", "webpush"] as const;
+export const channels = ["whatsapp", "sim"] as const;
 export type Channel = (typeof channels)[number];
 export type Lang = "ro" | "en";
-export type Situation =
-  "runway_closed" | "evacuation" | "diverted" | "reopen_wave" | "reopened";
+export type Situation = "subscribe" | "evacuation";
 export type Phase = "normal" | "detection" | "suspended" | "recovery";
 /** WebSocket client kinds. `vision` is the camera service (SPEC-v2 D0); it may send only flow.report and crowd.positions. */
 export type Client = "twin" | "vision" | "console" | "viewer";
@@ -63,7 +56,6 @@ export interface Agent {
   agentId: string;
   role: Role;
   channel: Channel;
-  wave: number;
   state?: "notified" | "read" | "acting";
 }
 export interface Counter {
@@ -99,21 +91,6 @@ export interface Receipt {
 }
 export interface State {
   presence: Record<Role, Record<Location, number>>;
-  drone: {
-    lat: number;
-    lon: number;
-    distanceM: number;
-    bearingDeg: number;
-    nearRunway: "08" | "26";
-    source: "radar" | "report";
-    at: string;
-  } | null;
-  reach: {
-    step: number;
-    key: string;
-    reached: number;
-    status: "active" | "idle" | "draft";
-  }[];
   phase: Phase;
   since: string;
   reason: string | null;
@@ -123,13 +100,6 @@ export interface State {
   flights: Flight[];
   drafts: Draft[];
   counters: Record<Role, Counter>;
-  roalertDraft: string | null;
-  waves: {
-    wave: number;
-    window: { from: string; to: string };
-    roles: Role[];
-    opened: boolean;
-  }[];
   timeline: {
     type: string;
     ts: string;
@@ -141,19 +111,7 @@ export interface State {
     readCount: number;
     readRecipients: number;
     carsStartedInVain: number;
-    isuTimeToT2:
-      | number
-      | {
-          median: number;
-          interval: [number, number];
-          source: "sim-ab";
-          units: "minutes";
-          coverage: number;
-          waves: boolean;
-          model: string;
-          intervalLabel: string;
-        }
-      | null;
+    isuTimeToT2: number | null;
     kerbPeak: number | null;
     peopleInT2AtEvacuation?: number;
     minutesLost?: number;

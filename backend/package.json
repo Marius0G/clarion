@@ -11,8 +11,6 @@
     "start": "node dist/src/server.js",
     "build": "tsc",
     "test": "vitest run",
-    "demo": "tsx scripts/demo.ts",
-    "demo:pitch": "tsx scripts/demo-pitch.ts",
     "demo:terminal": "tsx scripts/demo-terminal.ts"
   },
   "dependencies": {

@@ -1,29 +1,22 @@
-import { SimStore, locations as simLocations, type LegacyLocation } from "./sim.js";
-import { wazeFeed } from "./channels/waze.js";
+import type { Adapter } from "./channels/types.js";
+import { buttonAction,parseStartCode,parseWhatsAppWebhook } from "./channels/whatsapp.js";
+import { fixtureSource,schedule,settlePast } from "./data/flights.js";
 import { engineRuntime } from "./runtime.js";
-const randomUUID = () => crypto.randomUUID();
+import { SimStore,locations as simLocations,type LegacyLocation } from "./sim.js";
+import type { Client,Flight } from "./types.js";
 import {
-  roles,
-  waveRoles,
-  isRole,
-  isChannel,
-  type Agent,
-  type Draft,
-  type Envelope,
-  type Receipt,
-  type Role,
-  type Situation,
-  type State,
-  type Subscription,
+isChannel,
+isRole,
+roles,
+type Agent,
+type Draft,
+type Envelope,
+type Receipt,
+type Role,
+type State,
+type Subscription,
 } from "./types.js";
-import { buttonAction, parseStartCode, parseWhatsAppWebhook } from "./channels/whatsapp.js";
-import type { Client, Flight } from "./types.js";
-import { render } from "./messages.js";
-import { fixtureSource, schedule, settlePast } from "./data/flights.js";
-import { roalertDraft } from "./channels/roalert.js";
-import type { Adapter, Outbound } from "./channels/types.js";
-// Demo assumption: 10 drivers/minute while the simulated Waze closure is active.
-export const WAZE_DRIVERS_PER_MINUTE = 10;
+const randomUUID = () => crypto.randomUUID();
 /** The only events the camera service (client=vision) may send. */
 const visionEvents = ["flow.report", "crowd.positions"];
 /** metric.report names: legacy T2 metrics plus the D19 A/B names. */
@@ -56,7 +49,6 @@ interface Store {
   subscriptions: Subscription[];
   agents: Agent[];
   receipts: Receipt[];
-  telegramOffset: number;
   firstNotified: string[];
   readRecipientKeys?: string[];
   carAgents: string[];
@@ -69,12 +61,6 @@ interface Options {
   adapters?: Partial<Record<string, Adapter>>;
   simSpeed?: number;
   seed?: string;
-  autoConfirm?: boolean;
-  wavesEnabled?: boolean;
-  waveCount?: number;
-  waveMinutes?: number;
-  taxiGroup?: string;
-  simAbFile?: string;
 }
 export class Engine {
   readonly sim = new SimStore();
@@ -97,7 +83,6 @@ export class Engine {
   subscriptions: Subscription[] = [];
   agents: Agent[] = [];
   receipts: Receipt[] = [];
-  telegramOffset = 0;
   private whatsappInboundIds = new Set<string>();
   private firstNotified = new Set<string>();
   private readRecipientKeys = new Set<string>();
@@ -121,7 +106,6 @@ export class Engine {
       this.subscriptions = saved.subscriptions;
       this.agents = saved.agents;
       this.receipts = saved.receipts;
-      this.telegramOffset = saved.telegramOffset ?? 0;
       this.firstNotified = new Set(saved.firstNotified);
       this.readRecipientKeys = new Set(
         saved.readRecipientKeys ??
@@ -147,8 +131,6 @@ export class Engine {
     for (const f of persistedDiversions) if (!this.state.flights.some(p => flightKey(p.flight) === flightKey(f.flight) && p.dir === f.dir)) this.state.flights.push(f);
     this.state.dataSource = "fixture";
     this.state.dataSourceDetail = fixtureSource;
-    this.state.drone ??= null;
-    this.state.reach ??= [];
     for (const role of roles)
       this.state.counters[role] ??= {
         subscribers: 0,
@@ -162,8 +144,6 @@ export class Engine {
   private fresh(): State {
     return {
       presence: {} as State["presence"],
-      drone: null,
-      reach: [],
       phase: "normal",
       since: iso(),
       reason: null,
@@ -178,8 +158,6 @@ export class Engine {
           { subscribers: 0, sent: 0, delivered: 0, read: 0 },
         ]),
       ) as State["counters"],
-      roalertDraft: null,
-      waves: [],
       timeline: [],
       metrics: {
         notifiedFirstMinute: 0,
@@ -201,7 +179,6 @@ export class Engine {
       subscriptions: this.subscriptions,
       agents: this.agents,
       receipts: this.receipts,
-      telegramOffset: this.telegramOffset,
       firstNotified: [...this.firstNotified],
       readRecipientKeys: [...this.readRecipientKeys],
       carAgents: [...this.carAgents],
@@ -227,61 +204,6 @@ export class Engine {
       this.state.counters[role].subscribers =
         this.subscriptions.filter((s) => s.role === role).length +
         this.agents.filter((a) => a.role === role).length;
-    const incident =
-      this.state.phase === "suspended" || this.state.phase === "recovery";
-    const closure = wazeFeed(this.state).incidents.length > 0;
-    const counts = [
-      this.subscriptions.filter((s) => s.source === "relative").length,
-      this.subscriptions.filter((s) => s.flight).length,
-      this.subscriptions.length,
-      this.receipts.filter(
-        (r) =>
-          [
-            "taxi",
-            "rideshare",
-            "rent_a_car_ubt",
-            "staff",
-            "alt_airport",
-          ].includes(r.role) &&
-          !this.agents.some((a) => a.agentId === r.recipient),
-      ).length,
-      closure && this.state.confirmedAt
-        ? Math.floor(
-            (Math.max(0, Date.now() - Date.parse(this.state.confirmedAt)) /
-              60000) *
-              WAZE_DRIVERS_PER_MINUTE,
-          )
-        : 0,
-      this.state.roalertDraft ? 1 : 0,
-    ];
-    this.state.reach = [
-      "share_link",
-      "flight_subscriptions",
-      "daily_value",
-      "contacts",
-      "location",
-      "ro_alert",
-    ].map((key, i) => ({
-      step: i + 1,
-      key,
-      reached: counts[i]!,
-      status:
-        i === 5
-          ? this.state.roalertDraft
-            ? "draft"
-            : "idle"
-          : i === 4
-            ? closure
-              ? "active"
-              : "idle"
-            : i === 2
-              ? incident
-                ? "active"
-                : "idle"
-              : counts[i]! > 0
-                ? "active"
-                : "idle",
-    }));
     this.state.metrics.readRecipients = this.readRecipientKeys.size;
     this.state.metrics.notifiedFirstMinute = this.firstNotified.size;
   }
@@ -292,15 +214,6 @@ export class Engine {
       phase: this.state.phase,
       data,
     });
-  }
-  private transition(phase: State["phase"], type: string) {
-    this.state.phase = phase;
-    this.state.since = iso();
-    this.timeline(type);
-  }
-  private requirePhase(...phases: State["phase"][]) {
-    if (!phases.includes(this.state.phase))
-      throw new Error(`Action not allowed in ${this.state.phase}`);
   }
   expire() {
     const n = this.subscriptions.length;
@@ -337,8 +250,6 @@ export class Engine {
       (typeof input.destination !== "string" || input.destination.length > 160)
     )
       throw new Error("Invalid destination");
-    if (input.channel === "telegram" && input.destination !== undefined)
-      throw new Error("Telegram chat must be bound by /start");
     if (
       input.source !== undefined &&
       !["jury", "relative", "qr", "direct"].includes(input.source)
@@ -370,62 +281,6 @@ export class Engine {
     this.changed();
     return sub;
   }
-  async telegramStart(chat: string, payload: string): Promise<void> {
-    const [role, rawFlight, suffix, explicitSource] = payload.split("__");
-    const sources = ["jury", "relative", "qr", "direct"];
-    const subscriptionId =
-      suffix && !sources.includes(suffix) ? suffix : undefined;
-    const source =
-      explicitSource ??
-      (suffix && sources.includes(suffix)
-        ? suffix
-        : role === "relative_arrivals"
-          ? "relative"
-          : "direct");
-    if (!sources.includes(source)) throw new Error("Invalid Telegram source");
-    if (!isRole(role)) throw new Error("Unknown Telegram role");
-    const flight = rawFlight
-      ?.replace(/_/g, " ")
-      .replace(/([A-Z]\d)(\d+)/, "$1 $2");
-    this.expire();
-    // Optional opaque suffix preserves the exact channel consent/lang from /api/subscribe.
-    let sub = subscriptionId
-      ? this.subscriptions.find(
-          (s) =>
-            s.id.replace(/-/g, "") === subscriptionId.replace(/-/g, "") &&
-            s.role === role &&
-            s.channel === "telegram" &&
-            (!s.destination || s.destination === chat),
-        )
-      : undefined;
-    if (subscriptionId && !sub)
-      throw new Error("Invalid or expired Telegram subscription");
-    sub ??= this.subscriptions.find(
-      (s) =>
-        s.destination === chat &&
-        s.role === role &&
-        s.flight === flight &&
-        s.channel === "telegram",
-    );
-    if (!sub)
-      sub = this.subscribe({
-        role,
-        flight: flight || undefined,
-        channel: "telegram",
-        source,
-        lang: "ro",
-        consent: true,
-      });
-    sub.destination = chat;
-    this.changed();
-  }
-  telegramLink(sub: Subscription, bot: string): string {
-    const flight = (sub.flight ?? "").replace(/\s/g, "");
-    // UUID suffix is optional; Telegram limits start payloads to 64 characters.
-    const base = `${sub.role}__${flight}`;
-    const suffix = `__${sub.id.replace(/-/g, "")}`;
-    return `https://t.me/${bot}?start=${encodeURIComponent(base.length + suffix.length <= 64 ? base + suffix : base)}`;
-  }
   templateValues(sub: Pick<Subscription, "role" | "lang" | "flight">, extra: Record<string, string> = {}) {
     const normalize = (s: string) => s.replace(/\s/g, "").toUpperCase();
     const f = this.state.flights.find(f => normalize(f.flight) === normalize(sub.flight ?? "")) ?? (sub.flight ? undefined : this.state.flights.find(f => f.dir === (sub.role === "relative_arrivals" ? "arr" : "dep")));
@@ -434,22 +289,11 @@ export class Engine {
     const labels: Record<Role, [string, string]> = {
       passenger_home: ["pasager", "passenger"], passenger_road: ["pasager pe drum", "passenger on the road"], passenger_terminal: ["pasager în terminal", "passenger in the terminal"], relative_arrivals: ["persoană care așteaptă o sosire", "someone meeting an arrival"], taxi: ["taximetrist", "taxi driver"], rideshare: ["șofer ride-hailing", "ride-hailing driver"], rent_a_car_ubt: ["operator rent-a-car/UBT", "rental/UBT operator"], staff: ["personal aeroportuar", "airport staff"], isu_smurd: ["echipaj ISU/SMURD", "emergency crew"], alt_airport: ["aeroport alternativ", "alternate airport"], public: ["vizitator", "visitor"],
     };
-    const time = clock(this.state.since);
-    const eta = f ? clock(f.est) : unknown;
-    return {
-      rol: `${labels[sub.role][en ? 1 : 0]}${sub.flight ? ` (${sub.flight})` : ""}`, ora: time,
-      motiv: this.state.reason === "drone" ? (en ? "unauthorised drone reported near the runway" : "dronă neautorizată semnalată lângă pistă") : this.state.reason === "weather" ? (en ? "weather conditions" : "condiții meteo") : (en ? "operational incident" : "incident operațional"),
-      zbor: sub.flight ?? f?.flight ?? unknown, destinatie: f?.city ?? unknown, origine: f?.city ?? unknown,
-      aeroport: f?.divertedTo ?? unknown, ora_update: clock(new Date(Date.now() + 600000).toISOString()),
-      ora_minima: clock(this.state.estimatedReopen), instructiuni: en ? "Follow the dispatcher instructions and keep emergency access clear." : "Urmați indicațiile dispecerului și păstrați liber accesul echipajelor de urgență.",
-      ora_plecare: eta, ora_aterizare: eta, ora_sosire: eta, ora_acces: clock(this.state.estimatedReopen),
-      interval: extra.window || `${clock(this.state.estimatedReopen)}–${clock(new Date(Date.parse(this.state.estimatedReopen) + 1200000).toISOString())}`,
-      pasageri: unknown,
-    };
+    return { ora: clock(this.state.since), rol: `${labels[sub.role][en ? 1 : 0]}${sub.flight ? ` (${sub.flight})` : ""}` };
   }
   async confirmSubscription(sub: Subscription) {
     if (sub.channel !== "whatsapp") return;
-    const draft: Draft = { messageId: randomUUID(), role: sub.role, lang: sub.lang, situation: "runway_closed", text: "Clarion", approved: true };
+    const draft: Draft = { messageId: randomUUID(), role: sub.role, lang: sub.lang, situation: "subscribe", text: "Clarion", approved: true };
     const receipt = this.newReceipt(draft, sub.id, false);
     let result: import("./channels/types.js").Delivery | undefined;
     try { result = await this.options.adapters?.whatsapp?.({messageId: draft.messageId, receiptId: receipt.id, role: sub.role, lang: sub.lang, destination: sub.destination, text: "Clarion: alerte activate / alerts activated", situation: "subscribe", values: this.templateValues(sub), lastInboundAt: sub.lastInboundAt}); } catch { console.warn("Clarion WhatsApp subscription confirmation failed"); }
@@ -505,86 +349,6 @@ export class Engine {
     this.state.dataSource = dataSource;
     this.state.dataSourceDetail = dataSource === "fixture" ? fixtureSource : "Live CRA schedule from fids.flightradar.live; incident status overlays are simulated.";
     this.changed();
-  }
-  private values(
-    flight?: string,
-    extra: Record<string, string> = {},
-  ): Record<string, string> {
-    const f =
-      this.state.flights.find(
-        (f) => flightKey(f.flight) === flightKey(flight ?? ""),
-      ) ??
-      this.state.flights.find((f) => f.status === "diverted") ??
-      this.state.flights[0];
-    return {
-      dest: f?.city ?? "destinație",
-      from: f?.city ?? "Bergamo",
-      to: f?.divertedTo ?? "OTP",
-      eta: clock(f?.est ?? iso()),
-      flight: flight ?? f?.flight ?? "W6 3412",
-      reopen: clock(this.state.estimatedReopen),
-      next: clock(new Date(Date.now() + 10 * 60000).toISOString()),
-      demand: clock(
-        new Date(
-          Date.parse(this.state.estimatedReopen) + 30 * 60000,
-        ).toISOString(),
-      ),
-      wave: "1",
-      window: "",
-      ...extra,
-    };
-  }
-  private draft(
-    situation: Situation,
-    flight?: string,
-    extra: Record<string, string> = {},
-    only: readonly Role[] = roles,
-  ): Draft[] {
-    const created = only.flatMap((role) =>
-      (["ro", "en"] as const).map((lang) => ({
-        messageId: randomUUID(),
-        role,
-        lang,
-        situation,
-        text: render(role, situation, lang, this.values(flight, extra)),
-        approved: false,
-        flight,
-      })),
-    );
-    this.state.drafts.push(...created);
-    return created;
-  }
-  private confirm() {
-    this.requirePhase("detection");
-    this.state.confirmedAt = iso();
-    this.transition("suspended", "console.confirm_suspension");
-    this.state.flights = this.state.flights.map((f) => settlePast(f));
-    this.state.flights.forEach((f) => {
-      if (f.status === "scheduled") f.status = "suspended";
-    });
-    this.draft("runway_closed");
-    for (const flight of this.state.flights.filter(
-      (f) => f.status === "diverted",
-    ))
-      this.draft("diverted", flight.flight);
-    if (this.state.evacuate) this.draft("evacuation");
-  }
-  private recovery() {
-    this.requirePhase("suspended");
-    this.state.evacuate = false;
-    this.transition("recovery", "recovery.started");
-    const count =
-        this.options.wavesEnabled === false ? 0 : (this.options.waveCount ?? 3),
-      minutes = this.options.waveMinutes ?? 10;
-    this.state.waves = Array.from({ length: count }, (_, i) => ({
-      wave: i + 1,
-      window: {
-        from: new Date(Date.now() + i * minutes * 60000).toISOString(),
-        to: new Date(Date.now() + (i + 1) * minutes * 60000).toISOString(),
-      },
-      roles: this.rolesInWave(i + 1),
-      opened: false,
-    }));
   }
   async handle(event: Envelope, client: Client = "console"): Promise<void> {
     return this.batch(() => this.handleEvent(event, client));
@@ -645,173 +409,6 @@ export class Engine {
         if (changed) this.changed();
         return;
       }
-      case "drone.detected":
-        this.requirePhase("normal");
-        if (
-          !["08", "26"].includes(data.nearRunway) ||
-          !["radar", "report"].includes(data.source) ||
-          !Number.isFinite(data.distanceM) ||
-          data.distanceM < 0 ||
-          !Number.isFinite(data.bearingDeg) ||
-          data.bearingDeg < 0 ||
-          data.bearingDeg >= 360 ||
-          ((data.lat !== undefined || data.lon !== undefined) &&
-            (!Number.isFinite(data.lat) ||
-              !Number.isFinite(data.lon) ||
-              Math.abs(data.lat) > 90 ||
-              Math.abs(data.lon) > 180))
-        )
-          throw new Error("Invalid detection");
-        {
-          const angular = data.distanceM / 6371000,
-            bearing = (data.bearingDeg * Math.PI) / 180;
-          const originLat = (44.3181 * Math.PI) / 180,
-            originLon = (23.8886 * Math.PI) / 180;
-          const lat = Math.asin(
-            Math.sin(originLat) * Math.cos(angular) +
-              Math.cos(originLat) * Math.sin(angular) * Math.cos(bearing),
-          );
-          const lon =
-            originLon +
-            Math.atan2(
-              Math.sin(bearing) * Math.sin(angular) * Math.cos(originLat),
-              Math.cos(angular) - Math.sin(originLat) * Math.sin(lat),
-            );
-          this.state.drone = {
-            lat: data.lat ?? (lat * 180) / Math.PI,
-            lon: data.lon ?? (((lon * 180) / Math.PI + 540) % 360) - 180,
-            distanceM: data.distanceM,
-            bearingDeg: data.bearingDeg,
-            nearRunway: data.nearRunway,
-            source: data.source,
-            at: event.ts,
-          };
-        }
-        this.state.reason = "drone";
-        this.transition("detection", type);
-        break;
-      case "ops.suspended":
-        this.requirePhase("normal", "detection", "suspended");
-        if (
-          !["drone", "weather", "other"].includes(data.reason) ||
-          !Number.isFinite(Date.parse(data.estimatedReopen))
-        )
-          throw new Error("Invalid suspension");
-        this.state.reason = data.reason;
-        this.state.estimatedReopen = data.estimatedReopen;
-        if (this.state.phase === "normal") this.transition("detection", type);
-        if (this.options.autoConfirm && this.state.phase === "detection")
-          this.confirm();
-        break;
-      case "console.confirm_suspension":
-        this.confirm();
-        break;
-      case "console.approve_messages":
-        this.requirePhase("suspended", "recovery");
-        if (!Array.isArray(data.roles) || !data.roles.every(isRole))
-          throw new Error("roles[] required");
-        await this.approve(data.roles);
-        break;
-      case "intercept.launched":
-        this.requirePhase("detection", "suspended");
-        if (!Number.isInteger(data.count) || data.count < 1 || data.count > 5)
-          throw new Error("Invalid interceptor count");
-        this.timeline(type, { count: data.count });
-        break;
-      case "intercept.captured":
-        this.requirePhase("detection", "suspended");
-        if (data.method !== "net") throw new Error("Invalid capture");
-        this.timeline(type, { method: "net" });
-        break;
-      case "payload.suspicious":
-        this.requirePhase("detection", "suspended");
-        if (data.evacuate !== true || data.zone !== "T2")
-          throw new Error("Invalid evacuation");
-        this.state.evacuate = true;
-        this.timeline(type, { zone: "T2" });
-        if (this.state.confirmedAt) this.draft("evacuation");
-        break;
-      case "flight.diverted": {
-        this.requirePhase("detection", "suspended");
-        if (
-          typeof data.flight !== "string" ||
-          typeof data.from !== "string" ||
-          typeof data.to !== "string" ||
-          !Number.isFinite(Date.parse(data.eta))
-        )
-          throw new Error("Invalid diversion");
-        let f = this.state.flights.find(
-          (f) => f.flight === data.flight && f.dir === "arr",
-        );
-        if (!f) {
-          f = {
-            flight: data.flight,
-            dir: "arr",
-            city: data.from,
-            iata: data.from,
-            sched: data.eta,
-            est: data.eta,
-            status: "scheduled",
-          };
-          this.state.flights.push(f);
-        }
-        f.status = "diverted";
-        f.divertedTo = data.to;
-        f.est = data.eta;
-        this.timeline(type, { flight: data.flight, to: data.to });
-        if (this.state.confirmedAt) this.draft("diverted", data.flight);
-        break;
-      }
-      case "console.request_roalert":
-        this.requirePhase("suspended");
-        if (!this.state.evacuate)
-          throw new Error("RO-Alert draft requires evacuation");
-        this.state.roalertDraft = roalertDraft(this.values().next!);
-        this.timeline(type);
-        break;
-      case "ops.reopened":
-        this.requirePhase("suspended", "recovery");
-        this.timeline(type, { awaitingConsole: true });
-        break;
-      case "console.reopen":
-        this.requirePhase("suspended", "recovery");
-        if (this.state.phase === "suspended") this.recovery();
-        else {
-          if (this.state.waves.some((w) => !w.opened))
-            throw new Error("Open all configured waves before final reopening");
-          this.transition("normal", "console.reopen");
-          this.state.reason = null;
-          this.state.drone = null;
-          this.state.roalertDraft = null;
-          this.state.flights.forEach((f) => {
-            if (f.status === "suspended") f.status = "scheduled";
-          });
-          const drafts = this.draft("reopened");
-          await this.sendDrafts(drafts);
-        }
-        break;
-      case "console.open_wave": {
-        this.requirePhase("recovery");
-        const wave = this.state.waves.find((w) => w.wave === data.wave);
-        if (!wave || wave.opened)
-          throw new Error("Unknown or already opened wave");
-        if (this.state.waves.some((w) => w.wave < wave.wave && !w.opened))
-          throw new Error("Open waves in order");
-        wave.opened = true;
-        this.timeline(type, { wave: wave.wave });
-        this.options.emit?.("wave.green", {
-          wave: wave.wave,
-          window: wave.window,
-          roles: wave.roles,
-        });
-        const extra = {
-          wave: String(wave.wave),
-          window: `${clock(wave.window.from)}–${clock(wave.window.to)}`,
-        };
-        const drafts = this.draft("reopen_wave", undefined, extra, wave.roles);
-        await this.sendDrafts(drafts, wave.wave, extra);
-        break;
-      }
       case "agent.register": {
         if (!Array.isArray(data.agents) || data.agents.length > 10000)
           throw new Error("agents[] required (max 10000)");
@@ -829,7 +426,6 @@ export class Engine {
               agentId: a.agentId,
               role: a.role,
               channel: a.channel,
-              wave: this.waveForRole(a.role),
             });
         break;
       }
@@ -870,170 +466,6 @@ export class Engine {
         throw new Error(`Unknown event: ${type}`);
     }
     this.changed();
-  }
-  private async approve(selected: Role[]) {
-    // Only the newest situation per role is actionable (evacuation supersedes runway notices).
-    const pending = this.state.drafts.filter(
-      (d) => selected.includes(d.role) && !d.approved,
-    );
-    const latest = pending.filter(
-      (d) =>
-        !pending.some(
-          (other) =>
-            other.role === d.role &&
-            other.lang === d.lang &&
-            this.state.drafts.indexOf(other) > this.state.drafts.indexOf(d),
-        ),
-    );
-    for (const d of pending) d.approved = true;
-    await this.sendDrafts(latest);
-  }
-  private async sendDrafts(
-    drafts: Draft[],
-    wave?: number,
-    extra: Record<string, string> = {},
-  ) {
-    this.expire();
-    const generation = this.generation;
-    for (const draft of drafts) {
-      draft.approved = true;
-      const matches = (role: Role, flight?: string) =>
-        role === draft.role &&
-        (!draft.flight ||
-          !flight ||
-          flightKey(draft.flight) === flightKey(flight));
-      const people = this.subscriptions.filter(
-        (s) =>
-          matches(s.role, s.flight) &&
-          s.lang === draft.lang &&
-          (!wave || this.subscriptionWave(s) === wave),
-      );
-      const agents = this.agents.filter(
-        (a) =>
-          a.role === draft.role &&
-          draft.lang === "ro" &&
-          (!wave || a.wave === wave),
-      );
-      for (const sub of people) {
-        if (generation !== this.generation) return;
-        const receipt = this.newReceipt(draft, sub.id, false);
-        const adapter = this.options.adapters?.[sub.channel];
-        const m: Outbound = {
-          messageId: draft.messageId,
-          receiptId: receipt.id,
-          role: sub.role,
-          lang: sub.lang,
-          destination: sub.destination,
-          situation: draft.situation,
-          values: this.templateValues({...sub, flight: sub.flight ?? draft.flight}, extra),
-          lastInboundAt: sub.lastInboundAt,
-          text: render(
-            sub.role,
-            draft.situation,
-            sub.lang,
-            this.values(sub.flight ?? draft.flight, extra),
-          ),
-        };
-        let ok = false;
-        try {
-          const result = await adapter?.(m);
-          ok = result?.delivered ?? false;
-          receipt.simulated = result?.simulated ?? false;
-          receipt.providerId = result?.providerId;
-        } catch {
-          console.warn(`Send failed: ${sub.channel} ${draft.role}`);
-        }
-        if (generation !== this.generation) return;
-        if (ok) {
-          receipt.delivered = true;
-          this.state.counters[sub.role].delivered++;
-          this.notified(receipt);
-        }
-        this.options.emit?.("alert.sent", {
-          messageId: draft.messageId,
-          role: sub.role,
-          channel: sub.channel,
-          recipients: 1,
-          lang: sub.lang,
-        });
-        this.changed();
-      }
-      for (const agent of agents) {
-        const receipt = this.newReceipt(draft, agent.agentId, true);
-        receipt.delivered = true;
-        this.state.counters[agent.role].delivered++;
-        this.notified(receipt);
-        const seed = `${this.options.seed ?? "control-tower"}:${agent.agentId}:${draft.situation}`;
-        receipt.readAt =
-          Date.now() + readLatency(seed, this.options.simSpeed ?? 60);
-        receipt.willAct = seeded(seed + ":act") < 0.48;
-        receipt.actAt = receipt.readAt + 30000 / (this.options.simSpeed ?? 60);
-        agent.state = "notified";
-        this.options.emit?.("agent.notified", {
-          agentId: agent.agentId,
-          state: "notified",
-        });
-        this.options.emit?.("alert.sent", {
-          messageId: draft.messageId,
-          role: agent.role,
-          channel: agent.channel,
-          recipients: 1,
-          lang: "ro",
-        });
-      }
-      if (
-        draft.role === "taxi" &&
-        draft.lang === "ro" &&
-        this.options.taxiGroup
-      ) {
-        const destination = this.options.taxiGroup;
-        const receipt = this.newReceipt(
-          draft,
-          `taxi-group:${destination}`,
-          false,
-        );
-        try {
-          const result = await this.options.adapters?.telegram?.({
-            messageId: draft.messageId,
-            receiptId: receipt.id,
-            role: "taxi",
-            lang: "ro",
-            destination,
-            text: render(
-              "taxi",
-              draft.situation,
-              "ro",
-              this.values(draft.flight, extra),
-            ),
-          });
-          if (result?.delivered) {
-            receipt.delivered = true;
-            this.state.counters.taxi.delivered++;
-            this.notified(receipt);
-          }
-        } catch {
-          console.warn("Taxi group send failed");
-        }
-        this.options.emit?.("alert.sent", {
-          messageId: draft.messageId,
-          role: "taxi",
-          channel: "telegram",
-          recipients: 1,
-          lang: "ro",
-        });
-      }
-    }
-    this.changed();
-  }
-  private subscriptionWave(s: Subscription) {
-    return this.waveForRole(s.role);
-  }
-  private waveForRole(role: Role) {
-    const group = waveRoles.findIndex((roles) => roles.includes(role));
-    return Math.min(group + 1, this.options.waveCount ?? 3);
-  }
-  private rolesInWave(wave: number) {
-    return roles.filter((role) => this.waveForRole(role) === wave);
   }
   private newReceipt(
     draft: Draft,
@@ -1137,7 +569,7 @@ export class Engine {
       metrics: {
         ...this.state.metrics,
         isuTimeToT2:
-          this.state.metrics.isuTimeToT2 ?? engineRuntime.metric(this.options.simAbFile),
+          this.state.metrics.isuTimeToT2,
       },
     };
   }

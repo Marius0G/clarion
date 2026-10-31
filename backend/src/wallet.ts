@@ -1,6 +1,6 @@
-import { dryRun, type Delivery, type Outbound } from './channels/types.js';
+import { dryRun,type Delivery,type Outbound } from './channels/types.js';
 import type { Engine } from './engine.js';
-import type { Client, Envelope, Subscription } from './types.js';
+import type { Client,Envelope,Subscription } from './types.js';
 
 export interface WalletEnv {
   GOOGLE_WALLET_ISSUER_ID?: string;
@@ -150,22 +150,6 @@ export class Wallet {
     return { delivered: true, simulated: false };
   }
   async handle(engine: Engine, event: Envelope, client?: Client) {
-    const before = engine.state.phase;
     await engine.handle(event, client);
-    const phase = engine.state.phase;
-    const transition = before !== phase && ['suspended', 'recovery', 'normal'].includes(phase)
-      && event.type !== 'console.reset';
-    const diversion = event.type === 'flight.diverted' && !!engine.state.confirmedAt;
-    if (!transition && !diversion) return;
-    for (const id of this.passes) {
-      const sub = engine.subscriptions.find(s => s.id === id && Date.parse(s.expiresAt) > this.now());
-      if (!sub) { this.passes.delete(id); continue; }
-      if (diversion && flightKey(sub.flight) !== flightKey(event.data.flight)) continue;
-      try {
-        await this.send({ messageId: crypto.randomUUID(), receiptId: '', role: sub.role,
-          lang: sub.lang, destination: sub.id, text: this.status(engine, sub), values: { flight: sub.flight ?? '—' } });
-      } catch { console.warn('Clarion Wallet update failed'); }
-    }
-    await this.persist();
   }
 }
