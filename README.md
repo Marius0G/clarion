@@ -4,6 +4,8 @@ Clarion coordonează informarea când Aeroportul Craiova oprește zborurile. Dis
 
 Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Ținta este notificarea în primul minut de la confirmare. Citirea și reacția oamenilor se măsoară separat. Detecția rămâne internă. Pistă închisă nu înseamnă terminal închis. Statusul zborului aparține companiei aeriene.
 
+- [`docs/clarion-sinteza-si-plan-control-tower.pdf`](docs/clarion-sinteza-si-plan-control-tower.pdf): sinteza și planul Clarion, ultima versiune. `app/PM/control-tower-plan.pdf` este versiunea dinainte de alegerea numelui; secțiunile încep la aceleași pagini.
+
 ## Demo
 
 | Ecran | URL |
