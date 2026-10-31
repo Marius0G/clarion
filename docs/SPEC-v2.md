@@ -71,7 +71,8 @@ Ghișeele de la Craiova sunt comune și se alocă pe zbor, nu pe companie, iar a
 ### D7. Planul terminalului: îl face Marius, îl desenează Bogdan
 Doar interiorul terminalului. Exteriorul și drumul sunt treaba pasagerului (D5).
 - Marius exportă din Unity `terminal.json`, în metri, văzut de sus: poligoanele zonelor, nodurile (intrări, ghișee de check-in pe companie, securitate, porți, ieșiri de urgență) și muchiile cu timpul de mers în secunde. Id-urile nodurilor și zonelor sunt aceleași cu cele din `flow.report`.
-- Bogdan desenează din el harta SVG (dashboard și web) și calculează rutele în backend: cel mai scurt drum, penalizat de aglomerația live, cu zonele blocate excluse în criză (implicit, de confirmat).
+- Bogdan desenează din el harta SVG (dashboard și web) și calculează în backend rutele obișnuite (spre ghișeu, poartă, echipa de intervenție): cel mai scurt drum, cu timpul pe fiecare muchie din viteza de mers la densitatea live (A8).
+- Rutele de evacuare le calculează serviciul lui Marius (A10) și le trimite în `evac.plan`. Backend-ul doar le distribuie.
 - Rutele trimise pasagerilor ajung și în Unity, ca agenții simulați să meargă pe ele.
 
 ### D9. Locul pasagerului: dedus din etapă, nimic altceva
@@ -128,6 +129,7 @@ Alb, cu puține accente, fără tab-uri. Pe ecran:
 - Lângă zonă, decizia directă: „+1 linie” / „−1”, plus „Evacuare” pe zonele selectate (D12).
 - Rapoartele angajaților apar ca pini pe hartă (D11).
 - Un panou mic de acuratețe: pe zonă, estimarea din camere lângă adevărul din Unity (`truth.report`, D0).
+- Un singur rând de sfat lângă „+1 linie”, din prognoză (A7): „Deschide o linie la securitate până la 14:05, altfel la 14:30 se așteaptă 18 min.” Adminul decide.
 Fără previzualizarea efectului (`ops.preview`) și fără grafice în plus. Orice element nou trebuie să-și câștige locul.
 
 ### D17. Agenții simulați sunt și ei abonați
@@ -150,6 +152,35 @@ Unity rulează aceeași zi cu și fără Clarion. Pe slide:
 - la evacuare, timpul până se golește zona (t90 și ultimul ieșit);
 - acuratețea camerelor: eroarea la numărare și la timpul de așteptare, pe coadă.
 
+## Algoritmi (Marius, serviciul de vision)
+
+Lanțul: camere → oameni detectați → poziții pe podea → număr și flux pe zonă → așteptarea acum → prognoza → „când să vii”, sfatul pentru linii, evacuarea. Unde scrie „corecție ML”, modelul e LightGBM, antrenat pe zile simulate în care Unity știe adevărul (A11). Nu folosim fețe sau identități, doar numărători și fluxuri.
+
+**A1. Detecția.** YOLO11s, reantrenat pe cadrele CCTV etichetate din Unity (`rgb_deg/` și `yolo/`), plus ByteTrack ca să urmărească oamenii în aceeași cameră. Punctul de la picioare al fiecărei detecții trece prin corecția lentilei și omografia `H_image_to_floor` din `calib.json` și devine o poziție în metri pe podea (`crowd.positions`).
+
+**A2. Corecția numărătorii.** În coada densă oamenii se ascund unul pe altul, iar camerele nu văd toată zona. Un model LightGBM primește, pe zonă și cameră, detecțiile, acoperirea (`queues_seen`), densitatea și mărimea medie a cutiilor și prezice numărul real. Etichetele vin din adevărul din Unity.
+
+**A3. Număr și flux pe zonă: filtru Kalman.** Pe fiecare zonă, starea e numărul de oameni. Predicția adună cei care intră și scade cei care ies (urmele care traversează ușile și capul cozii). Actualizarea folosește numărătoarea corectată (A2), crezută cu atât mai puțin cu cât acoperirea e mai mică. Ies numărul (`waiting`), abaterea (`waitingSd`), rata de sosire λ și rata de servire μ pe linie. Dacă o cameră cade, filtrul continuă din fluxuri și abaterea crește; peste un prag, zona devine „necunoscut”.
+
+**A4. Așteptarea acum.** W = oamenii din coadă ÷ (μ pe linie × liniile deschise), cu μ măsurat la capul cozii în ultimele 5 minute. Răspunde imediat la o linie nouă. O corecție ML (pe W, λ, μ, linii, tendință și plecările din următoarea oră) scade eroarea față de așteptarea reală. `waitMinP90` vine din abaterea filtrului Kalman.
+
+**A5. Prognoza la +30/60/90/120 min.**
+- Sosirile: λ(t) = Σ peste zboruri, pax × s(t − STD), unde s e curba de prezentare (cât de devreme vin pasagerii înaintea plecării; lognormală pe tip de zbor). La check-in intră doar cei cu bagaj de cală sau fără check-in online. Curba se ajustează live: dacă la un zbor camerele au văzut deja mai mulți oameni decât se aștepta, restul sosirilor crește în proporție.
+- Coada: L(t+Δ) = max(0, L(t) + (λ − μ × linii) × Δ), iar W(t) = L ÷ (μ × linii). Un zbor întârziat își mută curba, unul anulat iese din calculul pentru securitate, iar o linie deschisă de admin schimbă capacitatea imediat.
+- O corecție ML pe fiecare orizont învață eroarea sistematică a modelului.
+
+**A6. Când să vii și etapa pasagerului.** Ora la intrare T = închiderea porții − (check-in la ora la care ajunge acolo, dacă are bagaj + securitatea la ora la care ajunge acolo + mersul până la poartă + marjă). T depinde de prognoza de la ora T, deci se calculează în 2–3 iterații. Marja crește cu incertitudinea prognozei. Etapa (înainte de securitate, după, la poartă) e probabilitatea dată de aceeași curbă de prezentare și de așteptările prognozate.
+
+**A7. Sfatul pentru linii.** Pe fiecare zonă: cel mai mic număr de linii care ține așteptarea prognozată sub țintă în următoarea oră (implicit 10 min la securitate, 15 la check-in), și ora până la care trebuie deschisă linia (momentul depășirii minus timpul în care se deschide o linie). Iese în `advice`.
+
+**A8. Mersul prin terminal.** Viteza de mers scade cu densitatea, după diagrama fundamentală a lui Weidmann: v(ρ) = 1,34 × (1 − e^(−1,913 × (1/ρ − 1/5,4))) m/s, cu ρ în oameni/m² (la 5,4 nu se mai poate merge). Timpul pe muchie = lungimea ÷ v(densitatea zonei). Bogdan folosește formula în Dijkstra pentru rutele spre poartă și pentru ETA-ul echipei de intervenție (D11).
+
+**A9. Timpul de evacuare.** Graful terminalului cu capacități: printr-o ușă trec cel mult 1,3 oameni pe secundă pe metru de lățime (fluxul specific din ingineria focului, SFPE), iar coridoarele au capacitatea după lățime. Sursele sunt oamenii estimați pe zone la alarmă (A3), plus timpul de reacție. Un flux maxim în timp (graful extins în timp, cu pas de 5 s) dă timpul de golire pe fiecare zonă și pe total și câți oameni ies pe fiecare ușă. O corecție ML învață din evacuările rulate în Unity (`egress.csv`: t90, ultimul ieșit).
+
+**A10. Rutele de evacuare.** Același flux (A9) împarte oamenii din fiecare zonă pe ieșiri, ca nicio ușă să nu fie supraîncărcată, cu zonele blocate scoase din graf. Fiecare nod primește ruta spre ieșirea alocată (`evac.plan`). Se recalculează când adminul blochează altă zonă.
+
+**A11. Antrenarea ML.** Unity rulează accelerat zeci de ferestre de vârf, de câte ~3 ore, cu seed-uri diferite: orar, grad de ocupare, linii, întârzieri și evacuări aleatorii, cu deciziile din reguli (`-lifeRules`) ca să meargă repede. Intrările modelelor vin din detectorul simulat, la scară, și din YOLO real pe o parte din rulări; etichetele, din adevărul din Unity. Seed-urile ținute deoparte dau cifrele de acuratețe din D19. În producție, modelele se recalibrează pe date reale, de exemplu ora la care se scanează boarding pass-ul la securitate.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
@@ -168,8 +199,11 @@ Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=t
 **Vision (`client=vision`) → backend**
 | Mesaj | Formă | Stare |
 |---|---|---|
-| `flow.report` | `{ zones: [{ zone, waiting, waitMin, coverage, forecast: [{ inMin, waitMin }] }] }`, cel mult 1/s. `zone` din `terminal.json`, inclusiv `check_in:<grup>` și `bag_drop:<grup>`. `waiting` = oamenii din coadă văzuți de camere, `coverage` = partea din coadă văzută (0–1), `waitMin` și `forecast` calculate de serviciu (D5b). Fără `staff` și `capacity`: liniile deschise le ține backend-ul (D12), iar vision le citește din `GET /api/sim`. O zonă nevăzută de camere nu se trimite | mutat de la Unity, schimbat |
+| `flow.report` | `{ zones: [{ zone, waiting, waitingSd, density, waitMin, waitMinP90, coverage, forecast: [{ inMin, waitMin }], advice? }] }`, cel mult 1/s. `zone` din `terminal.json`, inclusiv `check_in:<grup>` și `bag_drop:<grup>`. `waiting` = oamenii din zonă estimați din camere (A1–A3), cu abaterea `waitingSd`; `density` în oameni/m²; `coverage` = partea din zonă văzută (0–1); `waitMin`, `waitMinP90` și `forecast` calculate de serviciu (A4, A5); `advice` = `{ lanes, by, waitMinIfNot }`, doar când prognoza depășește ținta (A7). Fără `staff` și `capacity`: liniile deschise le ține backend-ul (D12), iar vision le citește din `GET /api/sim`. O zonă nevăzută de camere nu se trimite | mutat de la Unity, schimbat |
 | `crowd.positions` | `{ people: [{ x, y }] }`: punctul de la picioare al fiecărui om detectat, în metri, în cadrul din `terminal.json`, cel mult 1/s, maxim 2.000 de puncte. Doar unde văd camerele | nou |
+| `evac.plan` | `{ id, blocked: [zone], clearSec, exits: [{ exit, people, clearSec }], routes: [{ from: nodeId, exit, nodes: [nodeId, ...] }] }`: răspunsul la un `ops.command` de tip `evacuate`, în cel mult 2 s (A9, A10). Backend-ul trimite fiecărui abonat ruta pentru nodul în care se estimează că e | nou |
+
+Backend-ul trimite și serviciului de vision fiecare `ops.command`, ca să știe liniile deschise și zonele blocate.
 
 **Backend → Unity**
 | Mesaj | Formă | Stare |
