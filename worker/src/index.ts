@@ -133,6 +133,7 @@ export class Tower extends DurableObject<Env> {
       event = { ...event, data: rest };
     }
     await this.wallet.handle(this.engine, event, client);
+    if (event.type === 'flow.report' && (client === 'vision' || client === 'twin')) this.ctx.waitUntil(msg.flowChanged());
     if (event.type === 'flight.update') this.ctx.waitUntil(msg.flightsChanged());
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
@@ -308,6 +309,7 @@ export class Tower extends DurableObject<Env> {
             for (const ws of this.visions()) ws.send(packet('ops.command', opsWire(record)));
             // D10: passengers hear about it; vision's evac.plan brings the routes, else a generic message after 3 s.
             if (record.type === 'evacuate') this.ctx.waitUntil(this.whatsapp.messaging.evacuate(record.zones, record.id));
+            else this.ctx.waitUntil(this.whatsapp.messaging.adminChanged(record));
             return json({ connected: true, command: record }, 202);
           }
           if (path === '/api/agent/route') {

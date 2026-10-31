@@ -2,20 +2,22 @@
 // subscribers (Unity agents with a virtual phone, agent.message over the twin WebSocket).
 // Storage: wa:subs -> phones with a flight or the staff role   sim:subs -> { [agentId]: SimSubscriber }
 //          msg:flights -> { [flightKey]: "status:delayMin" } last change already announced (dedupe)
-import { clockLabel, clockText, closeAt, etd, findFlight, flightKey, gateName, type Flight } from './flights.js';
-import { arrivalPlan, nodeName, type AirportView, type Profile } from './tools.js';
+import { clockText, closeAt, etd, findFlight, flightKey, type Flight } from './flights.js';
+import { arrivalPlan, situationText, nodeName, ownZones, type AirportView, type Profile } from './tools.js';
 export { nodeName } from './tools.js';
 import type { PassengerData } from '../../../app/src/me/types.js';
 import { masked, type WhatsAppClient } from './transport.js';
 import type { WaStore } from './index.js';
+import type { OpsCommand } from '../../../backend/src/sim.js';
 
 export const WINDOW_MS = 86400000;
+export const NON_URGENT_MS = 15 * 60 * 1000;
 /** How long an evacuate waits for vision's evac.plan before the generic message goes out. */
 export const EVAC_WAIT_MS = 3000;
 export type NotifyKind = 'arrive' | 'flight' | 'route' | 'evacuate' | 'admin';
 export interface SimSubscriber { agentId: string; role: string; flight: string; pageToken?: string; hasCheckedBag?: boolean }
 export type Subscriber = { channel: 'whatsapp'; phone: string } | ({ channel: 'sim' } & SimSubscriber);
-export type Delivery = 'sent' | 'outside_window' | 'offline' | 'failed';
+export type Delivery = 'sent' | 'outside_window' | 'offline' | 'failed' | 'rate_limited';
 const SIM_MAX = 5000;
 
 // ---- agent.register for simulated subscribers (D17).
@@ -134,6 +136,7 @@ export class Messaging {
       flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
         gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin },
       arriveBy: plan.beAtEntranceAt,
+      queues: plan.queues, entranceToGateMin: plan.totalMin,
       steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.step, waitMin: s.min })),
       alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
       evacuation: await this.deps.store.get<PassengerData['evacuation']>('msg:evacuation') ?? { active: false, zones: [] },
@@ -141,7 +144,7 @@ export class Messaging {
   }
   async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean) {
     const link = await this.pageLink(sub);
-    return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag)}\n${link}` });
+    return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag)}\n${link}`, estimate: this.estimate(f, hasCheckedBag) });
   }
 
   /** Serialises fan-outs so two quick flight.updates cannot both announce one change. */
@@ -152,7 +155,18 @@ export class Messaging {
   }
 
   /** The one way out for a passenger message: WhatsApp inside the 24h window, or agent.message to Unity. */
-  async notify(sub: Subscriber, m: { kind: NotifyKind; text: string }): Promise<Delivery> {
+  private deliveryChain: Promise<unknown> = Promise.resolve();
+  notify(sub: Subscriber, m: { kind: NotifyKind; text: string; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+    const next = this.deliveryChain.then(() => this.deliver(sub, m));
+    this.deliveryChain = next.catch(() => {});
+    return next;
+  }
+  private async deliver(sub: Subscriber, { estimate, ...m }: { kind: NotifyKind; text: string; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+    const now = this.deps.now?.() ?? Date.now();
+    const nonUrgent = m.kind !== 'flight' && m.kind !== 'evacuate';
+    const lastKey = `msg:last:${this.identity(sub)}`;
+    const last = await this.deps.store.get<number>(lastKey);
+    if (nonUrgent && last !== undefined && now - last < NON_URGENT_MS) return 'rate_limited';
     let delivery: Delivery;
     if (sub.channel === 'sim') {
       delivery = this.deps.toUnity('agent.message', { agentId: sub.agentId, text: m.text, kind: m.kind }) ? 'sent' : 'offline';
@@ -165,6 +179,8 @@ export class Messaging {
       delivery = (await this.deps.wa.sendText(sub.phone, m.text)).ok ? 'sent' : 'failed';
     }
     if (delivery === 'sent') await this.pageSerial(async () => {
+      if (nonUrgent) await this.deps.store.put(lastKey, now);
+      if (estimate) await this.deps.store.put(`msg:estimate:${this.identity(sub)}`, estimate);
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
       await this.deps.store.put(key, [...alerts, { at: new Date(this.deps.now?.() ?? Date.now()).toISOString(), ...m }].slice(-5));
@@ -180,7 +196,7 @@ export class Messaging {
   async removePhone(phone: string) {
     const list = (await this.deps.store.get<string[]>('wa:subs')) ?? [];
     if (list.includes(phone)) await this.deps.store.put('wa:subs', list.filter(p => p !== phone));
-    await this.deps.store.delete(`msg:alerts:wa:${phone}`);
+    for (const kind of ['alerts', 'last', 'estimate']) await this.deps.store.delete(`msg:${kind}:wa:${phone}`);
   }
   private async sims() { return (await this.deps.store.get<Record<string, SimSubscriber>>('sim:subs')) ?? {}; }
   /** Everyone, with the flight each one is bound to (undefined for staff without one). */
@@ -194,12 +210,33 @@ export class Messaging {
     return out;
   }
 
-  /** "Fii la intrare la HH:MM" for one person, or the cancellation note. */
+  private estimate(f: Flight, hasCheckedBag?: boolean) {
+    return { flight: flightKey(f.flight), totalMin: arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()).totalMin };
+  }
+
+  /** D22: compare with the last successfully delivered estimate, never with the previous report. */
+  flowChanged() {
+    return this.serial(async () => {
+      const flights = new Map(this.deps.view.flights().map(f => [flightKey(f.flight), f]));
+      let sent = 0;
+      for (const s of await this.subscribers()) {
+        const f = s.flight && flights.get(flightKey(s.flight));
+        if (!f || f.status === 'cancelled' || f.status === 'departed') continue;
+        const previous = await this.deps.store.get<{ flight: string; totalMin: number }>(`msg:estimate:${this.identity(s.sub)}`);
+        const next = this.estimate(f, s.hasCheckedBag);
+        if (!previous || previous.flight !== next.flight || Math.abs(next.totalMin - previous.totalMin) >= 10) {
+          if (await this.arrive(s.sub, f, s.hasCheckedBag) === 'sent') sent++;
+        }
+      }
+      return sent;
+    });
+  }
+
+  /** The current situation and forecast for one passenger. */
   arriveText(f: Flight, hasCheckedBag?: boolean) {
-    const clock = this.deps.view.clock();
-    if (f.status === 'cancelled') return `Zborul ${f.flight} spre ${f.destination} e anulat. Ia legătura cu compania aeriană pentru alt zbor.`;
-    const p = arrivalPlan(f, this.deps.view.flow(), clock, hasCheckedBag, this.deps.view.blocked?.());
-    return `Fii la intrarea în terminal la ${p.beAtEntranceAt} (${p.clock}). Zborul ${f.flight} spre ${f.destination}, poarta ${p.gate} se închide la ${p.gateCloseAt}.`;
+    if (f.status === 'cancelled') return `Zborul ${f.flight} spre ${f.destination} e anulat. Informațiile despre alternative sunt disponibile la compania aeriană.`;
+    if (f.status === 'departed') return `Zborul ${f.flight} spre ${f.destination} a plecat.`;
+    return `Zborul ${f.flight} spre ${f.destination}. ${situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()))}`;
   }
 
   /** D17: Unity's agents with a virtual phone. Each new one gets the arrive message, like a phone after START. */
@@ -219,13 +256,13 @@ export class Messaging {
     });
   }
 
-  /** The Romanian text for a flight change, with the new times and this person's new arrival time. */
+  /** Flight changes bypass the non-urgent limit. */
   flightText(f: Flight, hasCheckedBag?: boolean) {
-    const label = clockLabel(this.deps.view.clock());
-    if (f.status === 'cancelled') return `✈️ Zborul ${f.flight} spre ${f.destination} a fost anulat. Nu mai e nevoie să vii la aeroport pentru el; ia legătura cu compania aeriană pentru alt zbor.`;
-    const arrive = arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()).beAtEntranceAt;
-    if (f.delayMin > 0) return `✈️ Zborul ${f.flight} spre ${f.destination} are o întârziere de ${f.delayMin} min. Pleacă la ${clockText(etd(f))} în loc de ${clockText(f.std)}, poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
-    return `✈️ Zborul ${f.flight} spre ${f.destination} pleacă la ora programată, ${clockText(etd(f))}; poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
+    if (f.status === 'cancelled' || f.status === 'departed') return `✈️ ${this.arriveText(f, hasCheckedBag)}`;
+    const change = f.delayMin > 0
+      ? `are o întârziere de ${f.delayMin} min. Plecarea: ${clockText(etd(f))} în loc de ${clockText(f.std)}`
+      : `pleacă la ora programată, ${clockText(etd(f))}`;
+    return `✈️ Zborul ${f.flight} spre ${f.destination} ${change}. ${situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()))}`;
   }
 
   /**
@@ -250,10 +287,29 @@ export class Messaging {
       for (const f of changed) {
         let sent = 0;
         for (const s of subs.filter(s => s.flight && flightKey(s.flight) === flightKey(f.flight)))
-          if (await this.notify(s.sub, { kind: 'flight', text: this.flightText(f, s.hasCheckedBag) }) === 'sent') sent++;
+          if (await this.notify(s.sub, { kind: 'flight', text: this.flightText(f, s.hasCheckedBag), estimate: this.estimate(f, s.hasCheckedBag) }) === 'sent') sent++;
         console.log(JSON.stringify({ msg: 'flight-change', flight: f.flight, status: f.status, delayMin: f.delayMin, sent }));
       }
       return changed.map(f => f.flight);
+    });
+  }
+
+  /** D22: describe an admin decision only to passengers whose queues/gate it affects. */
+  adminChanged(command: OpsCommand) {
+    return this.serial(async () => {
+      if (command.type === 'staff' || command.type === 'evacuate') return 0;
+      const zone = command.type === 'redirect' ? command.from : command.zone;
+      let sent = 0;
+      for (const s of await this.subscribers()) {
+        const f = s.flight ? findFlight(this.deps.view.flights(), s.flight) : undefined;
+        if (!f || !['security', f.gate, ...ownZones(f)].includes(zone)) continue;
+        const decision = command.type === 'redirect'
+          ? `${nodeName(command.from)}: fluxul este mutat la ${nodeName(command.to)}.`
+          : `${nodeName(zone)}: zona este ${command.type === 'close' ? 'închisă' : 'deschisă'}.`;
+        if (await this.notify(s.sub, { kind: 'admin', text: `${decision} ${this.arriveText(f, s.hasCheckedBag)}`,
+          estimate: this.estimate(f, s.hasCheckedBag) }) === 'sent') sent++;
+      }
+      return sent;
     });
   }
 

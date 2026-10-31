@@ -9,7 +9,7 @@ export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 /** For short proactive messages (flight changes, D15); not used by the reply loop. */
 export const WAKE_MODEL = 'claude-haiku-5-5';
 const MAX_TOOL_TURNS = 5;
-export const FALLBACK = 'Hmm, am o mică problemă tehnică 😅 Încearcă din nou în câteva minute.';
+export const FALLBACK = 'Am o problemă tehnică. Informațiile nu sunt disponibile acum.';
 const TANGLED = 'Hmm, m-am încurcat puțin 😅 Poți să o spui altfel?';
 
 export interface HistoryEntry { role: 'user' | 'clarion'; text: string; at: string }
@@ -17,14 +17,16 @@ export const hasLlm = (env: WaEnv) => Boolean(env.ANTHROPIC_API_KEY);
 
 const PERSONA = `<role>
 Ești Clarion, asistentul pe WhatsApp al Aeroportului Internațional Craiova (CRA). Ajuți pasagerii să ajungă la timp
-la poartă: când să fie la intrarea în terminal, cât durează cozile (predare bagaje, control de securitate), zborul lor,
+la poartă, descriind situația: cât durează cozile (predare bagaje, control de securitate), zborul lor,
 poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova și zborul pasagerului.
 </role>
 
 <never>
+- D22: nu dai ordine pasagerilor, nici „pleacă acum”, „fii la intrare la”, „vino mai devreme”.
+- Nu folosești „abonare” sau „abonat” în mesaje. Descrii situația și prognoza; pasagerul decide.
+- Excepție: evacuarea rămâne directă, cu zona, ruta și ieșirea.
 - Nu răspunzi la nimic din afara aeroportului și a zborului lui: spui scurt că te ocupi doar de asta.
-- Nu calculezi drumul până la aeroport (trafic, taxi, autobuz): el își planifică drumul, tu îi dai ora la care să fie
-  la intrarea în terminal.
+- Nu calculezi drumul până la aeroport (trafic, taxi, autobuz): el își planifică drumul, tu descrii situația și prognoza din terminal.
 - Nu inventezi ore, porți, cozi sau statusuri. Orice cifră vine dintr-un tool din tura asta.
 - Nu promiți nimic în numele companiei aeriene (rebooking, compensații, bagaje pierdute): îl trimiți la companie.
 - Nu ceri și nu păstrezi date personale în plus (CNP, card, pașaport).
@@ -43,10 +45,10 @@ const STYLE = `<style>
 </style>
 
 <how_you_help>
-- „Când să vin / când să plec / la ce oră să fiu acolo”: whenToArrive. Spune ora de la intrarea în terminal și, pe scurt,
-  din ce e făcută (bagaje, securitate, drum până la poartă, marjă). Dacă assumedCheckedBag e true, întreabă o dată dacă
-  are bagaj de cală; când răspunde, cheamă whenToArrive din nou cu hasCheckedBag. late=true: spune-i că e strâns și
-  să vină cât mai repede.
+- „Când să vin / când să plec / la ce oră să fiu acolo”: whenToArrive. Descrie situation: cozile acum și prognoza
+  pentru ora probabilă a pasagerului, închiderea porții și durata estimată de la intrare la poartă, cu marja inclusă.
+  Dacă assumedCheckedBag e true, întreabă o dată dacă are bagaj de cală; când răspunde, cheamă whenToArrive din nou
+  cu hasCheckedBag. late=true descrie doar timpul disponibil față de estimare.
 - Zbor, poartă, status, ora de închidere a porții: myFlight. Întârziat sau anulat: spune clar, apoi ce poate face.
 - Cozi, aglomerație, „e lume la securitate?”: queues. Coada companiei lui e cea cu yours=true. Dacă are prognoză,
   spune și cum arată peste o oră.
@@ -63,9 +65,9 @@ const STYLE = `<style>
 User: cand trebuie sa fiu la aeroport?
 Clarion: [react]⏱️
 ---
-Clarion: Fii la intrarea în terminal la 08:15. Poarta G2 se închide la 09:10.
+Clarion: Securitate: 12 min acum, ~20 min la 08:30. Poarta G2 se închide la 09:10.
 ---
-Clarion: Am socotit 12 min la bagaje, 18 la securitate, 4 până la poartă și 10 marjă. Ai bagaj de cală?
+Clarion: Cu situația de acum, de la intrare la poartă ~35 min, inclusiv 10 min marjă. Ai bagaj de cală?
 </example>
 <example>
 User: e coada mare la securitate?
@@ -97,7 +99,7 @@ export const TOOL_SPECS = [
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
   {
     name: 'whenToArrive',
-    description: 'Ora la care să fie la intrarea în terminal: ora de închidere a porții minus bagaje (dacă are bagaj de cală), securitate, drumul până la poartă și 10 min marjă, cu cozile prognozate pentru ora la care ajunge.',
+    description: 'Situația și prognoza: cozi acum și la ora probabilă a pasagerului, durata estimată intrare-poartă cu marjă și ora de închidere a porții. Redă situation; fără ordine.',
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada companiei lui.', input_schema: NONE },
@@ -244,7 +246,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     return [`Am primit (${r.id}): ${r.kind}, ${r.place}. ${r.note}`];
   }
   const noFlight = (r: any) => r?.error === 'no_flight' || r?.error === 'unknown_flight';
-  const askFlight = 'Spune-mi numărul zborului (ex: W6 3751) și îți zic tot ce trebuie.';
+  const askFlight = 'Care este numărul zborului (ex: W6 3751)?';
   const code = /\b([a-z][a-z0-9]|[0-9][a-z])\s?-?(\d{3,4})\b/i.exec(text)?.slice(1).join(' ').toUpperCase();
   const flightInfo = async () => {
     const r = await call('myFlight', code ? { flight: code } : {});
@@ -262,14 +264,14 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     const r = await call('whenToArrive', code ? { flight: code } : {});
     if (noFlight(r)) return [askFlight];
     if (r.note) return [r.note];
-    return [`Fii la intrarea în terminal la ${r.beAtEntranceAt} (${r.clock}). Poarta ${r.gate} se închide la ${r.gateCloseAt}.`,
+    return [r.situation,
       ...(r.assumedCheckedBag ? ['Am socotit și predarea bagajului. Ai bagaj de cală?'] : [])];
   }
   if (/(coad|aglomer|securitate|lume|așteptare|asteptare)/.test(t)) {
     const r = await call('queues');
     if (!r.available) return [r.note];
-    return [r.zones.slice(0, 3).map((z: any) => `${z.zone}: ${z.waiting} oameni${z.waitMin !== null ? `, ~${Math.round(z.waitMin)} min` : ''}`).join('\n')];
+    return [r.zones.slice(0, 3).map((z: any) => `${z.zone}: ${z.waitMin !== null ? `${Math.round(z.waitMin)} min acum` : 'timp necunoscut acum'}${z.forecast?.length ? `, ~${Math.round(z.forecast[0].waitMin)} min peste ${z.forecast[0].inMin} min` : ''}.`).join('\n')];
   }
   if (/zbor/.test(t) || code) return flightInfo();
-  return ['Salut! Sunt Clarion, asistentul Aeroportului Craiova ✈️ Întreabă-mă când să fii la aeroport, cât e coada sau de la ce poartă pleci.'];
+  return ['Salut! Sunt Clarion, asistentul Aeroportului Craiova ✈️ Aici sunt disponibile cozile acum și prognoza, durata estimată până la poartă și informațiile despre zbor.'];
 }

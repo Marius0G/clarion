@@ -62,7 +62,7 @@ function Qr({ en }: { en: boolean }) {
         <canvas
           ref={canvas}
           role="img"
-          aria-label={en ? "Subscription QR code" : "Cod QR pentru abonare"}
+          aria-label={en ? "WhatsApp QR code" : "Cod QR pentru WhatsApp"}
         />
       )}
       <a href={target}>{target}</a>
@@ -144,8 +144,8 @@ export default function Join() {
         cause instanceof Error && cause.message === "unknown-flight"
           ? "Zborul nu este în orarul de azi. Verifică numărul și încearcă din nou."
           : en
-          ? "Could not subscribe. Please try again."
-          : "Abonarea nu a reușit. Încearcă din nou.",
+          ? "Could not connect to the flight."
+          : "Conectarea la zbor nu a reușit.",
       );
     } finally {
       submitting.current = false;
@@ -347,8 +347,8 @@ export default function Join() {
                   WhatsApp.{" "}
                   <span>
                     {t(
-                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem doar zborul. Datele abonării se șterg la 48 h după zbor.",
-                      "The boarding pass is read on your device. Only the flight is sent for WhatsApp. Subscription data is deleted 48 h after the flight.",
+                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem doar zborul. Datele conexiunii se șterg la 48 h după zbor.",
+                      "The boarding pass is read on your device. Only the flight is sent for WhatsApp. Connection data is deleted 48 h after the flight.",
                     )}
                   </span>
                 </span>

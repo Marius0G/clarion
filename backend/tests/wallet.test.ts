@@ -121,7 +121,7 @@ it('signs the documented flight class/object with the BCBP and WhatsApp link', a
       passengerName: 'POPESCU/ION', reservationInfo: { confirmationCode: 'ABC123' }, boardingAndSeatingInfo: { seatNumber: '12A', boardingGroup: '1' },
       barcode: { type: 'PDF_417', value: pass.bcbp }, linksModuleData: { uris: [{ uri: link, description: 'Clarion pe WhatsApp' }] },
       textModulesData: [{ id: 'demo', header: 'SIMULARE', body: 'Boarding pass demo · Nu este un bilet de călătorie.' },
-        { id: 'entry', header: 'Intrare', body: 'Fii la intrare la 08:10' }] }] });
+        { id: 'entry', header: 'Intrare', body: 'Ora estimată la intrare: 08:10' }] }] });
 });
 it('uses generic on explicit opt-out or a flight signing failure', async () => {
   const { demoBoardingPass } = await import('../src/bcbp.js');

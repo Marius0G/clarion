@@ -24,6 +24,10 @@ describe('passenger formatting', () => {
 
   it('keeps missing fields unknown and tolerates malformed collections', () => {
     expect(normalizePassenger(null).arriveBy).toBe('necunoscut')
+    expect(normalizePassenger(null).entranceToGateMin).toBeNull()
+    const forecast = normalizePassenger({ entranceToGateMin: -1, queues: [null, { nowMin: -1, forecastMin: Infinity }] })
+    expect(forecast.entranceToGateMin).toBeNull()
+    expect(forecast.queues?.every(q => q.nowMin === null && q.forecastMin === null)).toBe(true)
     const data = normalizePassenger({ flight: null, steps: [null, { waitMin: -3 }], alerts: [null], evacuation: { active: true, zones: [null, 'security'] } })
     expect(data.flight.gate).toBe('necunoscut')
     expect(data.flight.status).toBeUndefined()

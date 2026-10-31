@@ -48,16 +48,16 @@ describe('WhatsApp agent in the Tower', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ joinToken: joined.token }),
     })).status).toBe(400);
 
-    claudeReplies.push({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Fii la intrarea în terminal la 08:25.' }] });
+    claudeReplies.push({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Securitate: 12 min acum. Poarta G2 se închide la 09:10.' }] });
     const q = message('wamid.b', 'cand sa vin?');
     expect((await post(q)).status).toBe(200);
     expect((await post(q)).status).toBe(200);
-    await expect.poll(() => texts().filter(t => t === 'Fii la intrarea în terminal la 08:25.').length, { timeout: 10000 }).toBe(1);
+    await expect.poll(() => texts().filter(t => t === 'Securitate: 12 min acum. Poarta G2 se închide la 09:10.').length, { timeout: 10000 }).toBe(1);
     const claude = outbound.filter(o => o.url.startsWith('https://api.anthropic.com'));
     expect(claude).toHaveLength(1);
     expect(claude[0]!.body.system[1].text).toContain('Zbor: W6 3751');
     // Still one answer after the retry has had time to run.
     await new Promise(r => setTimeout(r, 1500));
-    expect(texts().filter(t => t === 'Fii la intrarea în terminal la 08:25.')).toHaveLength(1);
+    expect(texts().filter(t => t === 'Securitate: 12 min acum. Poarta G2 se închide la 09:10.')).toHaveLength(1);
   });
 });

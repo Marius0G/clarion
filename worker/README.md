@@ -26,10 +26,13 @@ Use `npx wrangler secret put NAME`. Never commit values. `SIM_SPEED` and `SIM_SE
 
 Set Meta's callback to `https://<worker>/webhooks/whatsapp`. GET verifies the token; POST verifies `X-Hub-Signature-256` against the raw body, deduplicates inbound IDs, acknowledges the webhook and runs the agent through `ctx.waitUntil`. Delivery/read receipts are idempotent. Sends remain best effort.
 
-## Passenger messaging (SPEC-v2 D10, D11, D14, D17)
+## Passenger messaging (SPEC-v2 D10, D11, D14, D17, D22)
 
 `src/wa/messaging.ts` is the one fan-out: `notify(subscriber, { kind, text })` sends to a real phone on WhatsApp (only inside the 24h window; outside it the message is skipped and logged, there is no approved template for these yet) or to a simulated subscriber as `agent.message { agentId, text, kind }` on the twin socket.
 
+- `START` and new simulated passengers receive queues now and at their likely arrival time, gate close time and an entrance-to-gate estimate (including the A6 margin). Passenger text describes the situation without instructions; evacuation remains direct.
+- Each `flow.report` evaluates only bound passengers. An `arrive` update is sent when the A6 total changes by at least 10 minutes from the last successfully sent estimate. Estimates and the per-passenger 15-minute wall-clock cooldown persist across restarts; unsuccessful deliveries do not advance them. `flight` and `evacuate` bypass the cooldown. Admin closure/redirect messages use the same delivery limit and target the affected flight queues/gate.
+- `/api/me` retains `arriveBy` for compatibility and adds `queues` (now, forecast, forecast time/source) and `entranceToGateMin`. `/m/<token>` presents the situation and estimate instead of an arrival instruction.
 - `flight.update` replaces the provisional schedule in the agent (times in seconds or `HH:MM`, `checkIn: "check_in:<group>"` picks the desk-group queues). When a flight becomes `delayed` / `cancelled` or its `delayMin` changes, its subscribers get one `kind: "flight"` message per change; resending the same schedule sends nothing.
 - `agent.register { agentId, role, channel: "sim", flight }` (alone or inside `agents[]`) registers a simulated subscriber and sends it the `arrive` message. The legacy shape is unchanged.
 - `STAFF <code>` (see `STAFF_CODE`) gives the staff role; the agent's `reportIssue` stores reports. `GET /api/reports` → `[{ id, at, kind, node, text, status }]` and `POST /api/reports/:id/close`, both with `Authorization: Bearer <DEMO_TOKEN>`. `kind` ∈ `bagaj_abandonat | medical | securitate | aglomerare | altele`; `node` is the best-match provisional zone/node id or null.

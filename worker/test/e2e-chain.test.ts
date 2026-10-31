@@ -22,7 +22,7 @@ beforeAll(() => {
           const result = JSON.parse(last[0].content);
           toolResults.push(result);
           return Response.json({ stop_reason: 'end_turn', content: [{ type: 'text', text: result.beAtEntranceAt
-            ? `Fii la intrarea în terminal la ${result.beAtEntranceAt}.` : `Am primit (${result.id}).` }] });
+            ? result.situation : `Am primit (${result.id}).` }] });
         }
         const staff = String(last).includes(reportText);
         return Response.json({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: staff ? 'report' : 'arrival',
@@ -93,12 +93,12 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   expect(context).not.toContain('nevalidat');
   expect(toolResults[0]).toMatchObject({ beAtEntranceAt: '08:25', assumedCheckedBag: false,
     steps: [expect.objectContaining({ zone: 'bag_drop:2', min: 10, source: 'prognoză' }), expect.objectContaining({ zone: 'security', min: 20, source: 'prognoză' }), expect.anything(), expect.anything()] });
-  await expect.poll(() => texts().filter(t => t === 'Fii la intrarea în terminal la 08:25.').length, { timeout: 10000 }).toBe(1);
+  await expect.poll(() => texts().filter(t => t.includes('Cu situația de acum') && !t.includes('/m/')).length, { timeout: 10000 }).toBe(1);
   const passenger = async (): Promise<any> => { const r = await api(`/api/me?token=${pageToken}`, undefined, ''); expect(r.status).toBe(200); return r.json(); };
   expect(await passenger()).toMatchObject({ arriveBy: '08:25', steps: [
     { zone: 'bag_drop:2', label: expect.any(String), waitMin: 10 }, { zone: 'security', label: expect.any(String), waitMin: 20 }, { zone: 'walk', label: expect.any(String), waitMin: 1 }], evacuation: { active: false, zones: [] } });
   twin.send('agent.register', { agentId: 'demo-passenger', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' });
-  await expect.poll(() => twin.of('agent.message')).toEqual([expect.objectContaining({ agentId: 'demo-passenger', kind: 'arrive', text: expect.stringContaining('08:25') })]);
+  await expect.poll(() => twin.of('agent.message')).toEqual([expect.objectContaining({ agentId: 'demo-passenger', kind: 'arrive', text: expect.stringContaining('Cu situația de acum') })]);
 
   // Beat 2: operator opens a lane, both services receive it, Unity acks and vision reports the improvement.
   const staff = await api('/api/ops/command', { type: 'staff', zone: 'security', delta: 1 });

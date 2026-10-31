@@ -54,7 +54,14 @@ export default function Me() {
     </section>}
     <div className="me-page">
       <header className="me-arrival">
-        <h1>Fii la intrare la <span>{data.arriveBy}</span></h1>
+        <h1>Situația din terminal</h1>
+        {(data.queues ?? []).map(queue => <p key={queue.zone}>
+          {queue.label}: {queue.nowMin === null ? 'timp necunoscut acum' : `${Math.round(queue.nowMin)} min acum`},
+          {' '}{queue.forecastMin === null ? 'prognoză necunoscută' : `~${Math.round(queue.forecastMin)} min la ${queue.forecastAt}`} ({queue.source}).
+        </p>)}
+        {!data.queues?.length && <p>Cozi acum și prognoză: necunoscut</p>}
+        <p>Poarta {flight.gate} se închide la {flight.gateCloseAt}.</p>
+        <p>Cu situația de acum, de la intrare la poartă {data.entranceToGateMin == null ? 'durată necunoscută' : `~${Math.round(data.entranceToGateMin)} min, inclusiv 10 min marjă`}.</p>
         <p><time>{simTimeLabel(data.simTime)}</time> · ora simulării</p>
         {loading && <small role="status">Se încarcă…</small>}
         {demo && <small className="me-demo">date demo</small>}

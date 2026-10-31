@@ -9,7 +9,8 @@ test('personal page falls back to demo, polls, and displays evacuation and lates
   await page.route('**/api/me?token=demo', route => {
     if (!live) return route.fulfill({ status: 404, json: {} })
     return route.fulfill({ json: {
-      ...fixture, simTime: 14 * 3600 + 25 * 60, arriveBy: '14:35',
+      ...fixture, simTime: 14 * 3600 + 25 * 60, arriveBy: '14:35', entranceToGateMin: 45,
+      queues: [{ zone: 'security', label: 'Securitate', nowMin: 22, forecastMin: 30, forecastAt: '14:45', source: 'prognoză' }],
       flight: { ...fixture.flight, status: 'delayed', delayMin: 15 },
       steps: [{ zone: 'security', label: 'Securitate', waitMin: null }],
       evacuation: { active: true, zones: ['security', 'check_in:2'] },
@@ -17,14 +18,19 @@ test('personal page falls back to demo, polls, and displays evacuation and lates
     } })
   })
   await page.goto('/m/demo')
-  await expect(page.getByRole('heading', { name: /Fii la intrare/ })).toContainText('14:20')
+  await expect(page.getByRole('heading', { name: 'Situația din terminal' })).toBeVisible()
+  await expect(page.locator('.me-arrival')).toContainText('Securitate: 12 min acum, ~20 min la 14:25')
+  await expect(page.locator('.me-arrival')).toContainText('~40 min, inclusiv 10 min marjă')
+  await expect(page.locator('.me-arrival')).toContainText('se închide la 15:05')
   await expect(page.getByText('date demo', { exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results/me-mobile.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(await page.locator('.me-page').evaluate(element => getComputedStyle(element).paddingLeft)).toBe('16px')
   live = true
   await page.clock.runFor(5000)
-  await expect(page.getByRole('heading', { name: /Fii la intrare/ })).toContainText('14:35')
+  await expect(page.locator('.me-arrival')).toContainText('Securitate: 22 min acum, ~30 min la 14:45')
+  await expect(page.locator('.me-arrival')).toContainText('~45 min')
+  await expect(page.locator('body')).not.toContainText('Fii la intrare')
   await expect(page.getByText('date demo', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('alert')).toContainText('Urmează indicatoarele spre cea mai apropiată ieșire')
   await expect(page.getByRole('alert')).toContainText('check_in:2')
@@ -43,6 +49,6 @@ test('network failure and incomplete live data render safely', async ({ page }) 
   await page.unroute('**/api/me?token=demo')
   await page.route('**/api/me?token=demo', route => route.fulfill({ json: { steps: [null], flight: null } }))
   await page.reload()
-  await expect(page.getByRole('heading', { name: /Fii la intrare/ })).toContainText('necunoscut')
+  await expect(page.locator('.me-arrival')).toContainText('durată necunoscută')
   await expect(page.getByText('date demo', { exact: true })).toHaveCount(0)
 })

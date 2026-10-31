@@ -76,7 +76,7 @@ describe('passenger page profiles', () => {
     await h.m.registerSims([sub]);
     const token = (await h.m.pageLink(sub)).split('/').at(-1)!;
     const offline = new Messaging({ store: h.store, wa: h.agent.wa, view, toUnity: () => false });
-    expect(await offline.notify(sub, { kind: 'admin', text: 'Unsent' })).toBe('offline');
+    expect(await offline.notify(sub, { kind: 'admin', text: 'Unsent' })).toBe('rate_limited');
     expect((await offline.passenger(token))?.alerts).toHaveLength(1);
     await h.m.plan({ id: 'page-evac', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
     expect((await offline.passenger(token))?.evacuation).toEqual({ active: true, zones: ['security'] });
@@ -141,7 +141,7 @@ describe('agent.register for simulated subscribers (D17)', () => {
     const h = harness(view);
     expect(await h.m.registerSims([{ agentId: 'a1', role: 'passenger_terminal', flight: 'W6 3751' }, { agentId: 'a2', role: 'p', flight: 'XX 1' }])).toBe(2);
     expect(await h.m.registerSims([{ agentId: 'a1', role: 'passenger_terminal', flight: 'W6 3751' }])).toBe(0);
-    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'arrive', text: expect.stringMatching(/^Fii la intrarea în terminal la 08:30 \(ora simulării\)\. Zborul W6 3751 .*poarta 2 se închide la 09:10/) } }]);
+    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Poarta 2 se închide la 09:10.') } }]);
   });
 });
 
@@ -177,12 +177,12 @@ describe('automatic flight messages (D14, D18 beat 3)', () => {
     const wa = h.texts();
     expect(wa).toHaveLength(1);
     expect(wa[0]!.to).toBe('40712345678');
-    expect(wa[0]!.text).toContain('întârziere de 45 min. Pleacă la 10:25 în loc de 09:40, poarta 2 se închide la 09:55 (ora simulării). Fii la intrarea în terminal la 09:');
+    expect(wa[0]!.text).toContain('întârziere de 45 min. Plecarea: 10:25 în loc de 09:40.');
     expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'flight', text: expect.stringContaining('întârziere de 45 min') } }]);
 
     sim.state.flights = [row({ status: 'delayed', delayMin: 60 }), row({ flight: 'RO 642', airline: 'RO', status: 'cancelled' })];
     expect(await h.m.flightsChanged()).toEqual(['W6 3751', 'RO 642']);
-    expect(h.texts().at(-1)).toEqual({ to: '40799999999', text: expect.stringContaining('RO 642 spre Londra Luton a fost anulat') });
+    expect(h.texts().at(-1)).toEqual({ to: '40799999999', text: expect.stringContaining('RO 642 spre Londra Luton e anulat') });
     expect(h.unity).toHaveLength(2);
   });
 });
@@ -281,4 +281,81 @@ describe('evacuation (D10, A10)', () => {
 it('the WhatsApp client is still inert without secrets', async () => {
   quiet();
   expect((await new WhatsAppClient({}).sendText('+40700000000', 'x')).dryRun).toBe(true);
+});
+
+
+describe('D22 forecast updates and delivery limits', () => {
+  it('compares cumulative changes with the last sent value in both directions, persists across restarts', async () => {
+    quiet();
+    const sim = fakeSim([row()], { security: { waiting: 1, waitMin: 10, forecast: [{ inMin: 60, waitMin: 10 }] } });
+    const h = harness(sim.view);
+    let now = 100000;
+    const m = () => new Messaging({ store: h.store, wa: h.agent.wa, view: sim.view, now: () => now,
+      toUnity: (type, data) => { h.unity.push({ type, data }); return true; } });
+    await m().registerSims([{ agentId: 'a1', role: 'passenger', flight: 'W6 3751' }]);
+    expect(h.unity).toHaveLength(1);
+    const forecast = (min: number) => { sim.state.flow.security!.forecast = [{ inMin: 60, waitMin: min }]; };
+    // Only the forecast changes: the live wait stays 10. Nine minutes is below the threshold.
+    now += 15 * 60 * 1000;
+    forecast(19); expect(await m().flowChanged()).toBe(0);
+    forecast(20);
+    const restarted = m();
+    expect(await Promise.all([restarted.flowChanged(), restarted.flowChanged()])).toEqual([1, 0]);
+    expect(h.unity).toHaveLength(2);
+    forecast(30); now += 15 * 60 * 1000 - 1;
+    expect(await restarted.flowChanged()).toBe(0);
+    now++;
+    expect(await restarted.flowChanged()).toBe(1);
+    forecast(20); now += 15 * 60 * 1000;
+    expect(await restarted.flowChanged()).toBe(1);
+    expect(h.unity.at(-1)?.data).toMatchObject({ kind: 'arrive', text: expect.stringContaining('20 min') });
+    expect(h.unity.every(m => !/fii la|pleacă acum|vino mai devreme|abon/iu.test(m.data.text))).toBe(true);
+  });
+
+  it('shares the limit across admin and arrive, while flight and evacuation bypass it', async () => {
+    quiet();
+    const h = harness(fakeSim().view);
+    let now = 100000;
+    const m = new Messaging({ store: h.store, wa: h.agent.wa, view: fakeSim().view, now: () => now, toUnity: () => true });
+    const sub = { channel: 'sim' as const, agentId: 'a1', role: 'passenger', flight: 'W6 3751' };
+    expect(await Promise.all([m.notify(sub, { kind: 'admin', text: 'Zona este închisă.' }), m.notify(sub, { kind: 'arrive', text: 'Securitate: 12 min acum.' })])).toEqual(['sent', 'rate_limited']);
+    for (const kind of ['flight', 'evacuate'] as const) expect(await m.notify(sub, { kind, text: 'Actualizare.' })).toBe('sent');
+    now += 15 * 60 * 1000;
+    expect(await m.notify(sub, { kind: 'arrive', text: 'Securitate: 12 min acum.' })).toBe('sent');
+  });
+
+  it('does not advance the baseline or consume the limit on offline or failed sends', async () => {
+    quiet();
+    const sim = fakeSim();
+    const h = harness(sim.view);
+    let online = false;
+    const m = new Messaging({ store: h.store, wa: h.agent.wa, view: sim.view, toUnity: () => online });
+    await m.registerSims([{ agentId: 'a1', role: 'passenger', flight: 'W6 3751' }]);
+    expect(h.store.data.has('msg:estimate:sim:a1')).toBe(false);
+    online = true;
+    expect(await m.flowChanged()).toBe(1);
+    expect(h.store.data.has('msg:estimate:sim:a1')).toBe(true);
+    const sub = { channel: 'whatsapp' as const, phone: '+40700000001' };
+    await h.store.put(`wa:last:${sub.phone}`, Date.now());
+    vi.spyOn(h.agent.wa, 'sendText').mockResolvedValueOnce({ ok: false } as any).mockResolvedValueOnce({ ok: true } as any);
+    expect(await m.notify(sub, { kind: 'arrive', text: 'Situația.' })).toBe('failed');
+    expect(await m.notify(sub, { kind: 'arrive', text: 'Situația.' })).toBe('sent');
+  });
+});
+
+
+it('describes admin changes to the affected flight group and sends the same text on both channels', async () => {
+  quiet();
+  const sim = fakeSim([row(), row({ flight: 'RO 642', checkIn: 'check_in:1', airline: 'RO' })]);
+  const h = harness(sim.view);
+  await h.store.put('sim:subs', { a1: { agentId: 'a1', role: 'passenger', flight: 'W6 3751' }, a2: { agentId: 'a2', role: 'passenger', flight: 'RO 642' } });
+  await h.store.put('wa:subs', ['+40712345678']);
+  await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751' });
+  await h.store.put('wa:last:+40712345678', Date.now());
+  expect(await h.m.adminChanged({ type: 'redirect', from: 'check_in:2', to: 'check_in:3' })).toBe(2);
+  expect(h.unity).toHaveLength(1);
+  expect(h.unity[0]!.data.text).toBe(h.texts()[0]!.text);
+  expect(h.texts()[0]!.text).toContain('Check-in, grupul 2: fluxul este mutat la Check-in, grupul 3.');
+  expect(h.texts()[0]!.text).not.toMatch(/fii la|mergi|abon/iu);
+  expect(await h.m.adminChanged({ type: 'close', zone: 'check_in:2' })).toBe(0);
 });

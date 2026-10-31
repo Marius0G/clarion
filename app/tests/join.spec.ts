@@ -43,7 +43,7 @@ test("QR and scanner fallback", async ({ page }) => {
   await page.route("**/api/state", (route) => route.fulfill({ json: state }));
   await page.goto("/join/qr");
   await expect(
-    page.getByRole("img", { name: "Cod QR pentru abonare" }),
+    page.getByRole("img", { name: "Cod QR pentru WhatsApp" }),
   ).toBeVisible();
   await expect(page.locator(".join-qr a")).toHaveAttribute(
     "href",

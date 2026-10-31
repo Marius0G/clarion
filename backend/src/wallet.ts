@@ -105,7 +105,7 @@ export class Wallet {
               barcode: { type: 'PDF_417', value: pass.bcbp },
               linksModuleData: { uris: [{ uri: waLink, description: 'Clarion pe WhatsApp' }] },
               textModulesData: [{ id: 'demo', header: 'SIMULARE', body: 'Boarding pass demo · Nu este un bilet de călătorie.' },
-                ...(pass.entryTime ? [{ id: 'entry', header: 'Intrare', body: `Fii la intrare la ${pass.entryTime}` }] : [])],
+                ...(pass.entryTime ? [{ id: 'entry', header: 'Intrare', body: `Ora estimată la intrare: ${pass.entryTime}` }] : [])],
             }],
           } });
         return { saveUrl: `https://pay.google.com/gp/v/save/${jwt}`, demo: false };

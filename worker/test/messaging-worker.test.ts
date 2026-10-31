@@ -54,7 +54,7 @@ describe('passenger messaging in the Tower', () => {
     u.ws.send(envelope('agent.register', { agentId: 'a1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' }));
     u.ws.send(envelope('agent.register', { agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }] }));
     await expect.poll(() => u.of('agent.message').length).toBe(1);
-    expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Fii la intrarea în terminal la 08:') });
+    expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Cu situația de acum') });
     const simLink = /https:\/\/clarion-craiova.pages.dev\/m\/([a-f0-9-]+)/.exec(u.of('agent.message')[0].text)!;
     const passengerPath = `/api/me?token=${simLink[1]}`;
     const response = await mf.dispatchFetch(`https://worker.example${passengerPath}`, { headers: { Origin: 'https://clarion-craiova.pages.dev' } });
@@ -64,7 +64,11 @@ describe('passenger messaging in the Tower', () => {
     expect(await response.json()).toEqual({
       simTime: 25200,
       flight: { flight: 'W6 3751', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', gateCloseAt: '09:10', status: 'scheduled', delayMin: 0 },
-      arriveBy: '08:30',
+      arriveBy: '08:30', entranceToGateMin: 38,
+      queues: [
+        { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', nowMin: null, forecastMin: 12, forecastAt: '08:32', source: 'estimare standard' },
+        { zone: 'security', label: 'Control de securitate', nowMin: null, forecastMin: 15, forecastAt: '08:32', source: 'estimare standard' },
+      ],
       steps: [
         { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', waitMin: 12 },
         { zone: 'security', label: 'Control de securitate', waitMin: 15 },
@@ -138,4 +142,20 @@ describe('passenger messaging in the Tower', () => {
     u.ws.send(envelope('evac.plan', { id: 'x', blocked: [], clearSec: 1, exits: [], routes: [] }));
     await expect.poll(() => u.of('error').length).toBe(2);
   });
+});
+
+it('evaluates bound passengers on flow.report and rate-limits repeated reports', async () => {
+  const u = await twin();
+  const v = await twin('vision');
+  // No known flight at registration: the first situation is sent on the next flow report.
+  u.ws.send(envelope('agent.register', { agentId: 'flow-agent', role: 'passenger', channel: 'sim', flight: 'FR 888' }));
+  u.ws.send(envelope('flight.update', { flights: [flight({ flight: 'FR 888' })] }));
+  await expect.poll(async () => (await (await api('/api/sim')).json() as any).flights[0].flight).toBe('FR 888');
+  v.ws.send(envelope('flow.report', { zones: [{ zone: 'security', waiting: 5, waitMin: 5, forecast: [{ inMin: 60, waitMin: 20 }] }] }));
+  await expect.poll(() => u.of('agent.message').filter(m => m.agentId === 'flow-agent' && m.kind === 'arrive').length).toBe(1);
+  const message = u.of('agent.message').find(m => m.agentId === 'flow-agent' && m.kind === 'arrive');
+  expect(message.text).toContain('Control de securitate: 5 min acum, ~20 min');
+  v.ws.send(envelope('flow.report', { zones: [{ zone: 'security', waiting: 50, waitMin: 5, forecast: [{ inMin: 60, waitMin: 40 }] }] }));
+  await expect.poll(async () => (await (await api('/api/sim')).json() as any).flow.security.forecast[0].waitMin).toBe(40);
+  expect(u.of('agent.message').filter(m => m.agentId === 'flow-agent' && m.kind === 'arrive')).toHaveLength(1);
 });

@@ -40,6 +40,12 @@ export function normalizePassenger(value: unknown): PassengerViewData {
   return {
     simTime: nonnegative(data.simTime),
     arriveBy: text(data.arriveBy),
+    entranceToGateMin: nonnegative(data.entranceToGateMin),
+    queues: (Array.isArray(data.queues) ? data.queues : []).map(value => {
+      const queue = record(value)
+      return { zone: text(queue.zone), label: text(queue.label), nowMin: nonnegative(queue.nowMin),
+        forecastMin: nonnegative(queue.forecastMin), forecastAt: text(queue.forecastAt), source: text(queue.source) }
+    }),
     flight: {
       flight: text(flight.flight), destination: text(flight.destination), std: text(flight.std),
       gate: text(flight.gate), gateCloseAt: text(flight.gateCloseAt),

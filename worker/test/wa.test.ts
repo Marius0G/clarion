@@ -138,7 +138,7 @@ describe('agent tools', () => {
   });
   it('the no-key fallback answers from the same tools', async () => {
     const { tools } = setup({ flight: 'W6 3751', airline: 'W6', hasCheckedBag: true });
-    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('08:30');
+    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~38 min');
     expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta 2,');
   });
 });
@@ -227,7 +227,7 @@ describe('WhatsAppAgent turn', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const { agent, store, calls, meta } = harness({ ...live, ANTHROPIC_API_KEY: 'k' }, [
       { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tu1', name: 'whenToArrive', input: { hasCheckedBag: true } }] },
-      { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]⏱️\n---\nFii la intrare la 08:25.\n---\nPoarta G2 se închide la 09:10.' }] },
+      { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]⏱️\n---\nSecuritate: 12 min acum.\n---\nPoarta G2 se închide la 09:10.' }] },
     ]);
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751', airline: 'W6' });
     await agent.inbound(inbound('cand trebuie sa fiu la aeroport?', {}, 'wamid.q'));
@@ -238,18 +238,18 @@ describe('WhatsAppAgent turn', () => {
     expect(toolResult).toMatchObject({ beAtEntranceAt: '08:25', gateCloseAt: '09:10' });
     const sent = meta();
     expect(sent.filter(b => b.type === 'reaction').map(b => b.reaction.emoji)).toEqual(['👀', '⏱️']);
-    expect(sent.filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Fii la intrare la 08:25.', 'Poarta G2 se închide la 09:10.']);
+    expect(sent.filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Securitate: 12 min acum.', 'Poarta G2 se închide la 09:10.']);
     expect((await store.get<any>('wa:ctx:+40712345678')).history.map((h: any) => h.role)).toEqual(['user', 'clarion', 'clarion', 'clarion']);
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(true);
   });
 
-  it('a bag button tap is saved and answered with the arrival time', async () => {
+  it('a bag button tap is saved and answered with the situation', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const { agent, store, meta } = harness(live);
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751', airline: 'W6' });
     await agent.inbound(inbound('', { type: 'interactive', text: undefined, interactive: { button_reply: { id: 'bag:no', title: 'Doar de mână' } } }));
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(false);
-    expect(meta().find(b => b.type === 'text')?.text.body).toContain('08:40');
+    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~29 min');
   });
 
   it('answers the fallback when Claude fails, and respects WA_ALLOWLIST', async () => {

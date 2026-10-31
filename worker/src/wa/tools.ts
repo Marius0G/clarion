@@ -106,13 +106,24 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
     plan = steps(Math.max(0, (close - total * 60 - clock.now) / 60));
   }
   const totalMin = plan.reduce((s, x) => s + x.min, 0);
+  const likelyAt = Math.max(clock.now, close - totalMin * 60);
+  const queues = plan.filter(s => !['walk', 'margin'].includes(s.zone)).map(s => ({
+    zone: s.zone, label: s.step, nowMin: flow[s.zone]?.waitMin ?? null,
+    forecastMin: s.min, forecastAt: clockText(likelyAt), source: s.source,
+  }));
   // Rounded down to 5 minutes: "14:20" reads better than "14:23" and errs on the early side.
   const at = Math.floor((close - totalMin * 60) / 300) * 300;
   return {
     flight: flight.flight, gate: gateName(flight.gate), gateCloseAt: clockText(close),
     beAtEntranceAt: clockText(at), minutesFromNow: Math.round((at - clock.now) / 60), late: at < clock.now,
-    totalMin, steps: plan, assumedCheckedBag: hasCheckedBag === undefined, clock: clockLabel(clock),
+    totalMin, queues, steps: plan, assumedCheckedBag: hasCheckedBag === undefined, clock: clockLabel(clock),
   };
+}
+
+/** D22: one situation description shared by tools, WhatsApp and simulated passengers. */
+export function situationText(plan: ReturnType<typeof arrivalPlan>) {
+  const queues = plan.queues.map(q => `${q.label}: ${q.nowMin === null ? 'timp necunoscut acum' : `${Math.round(q.nowMin)} min acum`}, ~${q.forecastMin} min la ${q.forecastAt} (${q.source}).`).join(' ');
+  return `${queues} Poarta ${plan.gate} se închide la ${plan.gateCloseAt}. Cu situația de acum, de la intrare la poartă ~${plan.totalMin} min, inclusiv ${MARGIN_MIN} min marjă (${plan.clock}).`;
 }
 
 function flightView(f: Flight, clock: Clock, provisional: boolean) {
@@ -156,9 +167,10 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
       if ('error' in r) return r;
       if (typeof input?.hasCheckedBag === 'boolean') await save({ hasCheckedBag: input.hasCheckedBag });
       const f = r.flight;
-      if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: 'Zborul e anulat. Pasagerul ia legătura cu compania aeriană.' };
+      if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: 'Zborul e anulat. Informațiile despre alternative sunt disponibile la compania aeriană.' };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: 'Zborul a plecat deja.' };
-      return { ...arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.()), status: f.status, delayMin: f.delayMin };
+      const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.());
+      return { ...plan, situation: situationText(plan), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
       const flow = view.flow(), clock = view.clock(), p = profile();
@@ -185,7 +197,7 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
       }
       const best = targets.map(id => route(terminalGraph, 'entrance', id, density, blocked))
         .filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
-      if (!best) return { status: 'unavailable', note: 'Nu există un traseu liber cunoscut. Cere ajutorul personalului.' };
+      if (!best) return { status: 'unavailable', note: 'Nu există un traseu liber cunoscut. Personalul are informații despre traseele disponibile.' };
       const minutes = Math.ceil(best.totalSec / 60);
       return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1),
         steps: best.nodes.map(nodeName), note: `De la intrare: ${best.nodes.map(nodeName).join(' → ')}. ~${minutes} min.`,

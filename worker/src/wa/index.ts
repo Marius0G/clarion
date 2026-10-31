@@ -23,7 +23,7 @@ export interface WaStore {
 }
 
 const HISTORY_KEEP = 20;
-const TEXT_ONLY = 'Deocamdată citesc doar mesaje text. Scrie-mi ce vrei să afli și te ajut.';
+const TEXT_ONLY = 'Deocamdată citesc doar mesaje text. Ce informații despre aeroport sau zbor te interesează?';
 const DELETE_DATA = /^\s*(sterge|șterge)(-mi)?\s+(toate\s+)?datele(\s+mele)?\s*[.!]*\s*$|^\s*delete\s+(all\s+)?my\s+data\s*[.!]*\s*$/i;
 const BAG_BUTTONS = [{ id: 'bag:yes', title: 'Da, am bagaj' }, { id: 'bag:no', title: 'Doar de mână' }];
 
@@ -90,6 +90,7 @@ export class WhatsAppAgent {
 
     const key = `wa:profile:${m.phone}`;
     let profile: Profile = { phone: m.phone, role: 'passenger', ...(await this.store.get<Profile>(key)) };
+    const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
       profile = { ...profile, ...patch }; await this.store.put(key, profile);
       // Bound to a flight or staff: from now on part of the fan-out (flight changes, evacuation).
@@ -131,7 +132,7 @@ export class WhatsAppAgent {
     if (start) {
       const flight = findFlight(this.view.flights(), start.flight);
       if (!flight) {
-        const text = `Nu găsesc zborul ${start.flight} în orarul de azi. Verifică numărul pe boarding pass și scrie-mi din nou.`;
+        const text = `Nu găsesc zborul ${start.flight} în orarul de azi. Numărul zborului apare pe boarding pass.`;
         await this.wa.sendText(m.phone, text);
         await remember(m.text, [text]);
         return;
@@ -142,7 +143,7 @@ export class WhatsAppAgent {
         ...(pending?.name && { name: pending.name }) });
       const clock = this.view.clock();
       const text = `Gata ✈️ Te-am conectat la zborul ${flight.flight} spre ${flight.destination}. Poarta ${gateName(flight.gate)} se închide la ${clockText(closeAt(flight))} (${clockLabel(clock)}).`;
-      const ask = 'Ai bagaj de cală? Așa îți spun exact când să fii la aeroport.';
+      const ask = 'Ai bagaj de cală? Estimarea include cozile corespunzătoare.';
       await this.wa.sendReaction(m.phone, m.id, '✈️');
       await this.wa.sendText(m.phone, text);
       await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
@@ -168,6 +169,10 @@ export class WhatsAppAgent {
     const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, text: redact(text), tools });
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
     await this.wa.sendReplies(m.phone, bubbles, m.id);
+    if (!initiallyBound && profile.flight) {
+      const flight = findFlight(this.view.flights(), profile.flight);
+      if (flight) await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
+    }
     await remember(redact(text), bubbles);
     console.log(JSON.stringify({ wa: 'turn', id: m.id, tools: used, bubbles: bubbles.length, ms: Date.now() - started }));
   }
