@@ -15,7 +15,34 @@ npm start                    # http://localhost:8787; ws://localhost:8787/ws?cli
 
 `npm run dev` runs the source with watch mode. Copy `.env.example` to `.env`. Both `npm start` and `npm run dev` load `backend/.env` automatically using Node 22’s built-in loader; exported variables take precedence. All commands above run from `backend/`.
 
-In a second terminal, `cd backend && npm run demo`. This fake twin registers 60 agents, creates three unbound Telegram test subscriptions, resets demo counters, detects a drone on runway **27**, confirms suspension through the console API, approves messages, diverts Bergamo to OTP, intercepts with a net, triggers a T2 evacuation and RO-Alert draft, then opens all waves and returns to normal. Pauses default to 1.5 s; an extra seven-second wait allows simulated reads. The reported `isuTimeToT2=10.2` is **scripted fixture minutes, not a measured improvement**. The driver asserts no sends before confirmation, transitions through suspended/recovery/normal, and moving delivery/read counters. It preserves existing phone subscriptions, so with real credentials it sends the scenario to opted-in phones. Run against a demo instance.
+In a second terminal, `cd backend && npm run demo` runs the **automatic CI mode** (`DEMO_MODE=auto`, the default). It resets the incident, registers 60 simulated agents and three unbound Telegram subscriptions, presses every console action, and checks delivery/read counters. Pauses default to 1.5 s plus seven seconds for simulated reads. Both modes preserve existing phone subscriptions: use a demo instance; approved messages can reach opted-in phones with real credentials.
+
+The requested npm alias needs this single addition to `backend/package.json`'s `scripts` (outside the permitted edit scope, pending approval):
+
+```json
+"demo:pitch": "tsx scripts/demo-pitch.ts"
+```
+
+Until that alias is added, the equivalent executable command is `npx tsx scripts/demo-pitch.ts` (or `DEMO_MODE=twin npm run demo`); append `--timeline video.json` directly with `npx`, or after `--` with npm run.
+
+For the pitch, reset the incident **in the console first**, start the video together with `npm run demo:pitch` (`DEMO_MODE=twin`), and follow each `Apasă: …` cue. Twin mode sends only the six scenario twin events; it never resets, registers agents/subscriptions, or presses console actions. It waits for confirmation (`phase=suspended`), approval of at least one selected role's drafts for each situation, the RO-Alert draft, recovery, each configured wave, and final normal phase. The operator chooses which roles receive messages. No minimum read/delivery count is asserted for this human-driven mode. RO-Alert remains a draft only.
+
+The default video offsets are detection **0 s**, interceptors airborne **15 s**, diversion **30 s**, net contact **57 s**, target-down/payload inspection **85 s**, and readiness to reopen **90 s**. The contract has no distinct contact/target-down event: contact maps to `intercept.captured`, inspection to `payload.suspicious`. These are demo offsets inspired by the hook; pages 11–12 specify human-triggered messages, not these exact timestamps. Offsets are elapsed wall seconds from initial state validation. Human gates take precedence: a late action delays subsequent events and logs `VIDEO LATE`; pause the video if strict synchronization is needed.
+
+Override the offsets with `npm run demo:pitch -- --timeline video.json`. Paths are relative to the working directory (`backend/`). JSON is a timestamp-ordered list of `{atSec, event}`; event can be a type string (fixture payload defaults) or `{type, data}` (payload overrides). Include all six events in the default order:
+
+```json
+[
+  {"atSec": 0, "event": "drone.detected"},
+  {"atSec": 15, "event": {"type": "intercept.launched", "data": {"count": 2}}},
+  {"atSec": 30, "event": "flight.diverted"},
+  {"atSec": 57, "event": "intercept.captured"},
+  {"atSec": 85, "event": "payload.suspicious"},
+  {"atSec": 90, "event": "ops.reopened"}
+]
+```
+
+`DEMO_TIMEOUT_MS=0` (default) waits indefinitely for state/actions. Set a positive millisecond deadline per wait to fail a rehearsal rather than hang. Socket disconnects and backend rejection frames fail waits immediately. Neither mode reports `isuTimeToT2` unless `DEMO_ISU_MIN` is explicitly set to a finite nonnegative number; e.g. `DEMO_ISU_MIN=10.2 npm run demo` prints **FIXTURE … not a measurement** before reporting it. Without that override the backend may still expose its separately labelled sim-ab fallback; the demo does not manufacture a measurement.
 
 Port conflicts: `PORT=8788 STATE_FILE=/tmp/tower-demo-state.json npm start`, then `PORT=8788 npm run demo`. Use one process per state file. Stop with Ctrl-C.
 
@@ -37,6 +64,9 @@ Port conflicts: `PORT=8788 STATE_FILE=/tmp/tower-demo-state.json npm start`, the
 | `SMSLINK_CONNECTION_ID`, `SMSLINK_PASSWORD`        | Both required for SMSLink HTTPS sends; otherwise dry-run                       |
 | `WA_TOKEN`, `WA_PHONE_NUMBER_ID`, `WA_API_VERSION` | All required for WhatsApp Cloud API; otherwise dry-run                         |
 | `BACKEND_URL`                                      | Demo target; defaults to `http://localhost:$PORT`                              |
+| `DEMO_MODE`                                      | `auto`; `demo:pitch` defaults to `twin` (an explicit environment value overrides) |
+| `DEMO_TIMEOUT_MS`                                | `0` = no deadline; positive milliseconds per twin state/action wait             |
+| `DEMO_ISU_MIN`                                   | Unset = no metric report; explicit nonnegative fixture minutes, logged as fixture |
 | `DEMO_PAUSE_MS`                                    | `1500`, demo step delay                                                        |
 
 No secrets or private channel IDs appear in public state. Local JSON storage contains destinations and must stay private; `.env`, `data/*.json`, build output and dependencies are gitignored. Atomic write/rename persists subscriptions, state, counters, receipts, Telegram polling cursor, seeded pending reads and actions on each change. Invalid JSON fails startup instead of silently discarding subscribers. Reset clears incident state, simulated agents and counters, **preserving active phone subscriptions**. External sends are best effort; interrupted sends are not automatically retried to avoid duplicate emergency messages.
@@ -107,7 +137,7 @@ Twin agents have seeded log-normal read latency, median 360,000 simulated ms (si
 - `readRecipients`: unique endpoints acknowledging at least one delivered message (same endpoint identity as first-minute reach).
 - `readCount`: message acknowledgements, including simulation; counts messages, not unique people.
 - `carsStartedInVain`: fallback **synthetic proxy**: unique home/relative/taxi/rideshare agents that finish a read/action cycle without acting. Not measured traffic, and no claimed saved cars. Unity should report its actual count via `metric.report` to replace the proxy.
-- `isuTimeToT2`: a twin-reported number in minutes takes precedence. Otherwise the optional `../sim-ab/out/results.json` supplies `{median, interval:[p05,p95], source:"sim-ab", units:"minutes", coverage:0.5, waves:false, model, intervalLabel}` for the alerted journey time (mean of four crews per seed). Missing or malformed results return null. This is an uncalibrated simulation, not observed performance or minutes saved. Demo reports the team fixture 10.2 minutes.
+- `isuTimeToT2`: a twin-reported number in minutes takes precedence. Otherwise the optional `../sim-ab/out/results.json` supplies `{median, interval:[p05,p95], source:"sim-ab", units:"minutes", coverage:0.5, waves:false, model, intervalLabel}` for the alerted journey time (mean of four crews per seed). Missing or malformed results return null. This is an uncalibrated simulation, not observed performance or minutes saved. The demo reports no value unless `DEMO_ISU_MIN` explicitly opts into fixture minutes.
 - `kerbPeak`: null until twin reports it (peak vehicle count).
 
 `metric.report` accepts finite nonnegative values for the three twin-reported metrics. No coverage percentage is invented: Unity registers the relevant opted-in population for each 20/50/80% A/B run, keeping the same seed/agents between comparisons. The backend does not run Unity’s 20-seed experiment or claim causal improvement.
