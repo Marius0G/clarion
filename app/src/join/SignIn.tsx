@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { auth, sessionToken, type Account } from '../backend/auth';
+import { auth, clearSession, sessionToken, type Account } from '../backend/auth';
 
-export default function SignIn({ onFlight }: { onFlight: (flight: string) => void }) {
+export default function SignIn({ onFlight, en = false }: { onFlight: (flight: string) => void; en?: boolean }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -72,7 +72,11 @@ export default function SignIn({ onFlight }: { onFlight: (flight: string) => voi
       <p>Telefon · {account.phone.slice(0, 3)}•••••{account.phone.slice(-3)}</p>
       {account.flight && <p>Zbor · <strong>{account.flight}</strong></p>}
       <button type="button" disabled={busy} onClick={() => void action(async () => {
-        await auth.logout(); setAccount(null); setOtp(false); setCode(''); setPhone('');
+        try { await auth.logout(); }
+        finally {
+          clearSession(); setAccount(null); setPending(null); setOtp(false); setCode(''); setPhone('');
+          onFlight('');
+        }
       })}>Deconectare</button>
     </> : <>
       <button type="button" className="join-primary" disabled={busy || !!pending} onClick={() => {
@@ -88,6 +92,7 @@ export default function SignIn({ onFlight }: { onFlight: (flight: string) => voi
           } catch (error) { popup?.close(); throw error; }
         });
       }}>Conectează-te cu WhatsApp</button>
+      <p className="join-note">{en ? "Alerts arrive on WhatsApp after your first message." : "Alertele vin pe WhatsApp după primul mesaj."}</p>
       {pending && <div role="status"><p>Așteptăm mesajul…</p><p>Trimite <strong>LOGIN {pending.code}</strong> în WhatsApp.</p>
         <a href={pending.waLink} target="_blank" rel="noopener noreferrer">Deschide WhatsApp</a>
         <button type="button" onClick={() => setPending(null)}>Anulare</button></div>}

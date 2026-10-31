@@ -68,6 +68,9 @@ try {
   await page.getByRole('button', { name: 'Conectează-te cu WhatsApp' }).waitFor();
   assert.equal(await page.evaluate(() => localStorage.getItem('clarion.session')), null);
   assert.equal((await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${session}` } })).status, 401);
+  await page.reload();
+  await page.getByRole('button', { name: 'Conectează-te cu WhatsApp' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Deconectare' }).count(), 0);
   console.log('PASS: reverse login → signed webhook via curl → browser session → restored flight → logout');
 } finally {
   await browser?.close();
