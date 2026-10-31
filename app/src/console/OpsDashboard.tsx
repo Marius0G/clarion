@@ -8,11 +8,12 @@ import { desksForGroup, mapNodeId } from '../../../backend/src/mapIds'
 import type { SimSnapshot } from '../backend/sim'
 import { TerminalMap, type MapLayers, type ZoneView } from '../map/t2/TerminalMap'
 import { backend } from '../backend/config'
-import { points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
+import { levelNames, levels, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
+import { breach, bulletScale, executor, flightTime, noActionWait, orderZones, taskState, topMetrics, waitTarget, type TaskEvidence, type ZoneOrder } from './screen'
 import './ops.css'
 
 /** D16: the admin's single screen. Terminal map, people seen by the cameras, load per zone and the D12 decisions. */
-interface Sent { command: OpsCommand; key: string; label: string; status: CommandStatus; at: number }
+interface Sent { command: OpsCommand; key: string; label: string; status: CommandStatus; at: number; evidence?: TaskEvidence }
 const UNKNOWN = 'necunoscut'
 const number = (value: number | null) => value == null ? '—' : value.toLocaleString('ro-RO')
 const minutes = (value: number | null) => value == null ? '—' : `${Math.round(value)} min`
@@ -73,6 +74,11 @@ export function OpsDashboard() {
     if (active && window.matchMedia('(max-width: 1100px)').matches) panel.current?.scrollIntoView({ block: 'start' })
   }, [active])
   const [local, setLocal] = useState<Sent[]>([])
+  const order = useRef<ZoneOrder>()
+  const completed = useRef(new Set<string>())
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState<string[]>([])
+  const [rejections, setRejections] = useState<{ key: string; at: number; label: string }[]>([])
   const [busy, setBusy] = useState(false)
   const [floor, setFloor] = useState<Level>('U')
   const plan = dashboardPlan(sim)
@@ -97,25 +103,33 @@ export function OpsDashboard() {
   const shown = stats.filter(s => s.kind !== 'exit' && (GROUP.test(s.id) || CORE.includes(s.id) || s.staffed && s.lanes != null || s.state != null || s.people != null || s.closed || s.id === active))
   const targets = zone ? redirectTargets(shown, zone) : []
   const destination = targets.some(z => z.id === target) ? target : targets[0]?.id ?? ''
+  order.current = orderZones(shown, sim, Date.now(), order.current)
+  const ordered = order.current.ids.flatMap(id => { const z = byId.get(id); return z ? [z] : [] })
+  const metrics = topMetrics(stats, sim)
   const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind }] : [])
+  const perFloor = (l: Level) => pins.filter(p => p.level === l).length
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(z => z !== id) : [...current, id])
 
   async function send(command: OpsCommand) {
     setBusy(true)
+    const sourceId = command.type === 'evacuate' ? command.zones[0] : command.type === 'redirect' ? command.from : command.zone
+    const before = liveRow(sim, sourceId)
+    const evidence = before ? { before, simTime: sim?.simTime ?? null } : undefined
     const result = await sendOps(command)
     const label = commandLabel(command, plan)
     setLocal(current => [result.ok
-      ? { command, key: result.command.id, label, status: 'sent' as const, at: Date.parse(result.command.sentAt) || Date.now() }
+      ? { command, key: result.command.id, label, status: 'sent' as const, evidence, at: Date.parse(result.command.sentAt) || Date.now() }
       : { command, key: `local-${Date.now()}-${current.length}`, label, status: result.reason, at: Date.now() }, ...current].slice(0, 20))
     if (result.ok && command.type === 'evacuate') setSelected([])
     setBusy(false)
   }
 
-  const server = (sim?.ops ?? []).map(o => ({ command: o, key: o.id, label: commandLabel(o, plan), status: o.status as CommandStatus, at: Date.parse(o.sentAt) }))
+  const server = (sim?.ops ?? []).map(o => ({ evidence: local.find(l => l.key === o.id)?.evidence, command: o, key: o.id, label: commandLabel(o, plan), status: o.status as CommandStatus, at: Date.parse(o.sentAt) }))
   const known = new Set(server.map(s => s.key))
   const history = [...server, ...local.filter(l => !known.has(l.key))].sort((a, b) => b.at - a.at)
-  const commands = history.slice(0, 5)
+  const recommendation = ordered.find(z => z.line.action && !dismissed.includes(`${z.id}:${z.line.action.label}`) && !history.some(c => (c.status === 'sent' || c.status === 'acked') && !completed.current.has(c.key) && commandTouchesZone(c.command, z.id)))
 
+  const floorShort: Record<Level, string> = { G: 'P', U: '1', X: 'Ext' }
 
   const flightsN = sim?.flights?.length ?? 0
   /** Desk groups that share the selected hall (D8): one button each, so a single group can be acted on. */
@@ -141,13 +155,81 @@ export function OpsDashboard() {
     </div>
   }
 
-  return <div className="ops ops-maponly">
+  return <div className="ops ops-console">
+    <header className="ops-metrics" aria-label="Indicatori" data-testid="top-band">
+      {[
+        ['Așteptare maximă', minutes(metrics.worst)], ['Prima depășire', simClock(metrics.first).slice(0, 5)],
+        ['Sub țintă azi', '—', 'Istoric indisponibil'], ['Zboruri în pericol', '—', 'Poziție per zbor indisponibilă'],
+        ['Densitate maximă', metrics.density == null ? '—' : `${metrics.density.toFixed(1)} /m²`],
+      ].map(([label, value, note]) => <div key={label}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>)}
+    </header>
     <main className={`ops-stage${zone || settings ? ' has-panel' : ''}`}>
-      <div className="ops-canvas" data-testid="terminal-map">
-        <TerminalMap level={floor} views={views} selected={mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
+      <div className="ops-canvas" data-testid="terminal-map" onMouseOver={e => {
+        const id = (e.target as Element).closest('[data-testid^="zone-"]')?.getAttribute('data-testid')?.slice(5)
+        if (id) setHovered(id)
+      }} onMouseLeave={() => setHovered(null)}>
+        <TerminalMap level={floor} views={views} selected={hovered ? (GROUP.test(hovered) ? groupZone(hovered) : hovered) : mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
           focus={mapSelected} wheelZoom keys describe={describe} cameras={layers.cameras} base={layers.base}
           layers={{ dots: layers.dots, heat: layers.heat, labels: layers.labels, points: layers.points, pins: layers.pins }}
           markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
+      </div>
+
+      <aside className="ops-rail" aria-label="Operațiuni">
+        <section className="ops-recommendation" data-testid="advice">
+          <h2>Recomandare</h2>
+          {recommendation ? <>
+            <b>{recommendation.line.action!.label}</b><p>{recommendation.name}</p>
+            <p>{recommendation.line.numbers}</p>
+            {(() => { const advice = liveRow(sim, recommendation.id)?.advice; const a = typeof advice === 'object' ? advice : null; return <p>Cu acțiune: {minutes(a?.waitMin ?? null)} · Fără acțiune: {minutes(a?.waitMinIfNot ?? null)}</p> })()}
+            <p>Executant: Supervizor securitate</p>
+            <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, recommendation.id), delta: recommendation.line.action!.delta })}>Trimite</button>{' '}
+            <button onClick={() => { setDismissed(d => [...d, `${recommendation.id}:${recommendation.line.action!.label}`]); setRejections(r => [...r, { key: `rejected-${Date.now()}`, at: Date.now(), label: `${recommendation.name} · ${recommendation.line.action!.label}` }]) }}>Respinge</button>
+          </> : <p>Fără recomandări</p>}
+        </section>
+        <section aria-label="Alerte" data-testid="alerts-slot"><h2>Alerte</h2><p>Integrare D32</p>{/* TODO(D32): consume docs/contract/alerts.md when published; no assumed data shape. */}</section>
+        <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
+          {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
+            const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
+            const next = breach(z, row)
+            const priority = z.state === 'full' ? 'p2' : z.state === 'near' ? (target == null || z.waitMin != null && z.waitMin > target ? 'p2' : 'p3') : ''
+            return <button key={z.id} className={`ops-zone-row ${hovered === z.id || active === z.id ? 'selected' : ''}`} data-testid={`row-${z.id}`} onMouseEnter={() => { setHovered(z.id); setFloor(levelOf(z.id)) }} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(z.id)} onBlur={() => setHovered(null)} onClick={() => openZone(z.id)}>
+              <span>{z.name}</span><b className={priority}>{priority ? priority === 'p2' ? '▲ P2 ' : '● P3 ' : ''}{target == null ? row?.density != null ? `${row.density} /m²` : '—' : minutes(z.waitMin)}</b>
+              {scale && <svg className="ops-bullet" viewBox="-2 0 104 20" role="img" aria-label={`Acum ${minutes(z.waitMin)}, țintă ${target} min, +30 ${minutes(row?.forecast?.find(p => p.inMin === 30)?.waitMin ?? null)}, +60 ${minutes(row?.forecast?.find(p => p.inMin === 60)?.waitMin ?? null)}`}>
+                <rect className="normal-band" x="0" y="4" width={scale.target} height="12" />
+                {scale.wait != null && <rect x="0" y="7" width={scale.wait} height="6" />}
+                <path d={`M${scale.target},1v18`} />
+                {scale.next30 != null && <circle cx={scale.next30} cy="10" r="3" fill="none" />}
+                {scale.next60 != null && <circle cx={scale.next60} cy="10" r="3" />}
+              </svg>}
+              <small>{Number.isFinite(next) ? `> țintă ${next === 0 ? 'acum' : `la ${simClock(sim?.simTime == null ? null : sim.simTime + next * 60).slice(0, 5)}`}` : z.state == null ? 'Necunoscut' : 'Sub țintă'}</small>
+            </button>
+          })}
+          <details><summary>Zone OK · {ordered.filter(z => z.state === 'normal').length}</summary>{ordered.filter(z => z.state === 'normal').map(z => <button key={z.id} onMouseEnter={() => { setHovered(z.id); setFloor(levelOf(z.id)) }} onMouseLeave={() => setHovered(null)} onClick={() => openZone(z.id)}>{z.name} · {minutes(z.waitMin)}</button>)}</details>
+        </section>
+        <section aria-label="Zboruri"><h2>Zboruri</h2><table className="ops-fids"><thead><tr>{['Ora', 'Zbor', 'Destinație', 'Poartă', 'Status'].map(t => <th key={t}>{t}</th>)}</tr></thead><tbody>
+          {(sim?.flights ?? []).map(f => <tr key={f.flight}><td>{flightTime(f.std)}</td><td>{f.flight}</td><td>{f.destination}</td><td>{f.gate ?? '—'}</td><td className={f.status === 'delayed' || f.status === 'cancelled' ? 'p2' : ''}>{f.status === 'delayed' || f.status === 'cancelled' ? '▲ P2 ' : ''}{{ scheduled: 'Programat', boarding: 'Îmbarcare', delayed: 'Întârziat', cancelled: 'Anulat', departed: 'Plecat' }[f.status]}</td></tr>)}
+        </tbody></table></section>
+        <section aria-label="Jurnal" data-testid="journal"><h2>Jurnal</h2>
+          {[...rejections.map(r => ({ ...r, content: <><b>{r.label}</b><p>Respins · Recomandare</p></>, pending: false })), ...reports.map(r => ({ key: r.id, at: Date.parse(r.at), content: <><b>{r.text}</b><p>{r.node} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}</p></>, pending: r.status !== 'acked' })), ...history.map(c => {
+            const state = taskState(c.command, c.status, sim, c.evidence, completed.current.has(c.key) ? 'done' : undefined)
+            if (state === 'done') completed.current.add(c.key)
+            const id = c.command.type === 'evacuate' ? c.command.zones[0] : c.command.type === 'redirect' ? c.command.from : c.command.zone
+            return { key: c.key, at: c.at, pending: state === 'sent', content: <><b>{c.label}</b><p>{state === 'done' ? 'Făcut' : commandStatusLabels[state as CommandStatus]} · {executor(c.command)}</p><p>Camere: {minutes(liveRow(sim, id)?.waitMin ?? null)} · Fără acțiune: {minutes(noActionWait(c.evidence, sim?.simTime))}</p>{c.command.type === 'evacuate' && <fieldset><legend>Pași operaționali</legend>{['Alarmă', 'Anunț', 'Verificare', 'Numărătoare la adunare'].map(step => <label key={step}><input type="checkbox" />{step}</label>)}</fieldset>}</> }
+          })].sort((a, b) => b.at - a.at).map(item => <article key={item.key} className={item.pending ? 'unacknowledged' : ''}>{item.content}</article>)}
+          {!reports.length && !history.length && !rejections.length && <p>Nicio înregistrare</p>}
+          <div data-testid="alerts-log-slot">Alerte D32{/* TODO(D32): insert alert lifecycle entries from the agreed contract. */}</div>
+        </section>
+      </aside>
+      <div className="ops-corner">
+        <nav className="ops-floors" aria-label="Etaj">
+          {levels.map(l => <button key={l} aria-pressed={floor === l} aria-label={levelNames[l].ro} title={levelNames[l].ro} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
+            <span>{floorShort[l]}</span>{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
+          </button>)}
+        </nav>
+        <button className={`ops-gear${settings ? ' on' : ''}`} aria-label="Setări" aria-expanded={settings} title="Setări" onClick={() => { setSettings(o => !o); setActive(null) }} data-testid="settings-toggle">
+          <i className={`ops-health ${sim == null ? 'down' : unity && cameras ? 'up' : 'off'}`} aria-hidden="true" />
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+        </button>
       </div>
 
       {settings && <aside className="ops-settings" aria-label="Setări" data-testid="settings">
@@ -192,12 +274,6 @@ export function OpsDashboard() {
           </table>
           <p className="ops-note">Camere / simulare</p>
         </section>}
-        <section className="ops-commands" aria-label="Comenzi">
-          <h3>Comenzi</h3>
-          {commands.length ? <ol>{commands.map(c => <li key={c.key} data-testid="command">
-            <span>{c.label}</span><b className={`ops-cmd ops-cmd-${c.status}`}>{commandStatusLabels[c.status]}</b>
-          </li>)}</ol> : <p className="ops-empty">Nicio comandă</p>}
-        </section>
       </aside>}
 
       {zone && <section ref={panel} className={`ops-panel is-${zone.closed ? 'closed' : zone.state ?? 'unknown'}`} aria-label={`Decizii ${zone.name}`} data-testid="zone-panel">
