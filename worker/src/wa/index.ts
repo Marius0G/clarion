@@ -1,3 +1,4 @@
+import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
 //   wa:profile:<phone> -> Profile           wa:ctx:<phone> -> { history }        wa:last:<phone> -> ms of last inbound (24h window)
@@ -31,7 +32,7 @@ export function parseStaff(text: string) {
   return /^\s*STAFF\s+(\S{1,64})\s*$/i.exec(text)?.[1];
 }
 
-/** "START W6 3751 a8f2" -> { flight: "W6 3751", token: "a8f2" } (D4). The token is optional for now. */
+/** "START W6 3751 a8f2" -> { flight: "W6 3751", token: "a8f2" } (D4). Missing tokens bind as unverified. */
 export function parseStart(text: string) {
   const m = /^\s*START\s+([A-Z][A-Z0-9]|[0-9][A-Z])\s*-?\s*(\d{1,4})(?:\s+([A-Z0-9]{4,64}))?\s*$/i.exec(text);
   return m ? { flight: `${m[1]!.toUpperCase()} ${m[2]}`, token: m[3] } : undefined;
@@ -135,8 +136,10 @@ export class WhatsAppAgent {
         await remember(m.text, [text]);
         return;
       }
-      // The token comes from the Wallet card (D4); accepted as-is until Wallet issues and stores tokens.
-      await save({ flight: flight.flight, airline: flight.airline, token: start.token, verified: Boolean(start.token) });
+      const pending = await consumeJoin(this.store, start.token, flight.flight);
+      if (!pending) console.warn(JSON.stringify({ wa: 'unverified-start', from: masked(m.phone), flight: flight.flight }));
+      await save({ flight: flight.flight, airline: flight.airline, token: start.token, verified: Boolean(pending),
+        ...(pending?.name && { name: pending.name }) });
       const clock = this.view.clock();
       const text = `Gata ✈️ Te-am conectat la zborul ${flight.flight} spre ${flight.destination}. Poarta ${gateName(flight.gate)} se închide la ${clockText(closeAt(flight))} (${clockLabel(clock)}).`;
       const ask = 'Ai bagaj de cală? Așa îți spun exact când să fii la aeroport.';
@@ -144,7 +147,7 @@ export class WhatsAppAgent {
       await this.wa.sendText(m.phone, text);
       await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
       await this.wa.sendButtons(m.phone, ask, BAG_BUTTONS);
-      await remember(m.text, [text, ask]);
+      await remember(`START ${flight.flight}`, [text, ask]);
       return;
     }
     // A tap on the bag question: save it, then ask the agent the question it was for.

@@ -37,9 +37,16 @@ const texts = () => outbound.filter(o => o.url.includes('graph.facebook.com') &&
 
 describe('WhatsApp agent in the Tower', () => {
   it('binds START, answers through Claude, and answers a retried wamid once', async () => {
-    expect((await post(message('wamid.a', 'START W6 3751 a8f2'))).status).toBe(200);
+    const joined = await mf.dispatchFetch('https://worker.example/api/join', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flight: 'W6 3751' }),
+    }).then(r => r.json()) as { token: string };
+    expect((await post(message('wamid.a', `START W6 3751 ${joined.token}`))).status).toBe(200);
     await expect.poll(() => texts().some(t => t.includes('W6 3751 spre Londra Luton')), { timeout: 10000 }).toBe(true);
     expect(outbound.some(o => o.body?.type === 'interactive')).toBe(true);
+    // The public endpoint and signed webhook share the same durable token store.
+    expect((await mf.dispatchFetch('https://worker.example/api/wallet/pass', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ joinToken: joined.token }),
+    })).status).toBe(400);
 
     claudeReplies.push({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Fii la intrarea în terminal la 08:25.' }] });
     const q = message('wamid.b', 'cand sa vin?');

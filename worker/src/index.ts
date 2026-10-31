@@ -11,12 +11,15 @@ import { createStoredEngine } from './storage.js';
 import { createSms, createWallet, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
 import type { Wallet, WalletStore } from '../../backend/src/wallet.js';
 import { WhatsAppAgent, type WaEnv } from './wa/index.js';
+import { JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin } from './join.js';
+import { findFlight } from './wa/flights.js';
 import { airportView } from './wa/tower.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
 
 export interface Env extends Secrets, WaEnv {
   TOWER: DurableObjectNamespace<Tower>;
   DEMO_TOKEN?: string;
+  WHATSAPP_NUMBER?: string;
   SIM_SPEED?: string; SIM_SEED?: string; AUTO_CONFIRM?: string;
   WAVES_ENABLED?: string; WAVE_COUNT?: string; WAVE_MINUTES?: string;
 }
@@ -245,8 +248,28 @@ export class Tower extends DurableObject<Env> {
           }
         }
         if (request.method === 'POST') {
+          if (path === '/api/join') {
+            const input = JSON.parse(await bodyText(request, 1024));
+            if (typeof input?.flight !== 'string' || input.flight.length > 20 ||
+              (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 80)))
+              return json({ error: 'Flight and optional first name required' }, 400);
+            const view = airportView(this.engine.sim, () => this.twins().length > 0);
+            const flight = findFlight(view.flights(), input.flight);
+            if (!flight) return json({ error: 'Unknown flight' }, 404);
+            const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+            const pending: PendingJoin = { flight: flight.flight, expiresAt: Date.now() + JOIN_TTL_MS,
+              ...(input.name?.trim() && { name: input.name.trim().split(/\s+/)[0] }) };
+            await this.ctx.storage.put(joinKey(token), pending);
+            return json({ token, waLink: waLink(flight.flight, token, this.env.WHATSAPP_NUMBER) }, 201);
+          }
           if (path === '/api/wallet/pass') {
             const input = JSON.parse(await bodyText(request));
+            if (input?.joinToken !== undefined) {
+              const pending = await pendingJoin(this.ctx.storage, input.joinToken);
+              if (!pending) return json({ error: 'Active join token required' }, 400);
+              return json(await this.wallet.joinPass(input.joinToken, pending.flight,
+                new Date(pending.expiresAt).toISOString(), waLink(pending.flight, input.joinToken, this.env.WHATSAPP_NUMBER)));
+            }
             return json(await this.wallet.pass(this.engine, input?.subscriptionId));
           }
           if (path === '/webhooks/telegram') {

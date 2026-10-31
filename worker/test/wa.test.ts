@@ -1,3 +1,4 @@
+import { JOIN_TTL_MS, joinKey } from '../src/join.js';
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validWhatsAppSignature } from '../src/channels.js';
@@ -182,9 +183,11 @@ describe('WhatsAppAgent turn', () => {
   it('START binds phone to flight, opens the 24h window and asks about the bag', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const { agent, store, meta } = harness(live);
-    await agent.inbound(inbound('START W6 3751 a8f2', {}, 'wamid.start'));
+    const token = 'a'.repeat(48);
+    await store.put(joinKey(token), { flight: 'W6 3751', expiresAt: Date.now() + JOIN_TTL_MS });
+    await agent.inbound(inbound(`START W6 3751 ${token}`, {}, 'wamid.start'));
     expect(await store.get('wa:profile:+40712345678')).toMatchObject({
-      phone: '+40712345678', flight: 'W6 3751', airline: 'W6', role: 'passenger', token: 'a8f2', verified: true, name: 'Ana', lastInboundAt: 1793440000000,
+      phone: '+40712345678', flight: 'W6 3751', airline: 'W6', role: 'passenger', verified: true, name: 'Ana', lastInboundAt: 1793440000000,
     });
     expect(await store.get('wa:last:+40712345678')).toBe(1793440000000);
     expect(await agent.withinWindow('+40712345678', 1793440000000 + 3600000)).toBe(true);
@@ -193,10 +196,30 @@ describe('WhatsAppAgent turn', () => {
     expect(sent[0]).toMatchObject({ status: 'read', message_id: 'wamid.start', typing_indicator: { type: 'text' } });
     expect(sent.find(b => b.type === 'text')?.text.body).toContain('W6 3751 spre Londra Luton');
     expect(sent.find(b => b.type === 'interactive')?.interactive.action.buttons.map((b: any) => b.reply.id)).toEqual(['bag:yes', 'bag:no']);
+    expect(await store.get(joinKey(token))).toBeUndefined();
+    await agent.inbound(inbound(`START W6 3751 ${token}`));
+    expect(await agent.profile('+40712345678')).toMatchObject({ flight: 'W6 3751', verified: false });
     // An unknown flight does not bind.
     const other = harness(live);
     await other.agent.inbound(inbound('START XX 9999 abcd'));
     expect((await other.store.get<Profile>('wa:profile:+40712345678'))?.flight).toBeUndefined();
+  });
+
+  it('binds unknown, expired, missing and mismatched tokens as unverified without consuming another flight token', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { agent, store } = harness(live);
+    for (const scenario of ['unknown', 'expired', 'mismatch', 'missing']) {
+      const token = 'b'.repeat(48);
+      if (scenario !== 'unknown') await store.put(joinKey(token), {
+        flight: scenario === 'mismatch' ? 'W6 3401' : 'W6 3751',
+        expiresAt: Date.now() + (scenario === 'expired' ? -1 : JOIN_TTL_MS),
+      });
+      await agent.inbound(inbound(`START W6 3751${scenario === 'missing' ? '' : ` ${token}`}`));
+      expect(await agent.profile('+40712345678')).toMatchObject({ flight: 'W6 3751', verified: false });
+      if (scenario === 'mismatch') expect(await store.get(joinKey(token))).toBeDefined();
+    }
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('b'.repeat(48));
   });
 
   it('runs the Claude tool loop and sends the bubbles as reaction + texts', async () => {
