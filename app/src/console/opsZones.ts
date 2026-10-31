@@ -67,7 +67,7 @@ export function zoneLine(id: string, row: FlowRow | null, lanes: number | null, 
 export function liveRow(sim: SimSnapshot | null, zone: string): FlowRow | null {
   if (!sim || !sim.vision) return null
   const row = flowRow(sim.flow ?? {}, zone) ?? null
-  return observed(row) ? row : null
+  return observed(row) && row.source !== 'twin' ? row : null
 }
 
 /** Dots from the cameras (crowd.positions) while a feed is online. */
