@@ -101,22 +101,27 @@ Unity → backend: `flight.update { flights: [...] }`, trimis la conectare și a
 - `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). Orele sunt în ora simulării (D13).
 - La `delayed` sau `cancelled`, backend-ul trimite automat mesaj pe WhatsApp pasagerilor acelui zbor (D10).
 
+### D15. WhatsApp pentru pasageri: tool-urile agentului
+Agentul din Moni (D2) primește cinci tool-uri, toate citite din backend:
+- `myFlight`: zbor, poartă, status, ora de închidere a porții (D14).
+- `whenToArrive`: „fii la intrare la 14:20”, cu calculul pe etape (D5).
+- `queues`: cozile de acum și prognoza, inclusiv check-in-ul companiei lui (D5b, D8).
+- `routeTo`: rută spre poartă, ghișeu sau ieșire, ca imagine plus link `/m/<token>` (D6b, D7).
+- `reportIssue`: doar pentru rolul `staff` (D11).
+
+Mesaje trimise automat: confirmarea după scanarea boarding pass-ului; „e timpul să pleci”, la ora de intrare minus timpul de drum pe care pasagerul îl setează o dată (implicit 40 min, opțional); schimbările de zbor; deciziile adminului care îl afectează (rută nouă, evacuare). Agentul răspunde doar despre aeroport și zborul lui.
+
+## Pentru Marius: de completat de Claude-ul lui
+
+Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu formele exacte și exemple JSON reale exportate din Unity, apoi face push. Ce e scris mai sus e contractul minim, iar Marius îl poate extinde fără să-l rupă. Ce trebuie completat:
+
+1. **`terminal.json` (D7):** schema exactă și fișierul în `docs/contract/terminal.json`. Id-uri stabile pentru zone, noduri (intrări, ghișee pe companie, securitate, bag drop, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`. Coordonate în metri, văzut de sus, cu originea precizată.
+2. **`flow.report` (D8, D5b):** zonele pe companie (`check_in:<IATA>`, `bag_drop:<IATA>`), lista companiilor din orar și câmpul `forecast: [{ inMin, waitMin }]` cu orizonturile 30, 60, 90, 120. Cum e calculată prognoza, pe scurt.
+3. **`flight.update` (D14):** un exemplu complet cu orarul folosit în demo.
+4. **`ops.command` / `ops.ack` (D12):** ce efect are fiecare din cele patru comenzi în simulare. Pentru `staff`: câți pasageri/minut procesează un om, pe zonă. Pentru `redirect`: ce procent e mutat. Pentru `evacuate`: cum primesc agenții ruta din backend.
+5. **Agenții cu telefon (D9):** mesajul cu etapa (`public`, `airside`, `gate`) și nodul curent, legat de `agentId` și de telefonul din WhatsApp. Ritmul de trimitere.
+6. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` folosită în demo.
+7. **Rutele către Unity (D7):** forma mesajului prin care backend-ul îi trimite unui agent ruta (listă de noduri).
+
 ## De stabilit în continuare
 - La ce folosește extensia de browser (D3).
-- Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
-- Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
-
-### D13. Un singur ceas: ora simulării
-Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTime` din `sim.status`. Dashboard-ul, pagina web și WhatsApp afișează ora simulării, etichetată „ora simulării”. Toate zborurile, prognozele și orele trimise pasagerilor („fii la intrare la 14:20”, „poarta se închide la 15:05”) sunt în ora simulării. Ceasul real nu se folosește nicăieri în demo.
-
-### D14. Contract: orarul de zboruri din Unity
-Unity → backend: `flight.update { flights: [...] }`, trimis la conectare și apoi la fiecare schimbare. Orarul îl face Marius. Fiecare zbor are:
-`{ flight: "W6 3751", airline: "W6", destination, std, gate, checkInDesks: [], gateCloseAt, status, delayMin, pax }`
-- `status`: `scheduled` | `boarding` | `delayed` | `cancelled` | `departed`.
-- `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). Orele sunt în ora simulării (D13).
-- La `delayed` sau `cancelled`, backend-ul trimite automat mesaj pe WhatsApp pasagerilor acelui zbor (D10).
-
-## De stabilit în continuare
-- La ce folosește extensia de browser (D3).
-- Forma exactă a `terminal.json` și a poziției sau etapei agenților cu telefon.
-- Ce scrie pasagerul pe WhatsApp și ce poate întreba agentul (tool-urile Clarion).
