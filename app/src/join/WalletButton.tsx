@@ -1,15 +1,15 @@
 import { useRef, useState } from 'react';
 import { backend } from '../backend/config';
 
-export interface WalletButtonProps { subscriptionId: string }
+export interface WalletButtonProps { subscriptionId?: string; joinToken?: string }
 
-export default function WalletButton({ subscriptionId }: WalletButtonProps) {
+export default function WalletButton({ subscriptionId, joinToken }: WalletButtonProps) {
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [demo, setDemo] = useState(false);
   async function save() {
-    if (busy.current || !subscriptionId) return;
+    if (busy.current || (!subscriptionId && !joinToken)) return;
     busy.current = true;
     setPending(true);
     setError('');
@@ -19,7 +19,7 @@ export default function WalletButton({ subscriptionId }: WalletButtonProps) {
     try {
       const response = await fetch(`${backend.http}/api/wallet/pass`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId }), signal: AbortSignal.timeout(15000),
+        body: JSON.stringify(joinToken ? { joinToken } : { subscriptionId }), signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error();
       const result: unknown = await response.json();
@@ -46,11 +46,11 @@ export default function WalletButton({ subscriptionId }: WalletButtonProps) {
       .clarion-wallet button:hover:not(:disabled) { opacity: .86; }
       .clarion-wallet p { font: 400 13px/1.5 Geist, sans-serif; color: #303030; margin: 12px 0 0; }
     `}</style>
-    <button type="button" disabled={pending || !subscriptionId} onClick={() => void save()}
+    <button type="button" disabled={pending || (!subscriptionId && !joinToken)} onClick={() => void save()}
       aria-busy={pending} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         gap: 12, minHeight: 48, padding: '12px 20px', border: '1px solid #747775', borderRadius: 24,
         background: '#000', color: '#fff', font: '500 16px/24px Geist, sans-serif',
-        cursor: pending ? 'wait' : 'pointer', opacity: pending || !subscriptionId ? .6 : 1 }}>
+        cursor: pending ? 'wait' : 'pointer', opacity: pending || (!subscriptionId && !joinToken) ? .6 : 1 }}>
       <svg width="28" height="24" viewBox="0 0 28 24" aria-hidden="true" focusable="false">
         <rect x="2" y="1" width="17" height="16" rx="3" fill="#4285f4" />
         <rect x="7" y="4" width="17" height="16" rx="3" fill="#34a853" />

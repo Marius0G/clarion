@@ -89,7 +89,7 @@ export default function Join() {
   const [loading, setLoading] = useState(false);
   const [stateError, setStateError] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{ telegramLink?: string; subscriptionId?: string } | null>(
+  const [success, setSuccess] = useState<{ telegramLink?: string; subscriptionId?: string; token?: string; waLink?: string } | null>(
     null,
   );
   const [shareStatus, setShareStatus] = useState("");
@@ -119,17 +119,9 @@ export default function Join() {
       });
     return () => controller.abort();
   }, []);
-  const whatsappRole: Record<string, string> = { passenger_home: "PASAGER", relative_arrivals: "ASTEPTARE", taxi: "TAXI", staff: "PERSONAL", isu_smurd: "ISU_SMURD" };
-  const whatsappLink = `https://wa.me/40700000000?text=${encodeURIComponent(`CLARION ${whatsappRole[role] || role.toUpperCase()}${flight.trim() ? ` ${flight.trim().toUpperCase().replace(/\s+/g, "")}` : ""}`)}`;
   async function subscribe(event: React.FormEvent) {
     event.preventDefault();
     if (!role || !consent || submitting.current || !enabled[channel]) return;
-    if (channel === "whatsapp") {
-      const tab = window.open(whatsappLink, "_blank", "noopener,noreferrer");
-      if (tab) tab.opener = null;
-      setSuccess({});
-      return;
-    }
     submitting.current = true;
     setLoading(true);
     setError("");
@@ -138,6 +130,21 @@ export default function Join() {
       channel === "telegram" ? window.open("about:blank", "_blank") : null;
     if (telegramTab) telegramTab.opener = null;
     try {
+      if (channel === "whatsapp") {
+        const response = await fetch(`${backend}/api/join`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flight: flight.trim().toUpperCase() }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (response.status === 404) throw new Error("unknown-flight");
+        if (!response.ok) throw new Error("Join failed");
+        const result = await response.json();
+        const target = new URL(result.waLink);
+        if (target.protocol !== "https:" || target.hostname !== "wa.me" || typeof result.token !== "string")
+          throw new Error("Invalid join response");
+        setSuccess({ token: result.token, waLink: target.href });
+        return;
+      }
       const response = await fetch(`${backend}/api/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -164,10 +171,12 @@ export default function Join() {
       setSuccess({ telegramLink: link, subscriptionId: result.subscriptionId });
       if (link && telegramTab) telegramTab.location.replace(link);
       else telegramTab?.close();
-    } catch {
+    } catch (cause) {
       telegramTab?.close();
       setError(
-        en
+        cause instanceof Error && cause.message === "unknown-flight"
+          ? "Zborul nu este în orarul de azi. Verifică numărul și încearcă din nou."
+          : en
           ? "Could not subscribe. Please try again."
           : "Abonarea nu a reușit. Încearcă din nou.",
       );
@@ -239,7 +248,7 @@ export default function Join() {
                     "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.",
                   )}
             </p>
-            {channel === "whatsapp" && <a className="join-primary" href={whatsappLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>}
+            {channel === "whatsapp" && <a className="join-primary" href={success.waLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>}
             {success.telegramLink ? (
               <a className="join-primary" href={success.telegramLink}>
                 {t("Deschide Telegram", "Open Telegram")}
@@ -254,7 +263,7 @@ export default function Join() {
                 </p>
               )
             )}
-            {success.subscriptionId && <WalletButton subscriptionId={success.subscriptionId} />}
+            {(success.subscriptionId || success.token) && <WalletButton subscriptionId={success.subscriptionId} joinToken={success.token} />}
             {role.startsWith("passenger") && (
               <button className="join-share" onClick={() => void share()}>
                 {t(
@@ -320,12 +329,13 @@ export default function Join() {
               <div className="join-flight">
                 <label htmlFor="join-flight">
                   {t("Număr zbor", "Flight number")}{" "}
-                  <small>{t("opțional", "optional")}</small>
+                  <small>{channel === "whatsapp" ? t("obligatoriu", "required") : t("opțional", "optional")}</small>
                 </label>
                 <input
                   id="join-flight"
                   list="join-flights"
                   placeholder="W6 3412"
+                  required={channel === "whatsapp"}
                   maxLength={12}
                   pattern="[A-Za-z0-9 ]{2,12}"
                   value={flight}
@@ -347,8 +357,8 @@ export default function Join() {
                 {stateError && (
                   <p className="join-note">
                     {t(
-                      "Orarul nu este disponibil. Poți scrie zborul sau continua fără el.",
-                      "Schedule unavailable. Enter a flight or continue without one.",
+                      "Orarul nu este disponibil. Scrie numărul zborului.",
+                      "Schedule unavailable. Enter your flight number.",
                     )}
                   </p>
                 )}
@@ -421,8 +431,8 @@ export default function Join() {
                   .{" "}
                   <span>
                     {t(
-                      "Din boarding pass păstrăm doar zborul, data și ruta. Datele abonării se șterg la 48 h după zbor.",
-                      "From the boarding pass we keep only flight, date and route. Subscription data is deleted 48 h after the flight.",
+                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem doar zborul. Datele abonării se șterg la 48 h după zbor.",
+                      "The boarding pass is read on your device. Only the flight is sent for WhatsApp. Subscription data is deleted 48 h after the flight.",
                     )}
                   </span>
                 </span>
