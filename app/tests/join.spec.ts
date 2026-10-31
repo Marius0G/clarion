@@ -64,6 +64,20 @@ test("jury role, consent, subscribe, Telegram and passenger share", async ({
   await expect(
     page.getByRole("link", { name: "Deschide Telegram" }),
   ).toBeVisible();
+  let walletBody: unknown;
+  await page.route("**/api/wallet/pass", async (route) => {
+    walletBody = route.request().postDataJSON();
+    await route.fulfill({ json: { saveUrl: "https://pay.google.com/gp/v/save/test-jwt", demo: false } });
+  });
+  await context.route("https://pay.google.com/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<h1>Wallet</h1>" }),
+  );
+  const walletTab = page.waitForEvent("popup");
+  await page.getByRole("button", { name: /Adaugă în Google Wallet/ }).click();
+  const wallet = await walletTab;
+  await expect(wallet).toHaveURL("https://pay.google.com/gp/v/save/test-jwt");
+  expect(walletBody).toEqual({ subscriptionId: "jury-1" });
+  await wallet.close();
   await page
     .getByRole("button", { name: "Trimite celui care te așteaptă" })
     .click();

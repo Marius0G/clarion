@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import WalletButton from "./WalletButton";
 import QRCode from "qrcode";
 import Scanner from "./Scanner";
 import type { BoardingFlight } from "./bcbp";
@@ -88,7 +89,7 @@ export default function Join() {
   const [loading, setLoading] = useState(false);
   const [stateError, setStateError] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{ telegramLink?: string } | null>(
+  const [success, setSuccess] = useState<{ telegramLink?: string; subscriptionId?: string } | null>(
     null,
   );
   const [shareStatus, setShareStatus] = useState("");
@@ -160,7 +161,7 @@ export default function Join() {
           throw new Error("Invalid Telegram link");
         link = target.href;
       }
-      setSuccess({ telegramLink: link });
+      setSuccess({ telegramLink: link, subscriptionId: result.subscriptionId });
       if (link && telegramTab) telegramTab.location.replace(link);
       else telegramTab?.close();
     } catch {
@@ -253,6 +254,7 @@ export default function Join() {
                 </p>
               )
             )}
+            {success.subscriptionId && <WalletButton subscriptionId={success.subscriptionId} />}
             {role.startsWith("passenger") && (
               <button className="join-share" onClick={() => void share()}>
                 {t(
