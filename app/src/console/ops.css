@@ -161,3 +161,64 @@
   .ops-links { flex-wrap: wrap; gap: 6px 10px; }
   .ops-legend { flex-wrap: wrap; }
 }
+
+/* Map only: the building fills the screen; floors and settings in one corner, panels appear on demand. */
+.ops-maponly .ops-stage { grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: ". corner" ". panel" "evac evac"; }
+@media (min-width: 1101px) {
+  .ops-maponly .ops-stage > .ops-canvas { padding: 24px 84px 24px 24px; }
+  .ops-maponly .ops-stage.has-panel > .ops-canvas { padding-right: 368px; }
+}
+.ops-maponly .ops-canvas .t2-zoom { right: 14px; bottom: 14px; }
+.ops-corner { grid-area: corner; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.ops-corner .ops-floors { grid-area: auto; }
+.ops .ops-gear { position: relative; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border-radius: 12px; border: 0; background: var(--asphalt); color: #e5e7eb; box-shadow: 0 8px 24px rgba(28, 32, 38, .18); }
+.ops .ops-gear:hover:not(:disabled), .ops .ops-gear.on { background: #000; }
+.ops-gear svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.ops-gear svg circle { fill: var(--asphalt); }
+.ops-health { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; box-shadow: 0 0 0 2px var(--asphalt); }
+.ops-health.up { background: #4ade80; } .ops-health.down { background: #f87171; } .ops-health.off { background: #fbbf24; }
+
+.ops-settings { grid-area: panel; align-self: start; max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--paper); border-radius: 12px; box-shadow: 0 14px 40px rgba(28, 32, 38, .2); animation: ops-in .18s ease-out; z-index: 2 !important; }
+.ops-settings h2 { font-size: 17px; font-weight: 800; }
+.ops-settings h3 { margin: 0 0 6px; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.ops-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ops-toggle { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; font-size: 13px; }
+.ops-toggle:has(input:checked) { border-color: var(--o-accent); background: #eff5ff; }
+.ops-toggle input { margin: 0; accent-color: var(--o-accent); }
+.ops-seg { display: inline-flex; border: 1px solid #cfd4da; border-radius: 8px; overflow: hidden; }
+.ops .ops-seg button { border: 0; border-radius: 0; border-right: 1px solid #cfd4da; padding: 6px 14px; }
+.ops .ops-seg button:last-child { border-right: 0; }
+.ops .ops-seg button.on { background: var(--asphalt); color: #fff; }
+.ops-integrations { display: grid; gap: 4px; font-size: 13px; }
+.ops-integrations div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--rule); }
+.ops-integrations dt { color: var(--ink-2); }
+.ops-integrations dd { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-integrations .ops-link { color: var(--ink); }
+.ops-backend { display: flex; gap: 6px; margin-top: 8px; }
+.ops-backend input { flex: 1; min-width: 0; border: 1px solid #cfd4da; border-radius: 6px; padding: 7px 8px; font: 13px var(--o-font); background: var(--paper); color: var(--ink); }
+.ops-settings .ops-accuracy { flex: none; padding: 0; box-shadow: none; background: none; margin: 0; }
+.ops-settings .ops-accuracy td { padding-left: 12px; }
+.ops-settings .ops-commands ol { flex-direction: column; gap: 4px; }
+.ops-settings .ops-commands li { justify-content: space-between; }
+
+.ops-maponly .ops-evac { grid-area: evac; justify-self: center; padding: 6px 8px; border-radius: 12px; background: var(--paper); box-shadow: 0 10px 30px rgba(28, 32, 38, .2), inset 0 0 0 2px var(--full); }
+.ops-maponly .ops-panel .ops-figures { margin: 0; }
+.ops-maponly .ops-panel .ops-zone-line { padding: 0; }
+
+/* Hover card */
+.ops-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ops-card-head b { font-size: 13px; }
+.ops-card-state { font-size: 11px; font-weight: 700; color: var(--ink-3, #8b929c); white-space: nowrap; }
+.ops-card-state.is-normal { color: #2f9e5b; } .ops-card-state.is-near { color: #b26f00; } .ops-card-state.is-full { color: #d9443b; } .ops-card-state.is-closed { color: #5b636e; }
+.ops-card-figs { display: flex; gap: 14px; margin: 6px 0 0; }
+.ops-card-figs dt { font-size: 10px; color: #8b929c; } .ops-card-figs dd { margin: 0; font-size: 15px; font-weight: 700; }
+.ops-card-line { margin: 4px 0 0; color: #5b636e; }
+.ops-card-line b { color: #1c2026; }
+.ops-card-hint { margin: 6px 0 0; font-size: 11px; color: #8b929c; }
+
+@media (max-width: 1100px) {
+  .ops-maponly .ops-stage > .ops-canvas { height: 70vh; }
+  .ops-corner { order: 1; flex-direction: row; align-self: flex-end; }
+  .ops-settings { order: 3; }
+}
+.ops-groups { display: flex; } .ops .ops-groups button { flex: 1; }
