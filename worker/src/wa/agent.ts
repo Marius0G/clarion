@@ -307,7 +307,7 @@ export function paceReactions(bubbles: string[], history: HistoryEntry[], roll =
 export interface ReplyInput { env: WaEnv; fetcher: Fetch; profile: Profile; clock: Clock; history: HistoryEntry[]; memory?: PassengerContext; text: string; tools: Tools }
 
 /** Clarion's answer to one message, as bubbles. @returns used = tool names called, for the log. */
-export async function reply({ env, fetcher, profile, clock, history, memory, text, tools }: ReplyInput): Promise<{ bubbles: string[]; used: string[] }> {
+export async function reply({ env, fetcher, profile, clock, history, memory, text, tools, onError }: ReplyInput & { onError?: (error: string) => Promise<void> }): Promise<{ bubbles: string[]; used: string[] }> {
   const used: string[] = [];
   let urgent = urgentText(text) || (profile.role === 'staff' && staffIncident(text));
   const trackedTools: Tools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
@@ -331,6 +331,7 @@ export async function reply({ env, fetcher, profile, clock, history, memory, tex
     }
     return finish(bubbles);
   } catch (e) {
+    await onError?.(String((e as Error)?.message ?? e));
     console.error(JSON.stringify({ wa: 'agent-error', error: String((e as Error)?.message ?? e).slice(0, 200) }));
     return finish([say(profile.lang, 'fallback')]);
   }

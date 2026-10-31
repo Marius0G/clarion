@@ -1,3 +1,4 @@
+import { metaExplanation, type Observe } from './events.js';
 // WhatsApp Cloud API transport, ported from Moni src/whatsapp.js + src/contracts.js (SPEC-v2 D2).
 // Without WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID every send is a dry-run log line. Logs never contain message text.
 
@@ -133,12 +134,18 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** Sends to the Graph API. Never throws. */
 export class WhatsAppClient {
-  constructor(private env: WaEnv, private fetcher: Fetch = (i, init) => fetch(i, init), readonly pause = BUBBLE_PAUSE_MS) {}
+  constructor(private env: WaEnv, private fetcher: Fetch = (i, init) => fetch(i, init), readonly pause = BUBBLE_PAUSE_MS, private observe?: Observe) {}
   get live() { return Boolean(this.token && this.phoneId); }
   get phoneId() { return this.env.WHATSAPP_PHONE_NUMBER_ID ?? this.env.WA_PHONE_NUMBER_ID; }
   private get token() { return this.env.WHATSAPP_TOKEN ?? this.env.WA_TOKEN; }
 
   async graph(body: Record<string, unknown>): Promise<{ ok: boolean; dryRun?: boolean; status?: number; code?: unknown }> {
+    const result = await this.deliver(body);
+    await this.observe?.({ kind: result.ok ? 'outbound' : 'send-failure', phone: body.to ? String(body.to) : undefined,
+      type: String(body.type ?? body.status), ...result, ...(!result.ok && { explanation: metaExplanation(result.code) }) });
+    return result;
+  }
+  private async deliver(body: Record<string, unknown>): Promise<{ ok: boolean; dryRun?: boolean; status?: number; code?: unknown }> {
     const type = body.type ?? body.status;
     if (!this.live) {
       console.log(JSON.stringify({ wa: 'dry-run', type, to: body.to ? masked(String(body.to)) : undefined }));

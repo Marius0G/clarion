@@ -1,3 +1,4 @@
+import { metaExplanation, type Observe } from './events.js';
 import { extractFacts, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
@@ -46,10 +47,17 @@ export class WhatsAppAgent {
   readonly reports: Reports;
   private chains = new Map<string, Promise<void>>();
   private fetcher: Fetch;
+  private observe?: Observe;
+  private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
-    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number } = {}) {
+    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe } = {}) {
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
-    this.wa = new WhatsAppClient(env, this.fetcher, opts.pause);
+    this.observe = opts.observe;
+    this.wa = new WhatsAppClient(env, this.fetcher, opts.pause, async event => {
+      const trace = event.phone && this.traces.get(event.phone.replace(/^\+/, ''));
+      if (trace && (event.type === 'text' || event.type === 'interactive')) trace.bubbles++;
+      await this.observe?.(event);
+    });
     this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
     this.reports = new Reports(store);
   }
@@ -71,9 +79,12 @@ export class WhatsAppAgent {
    * answered one at a time, in order; one failing never silences the rest. Never throws.
    */
   async inbound(body: unknown): Promise<void> {
-    for (const st of failedStatuses(body)) console.error(JSON.stringify({ wa: 'delivery-failed', code: st.code, title: st.title, to: st.phone && masked(st.phone) }));
+    for (const st of failedStatuses(body)) {
+      console.error(JSON.stringify({ wa: 'delivery-failed', code: st.code, title: st.title, to: st.phone && masked(st.phone) }));
+      await this.observe?.({ kind: 'send-failure', phone: st.phone ?? undefined, code: st.code, explanation: metaExplanation(st.code) });
+    }
     const msgs = parseWebhook(body, this.wa.phoneId).filter(m => allowed(this.env, m.phone));
-    await Promise.all(msgs.map(m => this.enqueue(m)));
+    await Promise.all(msgs.map(m => this.receive(m)));
   }
 
   /** True while a free-form message may be sent to this phone (24h after their last message). */
@@ -83,13 +94,25 @@ export class WhatsAppAgent {
   }
   profile(phone: string) { return this.store.get<Profile>(`wa:profile:${phone}`); }
 
-  private enqueue(m: InboundMessage) {
+  /** Parsed webhook messages and isolated lab messages enter the same serialized turn. */
+  receive(m: InboundMessage) {
     const next = (this.chains.get(m.phone) ?? Promise.resolve())
-      .then(() => this.turn(m))
-      .catch(async e => {
-        console.error(JSON.stringify({ wa: 'turn-crashed', id: m.id, error: String((e as Error)?.message ?? e).slice(0, 200) }));
-        await this.wa.sendText(m.phone, say((await this.profile(m.phone))?.lang, 'fallback')).catch(() => {});
-      });
+      .then(async () => {
+        const started = Date.now();
+        const trace = { tools: [] as string[], bubbles: 0 };
+        this.traces.set(m.phone.replace(/^\+/, ''), trace);
+        await this.observe?.({ kind: 'inbound', phone: m.phone, type: m.type, text: redact(m.text ?? '') });
+        try { await this.turn(m); }
+        catch (e) {
+          const error = String((e as Error)?.message ?? e);
+          await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error });
+          console.error(JSON.stringify({ wa: 'turn-crashed', id: m.id, error: error.slice(0, 200) }));
+          await this.wa.sendText(m.phone, say((await this.profile(m.phone))?.lang, 'fallback')).catch(() => {});
+        } finally {
+          this.traces.delete(m.phone.replace(/^\+/, ''));
+          await this.observe?.({ kind: 'turn', phone: m.phone, ...trace, ms: Date.now() - started });
+        }
+      }).catch(e => { console.error('WhatsApp turn failed', String(e)); });
     this.chains.set(m.phone, next);
     void next.finally(() => { if (this.chains.get(m.phone) === next) this.chains.delete(m.phone); });
     return next;
@@ -202,13 +225,14 @@ export class WhatsAppAgent {
       } });
     let waitEstimate: Profile['lastWaitEstimate'];
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
+      this.traces.get(m.phone.replace(/^\+/, ''))?.tools.push(name);
       const result = await fn(input);
       if (name === 'whenToArrive' && typeof (result as any)?.totalMin === 'number') waitEstimate = { at: clockText(this.view.clock().now), totalMin: (result as any).totalMin };
       const note = lookupNote(name, result);
       if (note) ctx.notes = [...(ctx.notes ?? []), { at: `${new Date().toISOString()} (airport clock ${clockText(this.view.clock().now)})`, tool: name, note }].slice(-NOTES_MAX);
       return result;
     }]));
-    const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools });
+    const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
     const delivered = await this.wa.sendReplies(m.phone, bubbles, m.id);
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
