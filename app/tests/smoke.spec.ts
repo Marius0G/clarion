@@ -5,13 +5,13 @@ test('app shell, map canvas and layer toggles render', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto('/')
-  await page.getByText('Meniu', { exact: true }).click()
+  await page.getByRole('button', { name: 'Detalii', exact: true }).click()
   await page.getByRole('button', { name: 'Exerciții', exact: true }).click()
 
-  await expect(page.getByText('Clarion · LRCV', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Clarion', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('dialog').getByTestId('status-pill')).toBeVisible()
   await expect(page.getByTestId('scenario-rail')).toBeVisible()
-  await expect(page.getByRole('tab')).toHaveCount(4)
+  await expect(page.getByRole('dialog').getByRole('tab')).toHaveCount(4)
 
   const canvas = page.getByRole('dialog', { name: 'Exerciții · simulator v1' }).locator('.maplibregl-canvas')
   await expect(canvas).toBeVisible()
@@ -32,7 +32,7 @@ test('app shell, map canvas and layer toggles render', async ({ page }) => {
 
 test('snow candidate requires declaration and checklist completion enters timeline', async ({ page }) => {
   await page.goto('/')
-  await page.getByText('Meniu', { exact: true }).click()
+  await page.getByRole('button', { name: 'Detalii', exact: true }).click()
   await page.getByRole('button', { name: 'Exerciții', exact: true }).click()
   await page.getByRole('button', { name: 'Snow or blizzard', exact: true }).click()
   await page.getByRole('button', { name: 'Click map to set location' }).click()
@@ -63,7 +63,7 @@ test('snow candidate requires declaration and checklist completion enters timeli
 
 test('notifications progress, KPI values and printable ISU briefing', async ({ page }) => {
   await page.goto('/')
-  await page.getByText('Meniu', { exact: true }).click()
+  await page.getByRole('button', { name: 'Detalii', exact: true }).click()
   await page.getByRole('button', { name: 'Exerciții', exact: true }).click()
   await page.getByRole('tab', { name: 'Notifications', exact: true }).click()
   await expect(page.getByText('Select a scenario to preview notifications.')).toBeVisible()
