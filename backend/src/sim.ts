@@ -134,6 +134,7 @@ export class SimStore {
   private peopleMs = -Infinity;
   private visionPeopleMs = -Infinity;
   private ops: OpsRecord[] = [];
+  private blockedZones = new Set<string>();
   status(d: any) {
     if (!object(d)) throw new Error('Invalid sim status');
     runFields(d, true);
@@ -252,6 +253,9 @@ export class SimStore {
    * (D12: the backend holds them, vision reads them); never below 0, at most LANES_MAX.
    */
   sent(command: OpsCommand): OpsRecord {
+    if (command.type === 'evacuate') for (const zone of command.zones) this.blockedZones.add(zone);
+    if (command.type === 'close') this.blockedZones.add(command.zone);
+    if (command.type === 'open') this.blockedZones.delete(command.zone);
     if (command.type === 'staff')
       this.laneRows.set(command.zone, Math.min(LANES_MAX, Math.max(0, (this.laneRows.get(command.zone) ?? 0) + command.delta)));
     const record: OpsRecord = { ...command, id: crypto.randomUUID(), status: 'sent', sentAt: new Date().toISOString(), ackedAt: null };
@@ -280,7 +284,7 @@ export class SimStore {
       connected, vision, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed,
       counts, actions, phones: phoneCounts, metrics,
       flow: Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]): [string, FlowRow] => [zone, { ...row, stale: now - at > FLOW_STALE_MS }])),
-      lanes: Object.fromEntries(this.laneRows), truth: this.truthRows,
+      blocked: [...this.blockedZones], lanes: Object.fromEntries(this.laneRows), truth: this.truthRows,
       flights: this.flightRows, flightsAt: this.flightsAt, positions: this.people, ops: [...this.ops].reverse(),
     };
   }
