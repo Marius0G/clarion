@@ -8,7 +8,7 @@ import { fallbackReply, paceReactions, toBubbles } from '../src/wa/agent.js';
 import { parseWebhook, redact, splitText } from '../src/wa/transport.js';
 
 const hm = (h: number, m: number) => h * 3600 + m * 60;
-const W6 = findFlight(PROVISIONAL_FLIGHTS, 'W6 3751')!; // gate G2 (4 min walk), closes 09:10
+const W6 = findFlight(PROVISIONAL_FLIGHTS, 'W6 3751')!; // gate_2 (4 min walk), desk group check_in:1, closes 09:10
 const sim7 = { now: hm(7, 0), sim: true };
 
 class MemoryStore implements WaStore {
@@ -62,20 +62,20 @@ describe('START binding', () => {
 
 describe('whenToArrive (D5)', () => {
   it('gate close − (bag drop + security + walk + 10 min margin), floored to 5 minutes', () => {
-    const flow = { 'bag_drop:W6': { waiting: 30, waitMin: 12 }, bag_drop: { waiting: 90, waitMin: 40 }, security: { waiting: 50, waitMin: 18 } };
+    const flow = { 'bag_drop:1': { waiting: 30, waitMin: 12 }, 'bag_drop:2': { waiting: 90, waitMin: 40 }, bag_drop: { waiting: 90, waitMin: 40 }, security: { waiting: 50, waitMin: 18 } };
     const p = arrivalPlan(W6, flow, sim7, true);
-    // 12 + 18 + 4 + 10 = 44 min before 09:10 = 08:26 -> 08:25. The airline's own queue wins over the shared one (D8).
+    // 12 + 18 + 4 + 10 = 44 min before 09:10 = 08:26 -> 08:25. The flight's desk group wins over other groups and the shared one (D8).
     expect(p.totalMin).toBe(44);
     expect(p.beAtEntranceAt).toBe('08:25');
     expect(p.gateCloseAt).toBe('09:10');
     expect(p.minutesFromNow).toBe(85);
-    expect(p.steps.map(s => s.step)).toEqual(['Predare bagaje W6', 'Control de securitate', 'Drum până la poarta G2', 'Marjă']);
+    expect(p.steps.map(s => s.step)).toEqual(['Predare bagaje, grupul 1', 'Control de securitate', 'Drum până la poarta 2', 'Marjă']);
     expect(p.clock).toBe('ora simulării');
     // Hand luggage only: no bag drop. 18 + 4 + 10 = 32 -> 08:38 -> 08:35.
     expect(arrivalPlan(W6, flow, sim7, false).beAtEntranceAt).toBe('08:35');
   });
   it('uses the forecast for the time he gets there', () => {
-    const flow = { 'bag_drop:W6': { waiting: 30, waitMin: 12 }, security: { waiting: 50, waitMin: 18, forecast: [{ inMin: 60, waitMin: 30 }, { inMin: 120, waitMin: 40 }] } };
+    const flow = { 'bag_drop:1': { waiting: 30, waitMin: 12 }, security: { waiting: 50, waitMin: 18, forecast: [{ inMin: 60, waitMin: 30 }, { inMin: 120, waitMin: 40 }] } };
     const p = arrivalPlan(W6, flow, sim7, true);
     const security = p.steps.find(s => s.step === 'Control de securitate')!;
     expect(security.source).toBe('prognoză');
@@ -111,7 +111,7 @@ describe('agent tools', () => {
     const { tools, profile } = setup();
     expect(await tools.myFlight!({})).toMatchObject({ error: 'no_flight' });
     expect(await tools.myFlight!({ flight: 'XX 0001' })).toMatchObject({ error: 'unknown_flight' });
-    expect(await tools.myFlight!({ flight: 'w6-3751' })).toMatchObject({ flight: 'W6 3751', gate: 'G2', gateCloseAt: '09:10', departure: '09:40', note: expect.stringContaining('provizoriu') });
+    expect(await tools.myFlight!({ flight: 'w6-3751' })).toMatchObject({ flight: 'W6 3751', gate: '2', gateCloseAt: '09:10', departure: '09:40', checkIn: ['Check-in, grupul 1'], note: expect.stringContaining('provizoriu') });
     expect(profile()).toMatchObject({ flight: 'W6 3751', airline: 'W6', verified: false });
   });
   it('whenToArrive saves the bag answer and handles cancelled flights', async () => {
@@ -122,22 +122,23 @@ describe('agent tools', () => {
     const cancelled = PROVISIONAL_FLIGHTS.map(f => (f.flight === 'W6 3751' ? { ...f, status: 'cancelled' as const } : f));
     expect(await setup({ flight: 'W6 3751' }, {}, cancelled).tools.whenToArrive!({})).toMatchObject({ status: 'cancelled' });
   });
-  it('queues marks the passenger airline queue; stubs answer politely', async () => {
-    const { tools } = setup({ airline: 'W6' }, { 'check_in:W6': { waiting: 12, waitMin: 6, peak: 20 }, security: { waiting: 40, waitMin: 14, staff: 3 } });
+  it('queues marks the queue of the passenger desk group; stubs answer politely', async () => {
+    const { tools } = setup({ flight: 'W6 3751', airline: 'W6' }, { 'check_in:1': { waiting: 12, waitMin: 6, peak: 20 }, 'check_in:2': { waiting: 3, waitMin: 1 }, security: { waiting: 40, waitMin: 14, staff: 3 } });
     const q = await tools.queues!({}) as any;
     expect(q.zones).toEqual([
-      { zone: 'Check-in W6', waiting: 12, waitMin: 6, peak30min: 20, staff: undefined, yours: true },
+      { zone: 'Check-in, grupul 1', waiting: 12, waitMin: 6, peak30min: 20, staff: undefined, yours: true },
+      { zone: 'Check-in, grupul 2', waiting: 3, waitMin: 1, peak30min: undefined, staff: undefined },
       { zone: 'Control de securitate', waiting: 40, waitMin: 14, peak30min: undefined, staff: 3 },
     ]);
     expect(await setup().tools.queues!({})).toMatchObject({ available: false });
     expect(await tools.routeTo!({ to: 'gate' })).toMatchObject({ status: 'coming_soon' });
     expect(await tools.reportIssue!({ text: 'bagaj abandonat' })).toMatchObject({ error: 'staff_only' });
-    expect(await setup({ role: 'staff' }).tools.reportIssue!({ text: 'x' })).toMatchObject({ status: 'coming_soon' });
+    expect(await setup({ role: 'staff' }).tools.reportIssue!({ text: 'x' })).toMatchObject({ error: 'unavailable' });
   });
   it('the no-key fallback answers from the same tools', async () => {
     const { tools } = setup({ flight: 'W6 3751', airline: 'W6', hasCheckedBag: true });
     expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('08:25');
-    expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta G2');
+    expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta 2,');
   });
 });
 
@@ -160,7 +161,7 @@ describe('WhatsAppAgent turn', () => {
       return Response.json({ messages: [{ id: 'wamid.out' }] });
     });
     const store = new MemoryStore();
-    const flow = { 'bag_drop:W6': { waiting: 30, waitMin: 12 }, security: { waiting: 50, waitMin: 18 } };
+    const flow = { 'bag_drop:1': { waiting: 30, waitMin: 12 }, security: { waiting: 50, waitMin: 18 } };
     const agent = new WhatsAppAgent(env, store, view(flow), { fetcher, pause: 0 });
     const meta = () => calls.filter(c => c.url.startsWith('https://graph.facebook.com')).map(c => c.body);
     return { agent, store, calls, meta };

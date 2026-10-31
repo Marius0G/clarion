@@ -1,5 +1,6 @@
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
-import { clockLabel, clockText, findFlight, type Clock, type Flight } from './flights.js';
+import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
+import { ISSUE_LABELS, classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
 
 export interface ZoneRow {
   waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
@@ -20,7 +21,7 @@ export interface Profile {
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
 
 // Walk from security to the gate, minutes. Constant per gate until terminal.json (D7) gives the real edges.
-export const GATE_WALK_MIN: Record<string, number> = { G1: 3, G2: 4, G3: 5, G4: 6 };
+export const GATE_WALK_MIN: Record<string, number> = { gate_1: 3, gate_2: 4, gate_3: 5, gate_4: 6, G1: 3, G2: 4, G3: 5, G4: 6 };
 const DEFAULT_WALK_MIN = 5;
 export const MARGIN_MIN = 10;
 // Used only when neither a forecast nor a live wait exists for a zone (no Unity, no history yet).
@@ -30,9 +31,25 @@ const ZONE_NAMES: Record<string, string> = {
   check_in: 'Check-in', bag_drop: 'Predare bagaje', security: 'Control de securitate',
   arrivals_hall: 'Sala de sosiri', taxi_rank: 'Stația de taxi', kerb: 'Zona de oprire',
 };
+/** "check_in:2" -> "Check-in, grupul 2" (desk group, D8); "check_in:W6" -> "Check-in W6" (legacy per airline). */
 export function zoneName(zone: string) {
-  const [base, airline] = zone.split(':');
-  return `${ZONE_NAMES[base!] ?? base}${airline ? ` ${airline}` : ''}`;
+  const [base, suffix] = zone.split(':');
+  const name = ZONE_NAMES[base!] ?? base;
+  if (!suffix) return name!;
+  return /^\d+$/.test(suffix) ? `${name}, grupul ${suffix}` : `${name} ${suffix}`;
+}
+/** Readable node: "gate_2" -> "Poarta 2", "exit_1" -> "Ieșirea 1", "check_in:2" -> "Check-in, grupul 2". */
+export function nodeName(id: string) {
+  const n = /^(gate|exit)_(\d+)$/.exec(id);
+  if (n) return `${n[1] === 'gate' ? 'Poarta' : 'Ieșirea'} ${n[2]}`;
+  return ({ entrance: 'Intrarea', airside: 'Zona de plecări', team_post: 'Postul echipei' } as Record<string, string>)[id] ?? zoneName(id);
+}
+
+/** The flight's own queues: its desk group (D8: check_in:2 / bag_drop:2), else the airline's (legacy check_in:W6). */
+export function ownZones(flight: Pick<Flight, 'airline' | 'checkIn'> | undefined) {
+  if (!flight) return [];
+  const group = flight.checkIn?.split(':')[1];
+  return [...(group ? [`check_in:${group}`, `bag_drop:${group}`] : []), `check_in:${flight.airline}`, `bag_drop:${flight.airline}`];
 }
 
 type Source = 'prognoză' | 'acum' | 'estimare standard';
@@ -52,11 +69,13 @@ export function waitAt(row: ZoneRow | undefined, base: string, inMin: number): {
   return { min: DEFAULT_WAIT_MIN[base] ?? 10, source: 'estimare standard' };
 }
 
-/** The airline's own queue first (D8: check_in:W6), then the shared one. */
-function zoneFor(flow: Record<string, ZoneRow>, bases: string[], airline: string) {
-  for (const base of bases) if (flow[`${base}:${airline}`]) return { key: `${base}:${airline}`, base, row: flow[`${base}:${airline}`] };
+/** The flight's desk group queue first (D8: bag_drop:2), then the airline's (legacy), then the shared one. */
+function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight) {
+  const group = flight.checkIn?.split(':')[1];
+  const suffixes = [...(group ? [group] : []), flight.airline];
+  for (const suffix of suffixes) for (const base of bases) if (flow[`${base}:${suffix}`]) return { key: `${base}:${suffix}`, base, row: flow[`${base}:${suffix}`] };
   for (const base of bases) if (flow[base]) return { key: base, base, row: flow[base] };
-  return { key: `${bases[0]}:${airline}`, base: bases[0]!, row: undefined };
+  return { key: `${bases[0]}:${suffixes[0]}`, base: bases[0]!, row: undefined };
 }
 
 /**
@@ -65,27 +84,28 @@ function zoneFor(flow: Record<string, ZoneRow>, bases: string[], airline: string
  */
 export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined) {
   const bag = hasCheckedBag !== false;
-  const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight.airline);
-  const secZone = zoneFor(flow, ['security'], flight.airline);
+  const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight);
+  const secZone = zoneFor(flow, ['security'], flight);
+  const close = closeAt(flight);
   const steps = (inMin: number) => {
     const out: { step: string; min: number; source: string }[] = [];
     if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
     const s = waitAt(secZone.row, 'security', inMin);
     out.push({ step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
-    out.push({ step: `Drum până la poarta ${flight.gate}`, min: GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: 'constantă' });
+    out.push({ step: `Drum până la poarta ${gateName(flight.gate)}`, min: GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: 'constantă' });
     out.push({ step: 'Marjă', min: MARGIN_MIN, source: 'constantă' });
     return out;
   };
   let plan = steps(0);
   for (let pass = 0; pass < 2; pass++) {
     const total = plan.reduce((s, x) => s + x.min, 0);
-    plan = steps(Math.max(0, (flight.gateCloseAt - total * 60 - clock.now) / 60));
+    plan = steps(Math.max(0, (close - total * 60 - clock.now) / 60));
   }
   const totalMin = plan.reduce((s, x) => s + x.min, 0);
   // Rounded down to 5 minutes: "14:20" reads better than "14:23" and errs on the early side.
-  const at = Math.floor((flight.gateCloseAt - totalMin * 60) / 300) * 300;
+  const at = Math.floor((close - totalMin * 60) / 300) * 300;
   return {
-    flight: flight.flight, gate: flight.gate, gateCloseAt: clockText(flight.gateCloseAt),
+    flight: flight.flight, gate: gateName(flight.gate), gateCloseAt: clockText(close),
     beAtEntranceAt: clockText(at), minutesFromNow: Math.round((at - clock.now) / 60), late: at < clock.now,
     totalMin, steps: plan, assumedCheckedBag: hasCheckedBag === undefined, clock: clockLabel(clock),
   };
@@ -93,9 +113,10 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
 
 function flightView(f: Flight, clock: Clock, provisional: boolean) {
   return {
-    flight: f.flight, airline: f.airline, destination: f.destination, gate: f.gate,
-    departure: clockText(f.std), gateCloseAt: clockText(f.gateCloseAt), status: f.status, delayMin: f.delayMin,
-    checkIn: f.checkInDesks.map(zoneName), now: clockText(clock.now), clock: clockLabel(clock),
+    flight: f.flight, airline: f.airline, destination: f.destination, gate: gateName(f.gate),
+    departure: clockText(etd(f)), gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin,
+    ...(f.delayMin > 0 && { scheduledDeparture: clockText(f.std) }),
+    checkIn: f.checkIn ? [zoneName(f.checkIn)] : f.checkInDesks.map(zoneName), now: clockText(clock.now), clock: clockLabel(clock),
     ...(provisional && { note: 'Orar provizoriu de test, nu orarul real al aeroportului.' }),
   };
 }
@@ -104,10 +125,12 @@ export interface ToolDeps {
   view: AirportView;
   profile: () => Profile;
   save: (patch: Partial<Profile>) => Promise<void>;
+  /** Stores a staff report (D11); absent in read-only contexts. */
+  report?: (input: { kind: IssueKind; node: string | null; text: string }) => Promise<Report>;
 }
 
-/** The five D15 tools for one person. routeTo and reportIssue are stubs until terminal.json (D7) and D11 land. */
-export function toolsFor({ view, profile, save }: ToolDeps): Tools {
+/** The five D15 tools for one person. routeTo is a stub until terminal.json (D7) lands. */
+export function toolsFor({ view, profile, save, report }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -133,11 +156,12 @@ export function toolsFor({ view, profile, save }: ToolDeps): Tools {
       return { ...arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
-      const flow = view.flow(), clock = view.clock(), airline = profile().airline;
+      const flow = view.flow(), clock = view.clock(), p = profile();
+      const mine = new Set(ownZones(p.flight ? findFlight(view.flights(), p.flight) : p.airline ? { airline: p.airline } : undefined));
       const zones = Object.entries(flow).map(([zone, z]) => ({
         zone: zoneName(zone), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
         ...(z.forecast?.length && { forecast: z.forecast.map(p => ({ inMin: p.inMin, waitMin: p.waitMin })) }),
-        ...(airline && zone.endsWith(`:${airline}`) && { yours: true }),
+        ...(mine.has(zone) && { yours: true }),
       }));
       if (!zones.length) return { available: false, note: 'Nu am date live despre cozi acum.', now: clockText(clock.now), clock: clockLabel(clock) };
       return { available: true, zones, now: clockText(clock.now), clock: clockLabel(clock) };
@@ -145,9 +169,17 @@ export function toolsFor({ view, profile, save }: ToolDeps): Tools {
     async routeTo(input: { to?: string }) {
       return { status: 'coming_soon', to: input?.to ?? null, note: 'Hărțile cu traseul până la poartă vin în curând. Până atunci, urmează indicatoarele din terminal.' };
     },
-    async reportIssue(input: { text?: string }) {
+    async reportIssue(input: { text?: string; kind?: string; location?: string }) {
       if (profile().role !== 'staff') return { error: 'staff_only', note: 'Doar angajații aeroportului pot raporta incidente aici.' };
-      return { status: 'coming_soon', received: Boolean(input?.text), note: 'Raportarea către dashboard vine în curând. Sună la dispecerat pentru urgențe.' };
+      const text = String(input?.text ?? '').trim();
+      if (!text) return { error: 'empty', hint: 'Cere-i angajatului ce s-a întâmplat și unde.' };
+      if (!report) return { error: 'unavailable', note: 'Nu pot trimite raportul acum. Sună la dispecerat.' };
+      const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
+      const node = matchNode(`${input?.location ?? ''} ${text}`, view.flights());
+      const r = await report({ kind, node, text: input?.location ? `${text} (loc: ${input.location})` : text });
+      // TODO(D11, terminal.json): add the intervention team's ETA = route from team_post to node, penalised by crowding.
+      return { status: 'sent', id: r.id, kind: ISSUE_LABELS[kind], place: node ? nodeName(node) : 'loc neprecizat',
+        note: 'Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată.' };
     },
   };
 }

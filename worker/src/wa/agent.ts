@@ -51,7 +51,10 @@ const STYLE = `<style>
 - Cozi, aglomerație, „e lume la securitate?”: queues. Coada companiei lui e cea cu yours=true. Dacă are prognoză,
   spune și cum arată peste o oră.
 - Nu știi zborul lui (no_flight): cere-i numărul zborului (ex: W6 3751), apoi cheamă myFlight cu el.
-- Traseu spre poartă, ghișeu sau ieșire: routeTo. Raportare incident: reportIssue (doar angajați).
+- Traseu spre poartă, ghișeu sau ieșire: routeTo.
+- Rol angajat (vezi <context>): orice incident descris („bagaj abandonat lângă check-in 2”, „bătaie la poarta 3”, cineva
+  leșinat, aglomerare) îl trimiți imediat cu reportIssue: text = mesajul lui, kind = tipul, location = locul cum l-a spus.
+  Dacă nu spune unde, întreabă o dată. După trimitere confirmi scurt: tipul, locul și că e pe harta din dashboard.
 - Dacă rezultatul are note despre orar provizoriu, nu insista pe asta decât dacă întreabă.
 </how_you_help>
 
@@ -99,7 +102,15 @@ export const TOOL_SPECS = [
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada companiei lui.', input_schema: NONE },
   { name: 'routeTo', description: 'Traseul spre poartă, ghișeu sau ieșire (în curând).', input_schema: { type: 'object', properties: { to: { type: 'string', enum: ['gate', 'check_in', 'exit'] } } } },
-  { name: 'reportIssue', description: 'Doar pentru angajați: raportează un incident din terminal.', input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
+  {
+    name: 'reportIssue',
+    description: 'Doar pentru angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
+    input_schema: { type: 'object', properties: {
+      text: { type: 'string', description: 'mesajul angajatului, cum l-a scris' },
+      kind: { type: 'string', enum: ['bagaj_abandonat', 'medical', 'securitate', 'aglomerare', 'altele'] },
+      location: { type: 'string', description: 'locul, cum l-a spus (ex: „lângă check-in 2”, „poarta 3”)' },
+    }, required: ['text'] },
+  },
 ];
 
 /** History -> Claude messages, with the new user text appended; consecutive bubbles are joined with ---. */
@@ -206,7 +217,7 @@ export interface ReplyInput { env: WaEnv; fetcher: Fetch; profile: Profile; cloc
 /** Clarion's answer to one message, as bubbles. @returns used = tool names called, for the log. */
 export async function reply({ env, fetcher, profile, clock, history, text, tools }: ReplyInput): Promise<{ bubbles: string[]; used: string[] }> {
   const used: string[] = [];
-  if (!hasLlm(env)) return { bubbles: await fallbackReply(text, tools, used), used };
+  if (!hasLlm(env)) return { bubbles: await fallbackReply(text, tools, used, profile.role), used };
   try {
     const context = contextBlock(profile, clock);
     const messages = buildMessages(history, text);
@@ -223,9 +234,15 @@ export async function reply({ env, fetcher, profile, clock, history, text, tools
 }
 
 /** Deterministic answers without an API key, from the same tools, so the demo path still works. */
-export async function fallbackReply(text: string, tools: Tools, used: string[] = []): Promise<string[]> {
+export async function fallbackReply(text: string, tools: Tools, used: string[] = [], role: Profile['role'] = 'passenger'): Promise<string[]> {
   const t = String(text || '').toLowerCase();
   const call = async (name: string, input: unknown = {}) => { used.push(name); return tools[name]!(input) as Promise<any>; };
+  // An employee's message is a report unless it is a greeting or a thank-you.
+  if (role === 'staff' && !ACK.test(text) && !/^\s*(salut|bun[aă]|hei|hello)\b/i.test(text)) {
+    const r = await call('reportIssue', { text });
+    if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? FALLBACK];
+    return [`Am primit (${r.id}): ${r.kind}, ${r.place}. ${r.note}`];
+  }
   const noFlight = (r: any) => r?.error === 'no_flight' || r?.error === 'unknown_flight';
   const askFlight = 'Spune-mi numărul zborului (ex: W6 3751) și îți zic tot ce trebuie.';
   const code = /\b([a-z][a-z0-9]|[0-9][a-z])\s?-?(\d{3,4})\b/i.exec(text)?.slice(1).join(' ').toUpperCase();
