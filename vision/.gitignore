@@ -5,3 +5,4 @@ smoke_*.log
 models/*.tmp
 runs/
 *.pt
+models_*/
