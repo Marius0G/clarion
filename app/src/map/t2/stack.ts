@@ -1,8 +1,8 @@
-import type { MapPoint, Pt } from './data'
+import type { Pt } from './data'
 
 /**
  * Flat two-floor layout, pure math. Both floors share Marius's x,z frame (10 px per metre); the upper
- * plate is the same drawing moved up by `gap`, so x stays aligned and every connector is a straight line.
+ * plate is the same drawing moved up by `gap`, so x stays aligned between the floors.
  */
 /** Smallest plate offset allowed. */
 export const MIN_GAP = 52
@@ -39,43 +39,3 @@ export function stackGap(lower: Box, upper: Box, clear: number): number {
 
 /** y of the line between the plates, halfway through the clear space. */
 export const dividerY = (lower: Box, upper: Box, gap: number) => (upper[1] + upper[3] - gap + lower[1]) / 2
-
-export type ConnectorType = 'stairs' | 'escalator' | 'lift'
-/**
- * `core`: the east core every departing passenger uses (stairs, escalator, lift).
- * `side`: the west stairs and lift. `apron`: gate stairs down to the apron, drawn as markers only.
- */
-export type ConnectorRole = 'core' | 'side' | 'apron'
-export interface Connector {
-  /** Shared stem of the pair, e.g. `escalator_east` for `escalator_east_G` / `escalator_east_U`. */
-  id: string
-  type: ConnectorType
-  role: ConnectorRole
-  ground: MapPoint
-  upper: MapPoint
-  /** Escalator: G→U only. */
-  oneWay: boolean
-  /** Horizontal distance between the two ends, metres (0 when the ends share x,z). */
-  offsetM: number
-}
-const VERTICAL = new Set<string>(['stairs', 'escalator', 'lift'])
-
-export const connectorRole = (id: string): ConnectorRole => id.startsWith('gate_') ? 'apron' : /east/.test(id) ? 'core' : 'side'
-
-/** Pairs `<stem>_G` with `<stem>_U` among stairs, escalators and lifts; unpaired ends are dropped. */
-export function connectorPairs(points: MapPoint[]): Connector[] {
-  const ends = new Map<string, { G?: MapPoint; U?: MapPoint }>()
-  for (const p of points) {
-    if (!VERTICAL.has(p.type) || (p.level !== 'G' && p.level !== 'U')) continue
-    const stem = p.id.replace(/_[GU]$/, '')
-    const e = ends.get(stem) ?? {}
-    e[p.level] = p
-    ends.set(stem, e)
-  }
-  const out: Connector[] = []
-  for (const [id, { G, U }] of ends) {
-    if (!G || !U || G.type !== U.type) continue
-    out.push({ id, type: G.type as ConnectorType, role: connectorRole(id), ground: G, upper: U, oneWay: G.type === 'escalator' || !!G.one_way, offsetM: Math.hypot(G.x - U.x, G.z - U.z) })
-  }
-  return out.sort((a, b) => a.id.localeCompare(b.id))
-}

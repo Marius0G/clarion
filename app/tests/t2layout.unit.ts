@@ -1,6 +1,6 @@
 import { it, expect, describe } from 'vitest'
-import { points, zones, worldToPx } from '../src/map/t2/data'
-import { boundsOf, connectorPairs, connectorRole, dividerY, fitAspect, MIN_GAP, onPlate, stackGap, type Box } from '../src/map/t2/stack'
+import { zones } from '../src/map/t2/data'
+import { boundsOf, dividerY, fitAspect, MIN_GAP, onPlate, stackGap, type Box } from '../src/map/t2/stack'
 import { alertOf, densityStep, placeLabels, textWidth } from '../src/map/t2/layout'
 
 const plateBox = (level: 'G' | 'U'): Box => boundsOf(zones.filter(z => z.level === level).flatMap(z => z.polygons_px.flatMap(r => r.outer)))
@@ -33,49 +33,6 @@ describe('plates', () => {
     const tall = fitAspect([0, 0, 1000, 1000], 16 / 9)
     expect(tall[2] / tall[3]).toBeCloseTo(16 / 9)
     expect(tall[0] + tall[2] / 2).toBeCloseTo(500)
-  })
-})
-
-describe('connectors', () => {
-  const pairs = connectorPairs(points)
-  it('pairs every stairs, escalator and lift end across the two floors', () => {
-    // 9 stairs, 1 escalator, 2 lifts in Marius's package (not the 15 the spec mentions).
-    expect(pairs).toHaveLength(12)
-    expect(pairs.filter(p => p.type === 'stairs')).toHaveLength(9)
-    expect(pairs.filter(p => p.type === 'escalator')).toHaveLength(1)
-    expect(pairs.filter(p => p.type === 'lift')).toHaveLength(2)
-    for (const p of pairs) { expect(p.ground.level).toBe('G'); expect(p.upper.level).toBe('U') }
-  })
-
-  it('marks the escalator one way, G to U', () => {
-    const esc = pairs.find(p => p.type === 'escalator')!
-    expect(esc.oneWay).toBe(true)
-    expect(pairs.filter(p => p.oneWay)).toEqual([esc])
-  })
-
-  it('splits the east core, the west stairs and lift, and the apron stairs', () => {
-    expect(pairs.filter(p => p.role === 'core').map(p => p.id)).toEqual(['escalator_east', 'lift_east', 'stairs_east'])
-    expect(pairs.filter(p => p.role === 'side').map(p => p.id)).toEqual(['lift_west', 'stairs_west'])
-    expect(pairs.filter(p => p.role === 'apron')).toHaveLength(7)
-    expect(connectorRole('gate_3_stairs')).toBe('apron')
-  })
-
-  it('reports where the two ends do not share x,z', () => {
-    // Gate stairs line up (< 1 m); the core and west pairs are metres apart in the package.
-    for (const p of pairs.filter(p => p.role === 'apron')) expect(p.offsetM).toBeLessThan(1)
-    expect(pairs.find(p => p.id === 'lift_west')!.offsetM).toBeGreaterThan(20)
-  })
-
-  it('drops an end without its pair', () => {
-    const lone = { ...points.find(p => p.id === 'lift_east_G')!, id: 'lift_lonely_G' }
-    expect(connectorPairs([lone])).toEqual([])
-  })
-
-  it('draws each pair from the ground point to the same point on the upper plate', () => {
-    const esc = pairs.find(p => p.type === 'escalator')!
-    const a = onPlate(0, 900, worldToPx(esc.ground.x, esc.ground.z, 'G'))
-    const b = onPlate(1, 900, worldToPx(esc.upper.x, esc.upper.z, 'U'))
-    expect(a[1] - b[1]).toBeCloseTo(900 + (esc.upper.z - esc.ground.z) * 10, 0)
   })
 })
 

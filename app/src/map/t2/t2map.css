@@ -28,6 +28,7 @@
 /* Zones: floor grey by default, separated by 1 px lines */
 .t2-zone .fill { fill: transparent; transition: fill .3s; }
 .t2-zone .edge { fill: none; stroke: var(--t2-sep); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.t2-zone.apron { visibility: hidden; pointer-events: none; }
 .t2-zone.ext .fill { fill: var(--t2-ext); }
 .t2-zone.ext .edge { stroke: var(--t2-ext-line); stroke-dasharray: 4 3; }
 .t2-zone.k-parking .fill { fill: #dadada; }
@@ -88,25 +89,13 @@
 .p-seat { fill: #a3a3a3; }
 .p-stall { fill: none; stroke: #f4f4f4; stroke-width: 1.4; }
 
-/* Connectors: the east core is the passenger path (thick, escalator arrows G → U); west stairs and lift thin */
-.t2-links { pointer-events: auto; }
-.t2-link .hit { stroke: transparent; }
-.t2-link .l { stroke: #2b2b2b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.t2-link.r-core .l { stroke: var(--t2-ink); stroke-width: 4; }
-.t2-link.r-core.l-escalator .l { stroke-width: 6; }
-.t2-link .arrow { fill: var(--t2-ink); stroke: var(--t2-halo); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.t2-link:hover .l { stroke: #000; }
-.t2-link.r-side:hover .l { stroke-width: 3; }
-
 /* Point icons: flat, monochrome */
 .t2-ends text { text-anchor: middle; font-weight: 700; }
 .t2-ends g { pointer-events: auto; }
 .i-door rect { fill: #e8e8e8; stroke: #4a4a4a; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .i-exit rect { fill: var(--t2-ink); }
 .i-exit path { fill: none; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.i-vert rect, .i-info rect, .i-tag rect { fill: #ededed; stroke: #3a3a3a; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.i-vert path { fill: none; stroke: #222; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
-.i-vert path.solid { fill: #222; stroke: none; }
+.i-info rect, .i-tag rect { fill: #ededed; stroke: #3a3a3a; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .i-info text, .i-tag text { fill: #222; }
 .i-cam circle { fill: #2b2b2b; }
 .i-cam .cone { fill: rgba(14, 47, 87, .1); stroke: rgba(14, 47, 87, .45); stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -176,8 +165,6 @@
 .t2-legend .sw.ext { background: var(--t2-ext); border-style: dashed; margin-left: 0; }
 .t2-legend .pr { font-style: normal; font-weight: 700; }
 .t2-legend .pr.a-1 { color: var(--t2-p1); } .t2-legend .pr.a-2 { color: #b85f00; } .t2-legend .pr.a-3 { color: #8a6d00; }
-.t2-legend .ln { width: 4px; height: 18px; background: #2b2b2b; margin: 0 6px; position: relative; }
-.t2-legend .ln.up::before { content: ''; position: absolute; left: -5px; top: 2px; border: 6px solid transparent; border-top: 0; border-bottom: 8px solid #2b2b2b; }
 
 /* Hover card: flat panel */
 .t2-card { position: absolute; z-index: 5; transform: translate(14px, 14px); min-width: 200px; max-width: 280px; padding: 10px 12px; border-radius: 2px;

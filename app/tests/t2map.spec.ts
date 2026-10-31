@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test('the T2 map draws both floors at once, joined by the stairs, escalator and lift', async ({ page }) => {
+test('the T2 map draws both floors at once, upper above ground', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -18,11 +18,8 @@ test('the T2 map draws both floors at once, joined by the stairs, escalator and 
   // Upper plate sits above the ground plate.
   const top = async (id: string) => (await map.locator(`[data-zone="${id}"] .fill`).boundingBox())!
   expect((await top('U_CONCOURSE')).y + (await top('U_CONCOURSE')).height).toBeLessThan((await top('G_RECLAIM_1')).y)
-  // East core drawn as lines, escalator with arrows; apron stairs are markers only.
-  await expect(page.getByTestId('map-links').locator('.t2-link')).toHaveCount(5)
-  await expect(page.getByTestId('link-escalator_east').locator('.arrow')).toHaveCount(3)
-  await expect(page.locator('.t2-link.r-core')).toHaveCount(3)
-  await expect(page.getByTestId('link-gate_1_stairs_')).toHaveCount(0)
+  // Nothing drawn between the floors: no connector lines, no stairs, escalator or lift icons.
+  await expect(map.locator('.t2-links, .t2-link, .i-vert')).toHaveCount(0)
   // Labels on both floors.
   await expect(map.locator('.t2-labels text', { hasText: /^Banda 1$/ })).toHaveCount(1)
   await expect(map.locator('.t2-labels text', { hasText: /^Securitate$/ })).toHaveCount(1)

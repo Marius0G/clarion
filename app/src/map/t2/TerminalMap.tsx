@@ -4,12 +4,12 @@ import { fmt, frameOf, inRing, ringPath } from './geometry'
 import { zoneDetail } from './details'
 import { placeName, zoneLabel } from './labels'
 import { alertOf, densityStep, placeLabels, SHAPE, textWidth, type LabelItem, type Priority } from './layout'
-import { boundsOf, connectorPairs, dividerY, fitAspect, onPlate, pad, plateOffset, stackGap, type Box } from './stack'
+import { boundsOf, dividerY, fitAspect, onPlate, pad, plateOffset, stackGap, type Box } from './stack'
 import './t2map.css'
 
 /**
- * T2 map: both floors flat on one screen, upper floor above the ground floor, same x,z frame,
- * joined by the real stairs, escalator and lift. Drawn from Marius's zones.json / points.json.
+ * T2 map: both floors flat on one screen, upper floor above the ground floor, same x,z frame.
+ * Drawn from Marius's zones.json / points.json.
  * Zones without data stay neutral; never invent numbers here.
  */
 export type ZoneState = 'normal' | 'near' | 'full'
@@ -61,6 +61,8 @@ const ZONES: MapZone[] = zones.map(z => z.level !== 'X' ? z : {
     .map(r => ({ outer: r.outer.map(([x, y]) => toPx(x, y)), holes: (r.holes ?? []).map(h => h.map(([x, y]) => toPx(x, y))) })),
 })
 const POINTS: MapPoint[] = points.filter(p => p.level !== 'X')
+/** Icons left out: the doors inside the hidden apron boxes. */
+const IN_APRON = (p: MapPoint) => p.level === 'G' && ZONES.some(z => APRON(z) && z.polygons_px.some(r => inRing(p.px, r)))
 /** A level's pixels (markers, routes) in the shared space. */
 const fromLevel = (p: Pt, level: Level): Pt => level !== 'X' ? p
   : toPx(p[0] / frames.X.ppm + frames.X.x0, frames.X.z1 - p[1] / frames.X.ppm)
@@ -73,15 +75,19 @@ const PLATE_ZONES: Record<PlateKey, MapZone[]> = {
   G: [...ZONES.filter(z => EDGE.has(z.id)), ...ZONES.filter(z => z.level === 'G')],
   U: ZONES.filter(z => z.level === 'U'),
 }
-const BUILDING: Record<PlateKey, MapZone[]> = { G: ZONES.filter(z => z.level === 'G'), U: PLATE_ZONES.U }
+/**
+ * Apron doors under the gates (G_GATE_DOOR_*): tiny boxes floating north of the ground floor. Kept in the
+ * DOM (ids, clicks from lists still resolve) but not drawn, and left out of the plate's size.
+ */
+const APRON = (z: MapZone) => z.id.startsWith('G_GATE_DOOR')
+const BUILDING: Record<PlateKey, MapZone[]> = { G: ZONES.filter(z => z.level === 'G' && !APRON(z)), U: PLATE_ZONES.U }
 const ringsOf = (list: MapZone[]) => list.flatMap(z => z.polygons_px.map(r => r.outer))
-const PLATE_BOX: Record<PlateKey, Box> = { G: boundsOf(ringsOf(PLATE_ZONES.G).flat()), U: boundsOf(ringsOf(PLATE_ZONES.U).flat()) }
+const PLATE_BOX: Record<PlateKey, Box> = { G: boundsOf(ringsOf(PLATE_ZONES.G.filter(z => !APRON(z))).flat()), U: boundsOf(ringsOf(PLATE_ZONES.U).flat()) }
 const GAP = stackGap(PLATE_BOX.G, PLATE_BOX.U, 90)
 const DIVIDER = dividerY(PLATE_BOX.G, PLATE_BOX.U, GAP)
 const plateOf = (l: Level) => l === 'U' ? 1 : 0
 const P = (l: Level, p: Pt): Pt => onPlate(plateOf(l), GAP, p)
-const CONNECTORS = connectorPairs(points)
-const CONTENT: Box = boundsOf(PLATES.flatMap(({ key, i }) => ringsOf(PLATE_ZONES[key]).flat().map(p => onPlate(i, GAP, p))))
+const CONTENT: Box = boundsOf(PLATES.flatMap(({ key, i }) => ringsOf(PLATE_ZONES[key].filter(z => !APRON(z))).flat().map(p => onPlate(i, GAP, p))))
 /** The whole map, with room for the floor names on the left, at 16:9 for the projector. */
 const FULL: Box = fitAspect(pad(CONTENT, 60, 50, 60, 50), 16 / 9)
 
@@ -113,7 +119,7 @@ const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia
 const clampBox = (v: Box, b: Box): Box => [Math.min(Math.max(v[0], b[0]), b[0] + b[2] - v[2]), Math.min(Math.max(v[1], b[1]), b[1] + b[3] - v[3]), v[2], v[3]]
 
 /* ---------- Point icons, flat, fixed pixel size ---------- */
-const ICONS = new Set(['door', 'emergency_exit', 'stairs', 'escalator', 'lift', 'information', 'wc'])
+const ICONS = new Set(['door', 'emergency_exit', 'information', 'wc'])
 function PointIcon({ p, at, s }: { p: MapPoint; at: Pt; s: number }) {
   const t = `translate(${fmt(at[0])} ${fmt(at[1])})`
   const label = p.name.split(' / ')[0]
@@ -124,12 +130,6 @@ function PointIcon({ p, at, s }: { p: MapPoint; at: Pt; s: number }) {
     case 'emergency_exit': return <g transform={t} className="i-exit"><title>{label}</title>
       <rect x={-h} y={-h * 0.8} width={s} height={s * 0.8} />
       <path d={`M${-h * 0.55},0H${h * 0.5}M${h * 0.1},${-h * 0.4}L${h * 0.5},0L${h * 0.1},${h * 0.4}`} /></g>
-    case 'stairs': return <g transform={t} className="i-vert"><title>Scări</title><rect x={-h} y={-h} width={s} height={s} />
-      <path d={`M${-h * 0.6},${h * 0.5}h${h * 0.4}v${-h * 0.4}h${h * 0.4}v${-h * 0.4}h${h * 0.4}`} /></g>
-    case 'escalator': return <g transform={t} className="i-vert"><title>Escalator</title><rect x={-h} y={-h} width={s} height={s} />
-      <path d={`M${-h * 0.55},${h * 0.5}L${h * 0.45},${-h * 0.5}M${0},${-h * 0.5}h${h * 0.45}v${h * 0.45}`} /></g>
-    case 'lift': return <g transform={t} className="i-vert"><title>Lift</title><rect x={-h} y={-h} width={s} height={s} />
-      <path className="solid" d={`M0,${-h * 0.62}l${h * 0.38},${h * 0.44}h${-h * 0.76}ZM0,${h * 0.62}l${h * 0.38},${-h * 0.44}h${-h * 0.76}Z`} /></g>
     case 'information': return <g transform={t} className="i-info"><title>Informații</title><rect x={-h} y={-h} width={s} height={s} />
       <text y={h * 0.5} fontSize={s * 0.8}>i</text></g>
     case 'wc': return <g transform={t} className="i-tag"><title>Toalete</title><rect x={-h * 1.2} y={-h * 0.8} width={s * 1.2} height={s * 0.8} />
@@ -148,8 +148,8 @@ function CameraCone({ p }: { p: MapPoint }) {
 }
 
 const TEXT = {
-  ro: { esc: 'Escalator, doar urcare', stairs: 'Scări', lift: 'Lift', people: 'pers.' },
-  en: { esc: 'Escalator, up only', stairs: 'Stairs', lift: 'Lift', people: 'ppl' },
+  ro: { people: 'pers.' },
+  en: { people: 'ppl' },
 }
 const NAME = 15, NUM = 15, GATE = 22
 
@@ -257,7 +257,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     const a = alertOf(v)
     const step = densityStep(v?.people, z.area_m2)
     return ['t2-zone', `k-${z.kind}`, v?.state ? `s-${v.state}` : 's-none', step != null ? `dn-${step}` : '', a ? `a-${a}` : '',
-      z.level === 'X' ? 'ext' : '', z.approx ? 'approx' : '', selected === z.id ? 'sel' : '', lit.has(z.id) ? 'lit' : '',
+      z.level === 'X' ? 'ext' : '', APRON(z) ? 'apron' : '', z.approx ? 'approx' : '', selected === z.id ? 'sel' : '', lit.has(z.id) ? 'lit' : '',
       v?.closed ? 'closed' : '', onZone ? 'click' : ''].filter(Boolean).join(' ')
   }
   const plateEls = PLATES.map(({ key: pk, i }) => {
@@ -293,22 +293,6 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     </g>
   })
 
-  /* ---------- Connectors: the east core is the passenger path; apron stairs are markers only ---------- */
-  const linkEls = CONNECTORS.filter(c => c.role !== 'apron').map(c => {
-    const a = P('G', c.ground.px), b = P('U', c.upper.px)
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
-    const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len
-    const title = c.type === 'escalator' ? tx.esc : c.type === 'lift' ? tx.lift : tx.stairs
-    const s = (c.role === 'core' ? 9 : 6) * u
-    const arrows = c.oneWay ? [0.3, 0.55, 0.8].map(f => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f] as Pt) : []
-    return <g key={c.id} className={`t2-link l-${c.type} r-${c.role}`} data-link={c.id} data-testid={`link-${c.id}`}>
-      <title>{title}</title>
-      <line className="hit" x1={fmt(a[0])} y1={fmt(a[1])} x2={fmt(b[0])} y2={fmt(b[1])} strokeWidth={fmt(14 * u)} />
-      <line className="l" x1={fmt(a[0])} y1={fmt(a[1])} x2={fmt(b[0])} y2={fmt(b[1])} />
-      {arrows.map((m, k) => <path key={k} className="arrow" d={`M${fmt(m[0] + ux * s)},${fmt(m[1] + uy * s)}L${fmt(m[0] - ux * s - uy * s * 0.8)},${fmt(m[1] - uy * s + ux * s * 0.8)}L${fmt(m[0] - ux * s + uy * s * 0.8)},${fmt(m[1] - uy * s - ux * s * 0.8)}Z`} />)}
-    </g>
-  })
-
   /* ---------- Labels: fixed pixel size, placed without overlaps ---------- */
   const items: (LabelItem & { z: MapZone; lines: [string | null, string | null]; a: Priority | null; gate: string | null })[] = []
   if (show.labels) for (const { key: pk } of PLATES) for (const z of PLATE_ZONES[pk]) {
@@ -318,8 +302,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     const nums = [v?.waitMin != null ? `${Math.round(v.waitMin)} min` : null, v?.people != null ? `${v.people} ${tx.people}` : null].filter(Boolean).join(' · ') || null
     const gate = label.kind === 'gate' ? label.number : null
     const small = !!gate && z.id.startsWith('G_GATE_DOOR')
-    // Apron doors under the gates: their stairs marker already says where they are.
-    if (small && !a && !nums) continue
+    if (small) continue // apron boxes are not drawn
     if (!gate && !label.text && !nums && !a) continue
     if (z.kind === 'wc' && !a && !nums) continue
     const name = gate ? null : label.text || null
@@ -373,7 +356,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
     </g>
   })
 
-  const iconEls = show.points ? POINTS.filter(p => ICONS.has(p.type)).map(p => <PointIcon key={p.id} p={p} at={P(p.level, p.px)} s={16 * u} />) : []
+  const iconEls = show.points ? POINTS.filter(p => ICONS.has(p.type) && !IN_APRON(p)).map(p => <PointIcon key={p.id} p={p} at={P(p.level, p.px)} s={16 * u} />) : []
 
   const dotR = fmt(3.2 * u)
   const circle = (d: MapDot, k: number) => {
@@ -428,7 +411,6 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       <rect x={fmt(full[0] - full[2])} y={fmt(full[1] - full[3])} width={fmt(full[2] * 3)} height={fmt(full[3] * 3)} className="t2-ground" />
       <line className="t2-divider" x1={fmt(full[0] - full[2])} x2={fmt(full[0] + full[2] * 2)} y1={fmt(DIVIDER)} y2={fmt(DIVIDER)} />
       {plateEls}
-      <g className="t2-links" data-testid="map-links">{linkEls}</g>
       <g className="t2-ends" aria-hidden="true">{iconEls}</g>
       {routeD && <g className="t2-route" aria-label="Traseu">
         <path d={routeD} className="halo" strokeWidth={fmt(10 * u)} />
@@ -471,7 +453,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   </div>
 }
 
-/** Legend (D29): grey density ramp, priorities with shape and number, connectors, exterior edge. */
+/** Legend (D29): grey density ramp, priorities with shape and number, exterior edge. */
 export function MapLegend({ lang = 'ro' }: { lang?: 'ro' | 'en' }) {
   const ro = lang === 'ro'
   return <ul className="t2-legend">
@@ -479,7 +461,6 @@ export function MapLegend({ lang = 'ro' }: { lang?: 'ro' | 'en' }) {
     <li><i className="pr a-1">{SHAPE[1]}1</i>{ro ? 'Pericol' : 'Danger'}</li>
     <li><i className="pr a-2">{SHAPE[2]}2</i>{ro ? 'Peste țintă' : 'Over target'}</li>
     <li><i className="pr a-3">{SHAPE[3]}3</i>{ro ? 'Aproape de țintă' : 'Near target'}</li>
-    <li><i className="ln up" />{ro ? 'Spre etaj: scări, escalator, lift' : 'To upper floor: stairs, escalator, lift'}</li>
     <li><i className="sw ext" />{ro ? 'Exterior' : 'Outside'}</li>
   </ul>
 }
