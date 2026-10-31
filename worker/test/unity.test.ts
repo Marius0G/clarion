@@ -1,5 +1,5 @@
-import { Miniflare, Response, convertV4MiniflareOptions } from 'miniflare';
-import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { Miniflare,Response,convertV4MiniflareOptions } from 'miniflare';
+import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 let mf: Miniflare;
 const sockets: {close():void}[] = [];
 const envelope = (type: string, data = {}) => ({type, ts:new Date().toISOString(),data});
@@ -17,7 +17,7 @@ async function connect(client:string) {
 }
 describe('Worker Unity integration', () => {
 
-  it('connects fake Unity with token, 400 agents, incident, telemetry and targeted commands', async () => {
+  it('connects fake Unity with token, 400 agents, telemetry and targeted commands', async () => {
     for (const client of ['console', 'twin']) expect((await unauthorized(`/ws?client=${client}`)).status).toBe(401);
     for (const path of ['/api/action', '/api/sim/command']) expect((await unauthorized(path, {})).status).toBe(401);
     expect((await unauthorized('/api/state')).status).toBe(200);
@@ -30,11 +30,7 @@ describe('Worker Unity integration', () => {
       twin.ws.send(JSON.stringify(envelope(type, data)));
       await expect.poll(() => twin.messages.filter(m => m.type === 'state').length).toBe(before + expected);
     };
-    await send('agent.register', { agents: Array.from({ length: 400 }, (_,i) => ({ agentId: `u${i}`, role: 'taxi', channel: 'telegram' })) }, 1);
-    await send('drone.detected', { nearRunway: '26', distanceM: 2000, bearingDeg: 90, source: 'radar' }, 1);
-    await request('/api/action', envelope('console.confirm_suspension'));
-    await request('/api/action', envelope('console.approve_messages', { roles: ['taxi'] }));
-    await expect.poll(() => twin.messages.filter(m => m.type === 'state').length).toBe(5);
+    await send('agent.register', { agents: Array.from({ length: 400 }, (_,i) => ({ agentId: `u${i}`, role: 'taxi', channel: 'whatsapp' })) }, 1);
     await send('agent.batch', { updates: Array.from({ length: 400 }, (_,i) => ({ agentId: `u${i}`, role: 'taxi', persona: 'p07', location: 'road', phone: 'read', action: 'wait' })) }, 1);
     twin.ws.send(JSON.stringify(envelope('sim.status', { running: true, scenario: 'S2', arm: 'B', coverage: .5, seed: 42, speed: 60, simTime: 100, agents: 400 })));
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).simTime).toBe(100);
@@ -50,14 +46,12 @@ describe('Worker Unity integration', () => {
     expect(await (await request('/api/sim/agents?role=taxi&location=road&action=wait')).json()).toHaveLength(400);
     expect(await (await request('/api/sim/agents?location=home')).json()).toEqual([]);
     expect((await request('/api/sim/command', { action: 'start', arm: 'Z' })).status).toBe(400);
-    expect((await request('/api/sim/command', { action: 'trigger', event: 'drone' })).status).toBe(202);
-    await expect.poll(() => twin.messages.some(m => m.type === 'sim.command' && m.data.event === 'drone')).toBe(true);
+    expect((await request('/api/sim/command', { action: 'trigger', event: 'delay' })).status).toBe(202);
+    await expect.poll(() => twin.messages.some(m => m.type === 'sim.command' && m.data.event === 'delay')).toBe(true);
     expect(viewer.messages.some(m => m.type === 'sim.command')).toBe(false);
     expect(consoleClient.messages.some(m => m.type === 'sim.command')).toBe(false);
     expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
-    // Initial state + register + detection + confirmation + send batch + presence batch.
-    expect(twin.messages.filter(m => m.type === 'state')).toHaveLength(6);
-    console.log('FAKE UNITY: 5 state broadcasts (plus 1 initial state); 400 agents');
+    expect(twin.messages.filter(m => m.type === 'state')).toHaveLength(3);
     twin.ws.close();
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).connected).toBe(false);
     expect((await request('/api/sim/command', { action: 'stop' })).status).toBe(409);

@@ -1,11 +1,10 @@
-import { dryRun, type Adapter, type Outbound } from "./types.js";
+import type { Lang,Role } from "../types.js";
 import { environment } from "./env.js";
+import { dryRun,type Adapter,type Outbound } from "./types.js";
 import { catalog } from "./whatsapp-catalog.js";
-import type { Lang, Role } from "../types.js";
 export { catalog };
 export function selectTemplate(role: Role, situation: Outbound["situation"], lang: Lang) {
-  const group = role.startsWith("passenger_") ? "pasager" : role === "relative_arrivals" ? "asteptare" : ["taxi", "rideshare"].includes(role) ? "taxi" : role === "staff" ? "personal" : undefined;
-  const name = situation === "subscribe" ? "abonare_confirmata" : situation === "evacuation" ? "evacuare_terminal" : situation === "diverted" ? (role === "relative_arrivals" ? "zbor_redirectionat" : undefined) : situation === "runway_closed" && group ? `suspendare_${group}` : ["reopened", "reopen_wave"].includes(situation ?? "") && group && group !== "personal" ? `reluare_${group}` : undefined;
+  const name = situation === "subscribe" ? "abonare_confirmata" : situation === "evacuation" ? "evacuare_terminal" : undefined;
   const template = catalog.templates.find(t => t.name === name);
   const content = template && (template.languages as Partial<Record<Lang, {body: string; buttons: readonly string[]}>>)[lang];
   return template && content ? { name: template.name, language: lang, ...content } : undefined;
@@ -39,7 +38,7 @@ export function createWhatsApp(env: WhatsAppEnv, fetcher: typeof fetch = fetch):
     if (!m.destination) return { delivered: false, simulated: false };
     const payload = whatsappPayload(m);
     if (!payload) {
-      console.warn(`Clarion WhatsApp: no ${m.lang} template for ${m.role}/${m.situation}; requires a separate opted-in Telegram/SMS subscription or inbound message.`);
+      console.warn(`Clarion WhatsApp: no ${m.lang} template for ${m.role}/${m.situation}; requires an inbound message.`);
       return { delivered: false, simulated: false };
     }
     const res = await fetcher(`https://graph.facebook.com/v23.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
@@ -84,14 +83,13 @@ export function parseStartCode(text: string): {role: Role; flight?: string; lang
 }
 // Texts are sourced from the submitted catalog, including translations.
 export function buttonAction(text: string): "home" | "road" | "terminal" | "kerb" | "unknown" | "unsubscribe" | "read" | undefined {
+  const places: Record<string, "home" | "road" | "terminal"> = { "Sunt pe drum": "road", "Plec acum": "road", "I am on my way": "road", "Sunt în terminal": "terminal", "I am in the terminal": "terminal", "Nu am plecat încă": "home", "I have not left yet": "home" };
+  if (places[text]) return places[text];
   for (const t of catalog.templates) for (const [lang, content] of Object.entries(t.languages)) {
     const i = (content.buttons as readonly string[]).indexOf(text);
     if (i < 0) continue;
     if (t.name === "abonare_confirmata") return "unsubscribe";
-    if (["suspendare_pasager", "suspendare_asteptare"].includes(t.name)) return (["terminal", "road", "home"] as const)[i];
-    if (t.name === "suspendare_taxi") return i === 0 ? "road" : "kerb";
     if (t.name === "evacuare_terminal") return (["kerb", "terminal", "unknown"] as const)[i];
-    if (t.name === "reluare_taxi") return i === 0 ? "road" : "unknown";
     void lang;
     return "read";
   }

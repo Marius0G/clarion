@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { Tower } from '../src/index.js';
 
 const row = { flight_iata: 'W63412', dep_iata: 'BGY', arr_iata: 'CRA',
@@ -68,31 +68,6 @@ describe('Tower FIDS polling with mocked fetch', () => {
     expect(Date.parse(arrival.est) - Date.parse(arrival.sched)).toBe(720000);
     expect(messages.at(-1)).toMatchObject({ type: 'state', data: { dataSource: 'fids' } });
     expect(alarm).toBe(Date.now() + 300000);
-  });
-
-  it('preserves suspended/diverted overlays while multiplexing simulated read alarms', async () => {
-    await start();
-    await send('agent.register', { agents: [{ agentId: 'fids-read', role: 'public', channel: 'telegram' }] });
-    await send('drone.detected', { distanceM: 2000, bearingDeg: 270, nearRunway: '26', source: 'radar' });
-    await send('console.confirm_suspension');
-    const eta = new Date(Date.now() + 3600000).toISOString();
-    await send('flight.diverted', { flight: 'W6 3412', from: 'BGY', to: 'OTP', eta });
-    await send('console.approve_messages', { roles: ['public'] });
-    expect(alarm).toBeLessThan(Date.now() + 300000);
-    vi.setSystemTime(alarm!);
-    await tower.alarm();
-    expect((await state()).counters.public.read).toBe(1);
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    vi.setSystemTime(new Date('2026-10-31T12:05:00Z'));
-    await tower.alarm();
-    const updated = await state();
-    expect(updated.flights.find((f: any) => f.dir === 'dep').status).toBe('suspended');
-    expect(updated.flights.find((f: any) => f.dir === 'arr')).toMatchObject({ status: 'diverted', divertedTo: 'OTP', est: eta });
-    // Diversions absent from the next live schedule must still be displayed.
-    vi.setSystemTime(Date.now() + 300000);
-    fetcher.mockImplementation(async () => Response.json([{ ...row, flight_iata: 'W63752' }]));
-    await tower.alarm();
-    expect((await state()).flights.some((f: any) => f.flight === 'W6 3412' && f.status === 'diverted')).toBe(true);
   });
 
   it.each(['http', 'malformed', 'empty', 'timeout'])('falls back on %s and recovers at the next alarm', async failure => {

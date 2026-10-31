@@ -1,6 +1,6 @@
-import { Miniflare, Response, convertV4MiniflareOptions } from 'miniflare';
+import { Miniflare,Response,convertV4MiniflareOptions } from 'miniflare';
 import { createHmac } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 
 // The real Tower in workerd: Unity's twin socket, the WhatsApp webhook and the operator endpoints together.
 let mf: Miniflare;
@@ -52,7 +52,7 @@ describe('passenger messaging in the Tower', () => {
     u.ws.send(envelope('flight.update', { flights: [flight()] }));
     // D17: a sim subscriber, plus the legacy shape in the same socket.
     u.ws.send(envelope('agent.register', { agentId: 'a1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' }));
-    u.ws.send(envelope('agent.register', { agents: [{ agentId: 'u1', role: 'taxi', channel: 'telegram' }] }));
+    u.ws.send(envelope('agent.register', { agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }] }));
     await expect.poll(() => u.of('agent.message').length).toBe(1);
     expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Fii la intrarea în terminal la 08:') });
     const simLink = /https:\/\/clarion-craiova.pages.dev\/m\/([a-f0-9-]+)/.exec(u.of('agent.message')[0].text)!;

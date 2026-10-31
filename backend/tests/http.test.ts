@@ -1,15 +1,14 @@
-import { afterAll, beforeAll, describe, it, expect, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync,rmSync } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AddressInfo } from "node:net";
+import { afterAll,beforeAll,describe,expect,it,vi } from "vitest";
 import { WebSocket } from "ws";
 import { createControlTower } from "../src/server.js";
 const dir = mkdtempSync(join(tmpdir(), "tower-http-"));
 let server: ReturnType<typeof createControlTower>, base: string;
 beforeAll(async () => {
   vi.stubEnv("STATE_FILE", join(dir, "state.json"));
-  vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
   server = createControlTower();
   await new Promise<void>((r) => server.http.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.http.address() as AddressInfo).port}`;
@@ -21,7 +20,7 @@ afterAll(async () => {
 });
 describe("HTTP and WebSocket contract", () => {
   it("provides health/state, valid CORS preflights and rejects unrelated origins", async () => {
-    expect((await (await fetch(`${base}/health`)).json()).ok).toBe(true);
+    expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true, service: "clarion" });
     for (const origin of [
       "http://localhost:5173",
       "https://jury.pages.dev",
@@ -49,7 +48,7 @@ describe("HTTP and WebSocket contract", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: "passenger_home",
-          channel: "telegram",
+          channel: "whatsapp",
           lang: "en",
           consent,
           source: "jury",
@@ -61,14 +60,6 @@ describe("HTTP and WebSocket contract", () => {
     expect(response.status).toBe(201);
     const result = await response.json();
     expect(result.subscriptionId).toBeTruthy();
-    const payload = new URL(result.telegramLink).searchParams.get("start")!;
-    expect(payload).toMatch(/^passenger_home__W63412/);
-    expect(payload.length).toBeLessThanOrEqual(64);
-    await server.engine.telegramStart("123", payload);
-    expect(
-      server.engine.subscriptions.find((s) => s.id === result.subscriptionId)
-        ?.lang,
-    ).toBe("en");
     const state = await (await fetch(`${base}/api/state`)).json();
     expect(state.subscriptions).toBeUndefined();
     expect(state.counters.passenger_home.subscribers).toBe(1);
@@ -82,8 +73,6 @@ describe("HTTP and WebSocket contract", () => {
       });
     const initial = await message();
     expect(initial.type).toBe("state");
-    expect(initial.data.reach).toHaveLength(6);
-    expect(initial.data.drone).toBeNull();
     expect(initial.data.phase).toBe("normal");
     const rejected = message();
     ws.send(
@@ -96,14 +85,6 @@ describe("HTTP and WebSocket contract", () => {
     expect((await rejected).type).toBe("error");
     ws.close();
   });
-  it("exposes Telegram configuration without secrets", async () => {
-    expect(await (await fetch(`${base}/api/telegram`)).json()).toEqual({
-      enabled: false,
-      botUsername: null,
-      deepLinkExample: null,
-    });
-    expect(server.engine.subscriptions[0]?.source).toBe("jury");
-  });
   it("accepts enveloped console actions and rejects twin events over action route", async () => {
     const post = (type: string) =>
       fetch(`${base}/api/action`, {
@@ -113,9 +94,6 @@ describe("HTTP and WebSocket contract", () => {
       });
     expect((await post("agent.register")).status).toBe(400);
     expect((await post("console.reset")).status).toBe(200);
-    expect(
-      (await (await fetch(`${base}/waze/cifs.json`)).json()).incidents,
-    ).toEqual([]);
   });
 });
 

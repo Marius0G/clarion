@@ -1,27 +1,23 @@
 import { DurableObject } from 'cloudflare:workers';
-import { agentRoute, opsCommand, opsWire, simCommand } from '../../backend/src/sim.js';
+import { createWhatsApp,verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
+import { aircraftNearLrcv,FidsAdapter } from '../../backend/src/data/flights.js';
 import { Engine } from '../../backend/src/engine.js';
-import type { Client, Envelope } from '../../backend/src/types.js';
-import { Telegram } from '../../backend/src/channels/telegram.js';
-import { createWhatsApp, verifyWhatsApp } from '../../backend/src/channels/whatsapp.js';
-import { webpush } from '../../backend/src/channels/webpush.js';
-import { wazeFeed } from '../../backend/src/channels/waze.js';
-import { aircraftNearLrcv, FidsAdapter } from '../../backend/src/data/flights.js';
+import { agentRoute,opsCommand,opsWire,simCommand } from '../../backend/src/sim.js';
+import type { Client,Envelope } from '../../backend/src/types.js';
+import type { Wallet,WalletStore } from '../../backend/src/wallet.js';
+import { createWallet,equalSecret,validWhatsAppSignature,type Secrets } from './channels.js';
 import { createStoredEngine } from './storage.js';
-import { createSms, createWallet, equalSecret, validWhatsAppSignature, type Secrets } from './channels.js';
-import type { Wallet, WalletStore } from '../../backend/src/wallet.js';
 import { WhatsAppAgent, type WaEnv } from './wa/index.js';
 import { JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin } from './join.js';
 import { findFlight } from './wa/flights.js';
-import { airportView } from './wa/tower.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
+import { airportView } from './wa/tower.js';
 
 export interface Env extends Secrets, WaEnv {
   TOWER: DurableObjectNamespace<Tower>;
   DEMO_TOKEN?: string;
   WHATSAPP_NUMBER?: string;
   SIM_SPEED?: string; SIM_SEED?: string; AUTO_CONFIRM?: string;
-  WAVES_ENABLED?: string; WAVE_COUNT?: string; WAVE_MINUTES?: string;
 }
 const ALARM_SPACING_MS = 500;
 const json = (body: unknown, status = 200) => Response.json(body, {
@@ -80,7 +76,6 @@ export default {
 export class Tower extends DurableObject<Env> {
   private engine!: Engine;
   private wallet!: Wallet;
-  private telegram: Telegram;
   private queue: Promise<unknown> = Promise.resolve();
   private seenWhatsApp: string[] = [];
   private whatsapp: WhatsAppAgent;
@@ -91,7 +86,6 @@ export class Tower extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.telegram = new Telegram(env.TELEGRAM_BOT_TOKEN ?? '');
     this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0),
       { toUnity: (type, data) => this.toTwins(type, data) });
     ctx.blockConcurrencyWhile(async () => {
@@ -101,7 +95,6 @@ export class Tower extends DurableObject<Env> {
       this.wallet = createWallet(env, await ctx.storage.get<WalletStore>('wallet'),
         store => ctx.storage.put('wallet', store));
       this.seenWhatsApp = await ctx.storage.get<string[]>('whatsappIds') ?? [];
-      this.telegram.botUsername = await ctx.storage.get<string>('telegramUsername') ?? null;
       this.engine = createStoredEngine(saved, store => {
         // SQLite writes are synchronous and participate in DO output gating.
         // Store JSON in SQL to avoid the KV API's smaller per-value limit.
@@ -109,17 +102,12 @@ export class Tower extends DurableObject<Env> {
       }, {
         emit: (type, data) => this.broadcast(type, data),
         adapters: {
-          telegram: m => this.telegram.send(m),
           whatsapp: createWhatsApp({
             WHATSAPP_TOKEN: env.WHATSAPP_TOKEN ?? env.WA_TOKEN,
             WHATSAPP_PHONE_NUMBER_ID: env.WHATSAPP_PHONE_NUMBER_ID ?? env.WA_PHONE_NUMBER_ID,
           }),
-          sms: createSms(env), webpush,
         },
         simSpeed: numeric(env.SIM_SPEED, 60, 0.001), seed: env.SIM_SEED,
-        autoConfirm: env.AUTO_CONFIRM === 'true', wavesEnabled: env.WAVES_ENABLED !== 'false',
-        waveCount: numeric(env.WAVE_COUNT, 3, 1, 20, true),
-        waveMinutes: numeric(env.WAVE_MINUTES, 10, 0.01), taxiGroup: env.TELEGRAM_TAXI_GROUP_ID,
       });
       await this.refreshFlights();
       this.engine.persist();
@@ -202,13 +190,6 @@ export class Tower extends DurableObject<Env> {
       if (Date.now() >= this.nextFidsRefresh) await this.refreshFlights();
     });
   }
-  private async telegramIdentity() {
-    if (!this.telegram.enabled || this.telegram.botUsername) return;
-    try {
-      await this.telegram.initialize();
-      if (this.telegram.botUsername) await this.ctx.storage.put('telegramUsername', this.telegram.botUsername);
-    } catch { console.warn('Telegram identity unavailable; check token/network'); }
-  }
   async fetch(request: Request): Promise<Response> {
     return this.ordered(async () => {
       const url = new URL(request.url);
@@ -237,11 +218,9 @@ export class Tower extends DurableObject<Env> {
           // D11: staff reports for the dashboard pins.
           if (path === '/api/reports') return json(await this.whatsapp.reports.list());
           if (path === '/api/sim/agents') return json(this.engine.sim.agents(url.searchParams));
-          if (path === '/health') return json({ ok: true, service: 'clarion', telegram: this.telegram.enabled ? 'live' : 'dry-run' });
+          if (path === '/health') return json({ ok: true, service: 'clarion', whatsapp: this.env.WA_TOKEN || this.env.WHATSAPP_TOKEN ? 'live' : 'dry-run' });
           if (path === '/api/state') return json(this.engine.snapshot());
-          if (path === '/api/telegram') { await this.telegramIdentity(); return json(this.telegram.status()); }
           if (path === '/api/aircraft') return json({ aircraft: await aircraftNearLrcv(), source: 'OpenSky (empty on timeout/unavailable)' });
-          if (path === '/waze/cifs.json') return json(wazeFeed(this.engine.state));
           if (path === '/webhooks/whatsapp') {
             const challenge = verifyWhatsApp(url.searchParams, this.env.WHATSAPP_VERIFY_TOKEN);
             return challenge === undefined ? json({ error: 'Verification rejected' }, 403) : new Response(challenge);
@@ -272,31 +251,6 @@ export class Tower extends DurableObject<Env> {
             }
             return json(await this.wallet.pass(this.engine, input?.subscriptionId));
           }
-          if (path === '/webhooks/telegram') {
-            if (!this.env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'Telegram webhook secret not configured' }, 503);
-            if (!await equalSecret(request.headers.get('X-Telegram-Bot-Api-Secret-Token'), this.env.TELEGRAM_WEBHOOK_SECRET))
-              return json({ error: 'Invalid webhook secret' }, 403);
-            const update = JSON.parse(await bodyText(request));
-            if (!Number.isSafeInteger(update.update_id) || update.update_id < 0) return json({ error: 'Invalid update' }, 400);
-            if (update.update_id < this.engine.telegramOffset) return json({ ok: true });
-            const message = update.message;
-            if (message?.chat?.type === 'private' && typeof message.text === 'string' && message.text.startsWith('/start '))
-              await this.engine.telegramStart(String(message.chat.id), message.text.slice(7).trim());
-            const query = update.callback_query;
-            if (typeof query?.data === 'string' && query.message?.chat?.id !== undefined &&
-                (query.data.startsWith('read:') || query.data.startsWith('presence:'))) {
-              if (query.data.startsWith('presence:'))
-                this.engine.updatePresence('telegram', String(query.message.chat.id), query.data.slice(9));
-              else this.engine.markRead(query.data.slice(5), String(query.message.chat.id));
-              if (this.telegram.enabled) {
-                try { await this.telegram.call('answerCallbackQuery', { callback_query_id: query.id, text: 'Am înregistrat / Recorded' }); }
-                catch { console.warn('Telegram callback acknowledgement failed'); }
-              }
-            }
-            this.engine.telegramOffset = update.update_id + 1;
-            this.engine.persist();
-            return json({ ok: true });
-          }
           if (path === '/webhooks/whatsapp') {
             if (!this.env.WHATSAPP_APP_SECRET) return json({ error: 'WhatsApp app secret not configured' }, 503);
             const raw = await bodyText(request, 1048576);
@@ -321,12 +275,9 @@ export class Tower extends DurableObject<Env> {
           }
           if (path === '/api/subscribe') {
             const input = JSON.parse(await bodyText(request));
-            await this.telegramIdentity();
             const sub = this.engine.subscribe(input);
             await this.engine.confirmSubscription(sub);
-            return json({ subscriptionId: sub.id, ...(sub.channel === 'telegram' ? {
-              telegramLink: this.engine.telegramLink(sub, this.telegram.botUsername ?? this.env.TELEGRAM_BOT_USERNAME ?? 'ClarionDemoBot'),
-            } : {}) }, 201);
+            return json({ subscriptionId: sub.id }, 201);
           }
           const close = /^\/api\/reports\/([A-Za-z0-9_-]{1,40})\/close$/.exec(path);
           if (close) {

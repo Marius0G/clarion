@@ -1,13 +1,8 @@
-import { dryRun, type Adapter } from '../../backend/src/channels/types.js';
-import { Wallet, type WalletEnv, type WalletStore } from '../../backend/src/wallet.js';
+import { Wallet,type WalletEnv,type WalletStore } from '../../backend/src/wallet.js';
 export function createWallet(env: WalletEnv, saved: WalletStore | undefined, persist: (store: WalletStore) => Promise<void>) {
   return new Wallet(env, { saved, persist });
 }
 export interface Secrets extends WalletEnv {
-  TELEGRAM_BOT_TOKEN?: string;
-  TELEGRAM_WEBHOOK_SECRET?: string;
-  TELEGRAM_BOT_USERNAME?: string;
-  TELEGRAM_TAXI_GROUP_ID?: string;
   WHATSAPP_TOKEN?: string;
   WHATSAPP_WABA_ID?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
@@ -16,26 +11,7 @@ export interface Secrets extends WalletEnv {
   WA_TOKEN?: string;
   WA_PHONE_NUMBER_ID?: string;
   WA_API_VERSION?: string;
-  SMSLINK_CONNECTION_ID?: string;
-  SMSLINK_PASSWORD?: string;
 }
-// The Node SMS adapter reads process.env. Keep this transport-only adapter here;
-// state, templates, receipts and metrics remain owned by the shared engine.
-export function createSms(env: Secrets): Adapter {
-  return async m => {
-    if (/https?:\/\/|www\./i.test(m.text)) throw new Error('SMS must not contain links');
-    if (!env.SMSLINK_CONNECTION_ID || !env.SMSLINK_PASSWORD) return dryRun('sms', m);
-    if (!m.destination) return { delivered: false, simulated: false };
-    const response = await fetch('https://secure.smslink.ro/sms/gateway/communicate/index.php', {
-      method: 'POST',
-      body: new URLSearchParams({ connection_id: env.SMSLINK_CONNECTION_ID,
-        password: env.SMSLINK_PASSWORD, to: m.destination, message: m.text }),
-      signal: AbortSignal.timeout(10000),
-    });
-    return { delivered: response.ok && /^MESSAGE;1;/.test((await response.text()).trim()), simulated: false };
-  };
-}
-
 export async function validWhatsAppSignature(body: string, header: string | null, secret: string) {
   if (!header || !/^sha256=[a-f0-9]{64}$/i.test(header)) return false;
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),

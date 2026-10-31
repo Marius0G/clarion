@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WhatsAppAgent, parseStaff, type WaStore } from '../src/wa/index.js';
-import { PROVISIONAL_FLIGHTS, fromSim, simSeconds, type Flight, type SimFlightRow } from '../src/wa/flights.js';
+import { afterEach,describe,expect,it,vi } from 'vitest';
+import { PROVISIONAL_FLIGHTS,fromSim,simSeconds,type Flight,type SimFlightRow } from '../src/wa/flights.js';
+import { WhatsAppAgent,parseStaff,type WaStore } from '../src/wa/index.js';
+import { Messaging,estimateStage,evacPlan,routeFor,splitRegister,type EvacPlan } from '../src/wa/messaging.js';
+import { classifyIssue,matchNode } from '../src/wa/reports.js';
+import { arrivalPlan,toolsFor,type AirportView,type Profile,type ZoneRow } from '../src/wa/tools.js';
 import { airportView } from '../src/wa/tower.js';
-import { Messaging, estimateStage, evacPlan, routeFor, splitRegister, type EvacPlan } from '../src/wa/messaging.js';
-import { classifyIssue, matchNode } from '../src/wa/reports.js';
 import { WhatsAppClient } from '../src/wa/transport.js';
-import { arrivalPlan, toolsFor, type AirportView, type Profile, type ZoneRow } from '../src/wa/tools.js';
 
 const hm = (h: number, m: number) => h * 3600 + m * 60;
 class MemoryStore implements WaStore {
@@ -129,10 +129,10 @@ describe('flight.update wiring (D14)', () => {
 describe('agent.register for simulated subscribers (D17)', () => {
   it('splits sim entries from the legacy shape and validates them', () => {
     expect(splitRegister({ agentId: 'a1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' })).toEqual({ sims: [{ agentId: 'a1', role: 'passenger_terminal', flight: 'W6 3751' }], rest: null });
-    const legacy = { agents: [{ agentId: 'u1', role: 'taxi', channel: 'telegram' }] };
+    const legacy = { agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }] };
     expect(splitRegister(legacy)).toEqual({ sims: [], rest: legacy });
-    const mixed = splitRegister({ agents: [{ agentId: 'u1', role: 'taxi', channel: 'telegram' }, { agentId: 'a2', role: 'p', channel: 'sim', flight: 'RO 1' }] });
-    expect(mixed).toEqual({ sims: [{ agentId: 'a2', role: 'p', flight: 'RO 1' }], rest: { agents: [{ agentId: 'u1', role: 'taxi', channel: 'telegram' }] } });
+    const mixed = splitRegister({ agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }, { agentId: 'a2', role: 'p', channel: 'sim', flight: 'RO 1' }] });
+    expect(mixed).toEqual({ sims: [{ agentId: 'a2', role: 'p', flight: 'RO 1' }], rest: { agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }] } });
     expect(() => splitRegister({ agentId: 'a1', role: 'p', channel: 'sim' })).toThrow('Invalid sim agent');
     expect(() => splitRegister({ agents: [{ agentId: '', role: 'p', channel: 'sim', flight: 'W6 1' }] })).toThrow();
   });

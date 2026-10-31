@@ -1,8 +1,8 @@
-import { Miniflare, Response, convertV4MiniflareOptions } from 'miniflare';
-import { afterEach, beforeAll, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { Miniflare,Response,convertV4MiniflareOptions } from 'miniflare';
+import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach,beforeAll,expect,it } from 'vitest';
 
 let mf: Miniflare | undefined;
 let dir: string;
@@ -14,7 +14,7 @@ function start(credentials = false) {
   return new Miniflare(convertV4MiniflareOptions({
     name: 'wallet-test', modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-10-30',
     durableObjects: { TOWER: { className: 'Tower', useSQLite: true } }, resourcePersistencePath: dir,
-    bindings: { WAVES_ENABLED: 'false', ...(credentials ? bindings : {}) },
+    bindings: { ...(credentials ? bindings : {}) },
     outboundService: async request => {
       if (request.url.includes('fids.flightradar.live')) return Response.json([]);
       const text = await request.text();
@@ -33,7 +33,7 @@ async function action(type: string) {
   expect(response.status).toBe(200);
 }
 async function subscribe() {
-  const response = await post('/api/subscribe', { role: 'relative_arrivals', flight: 'W6 3412', channel: 'telegram', lang: 'ro', consent: true });
+  const response = await post('/api/subscribe', { role: 'relative_arrivals', flight: 'W6 3412', channel: 'whatsapp', lang: 'ro', consent: true });
   expect(response.status).toBe(201);
   return await response.json() as { subscriptionId: string };
 }
@@ -54,7 +54,7 @@ it('serves demo fallback and validates subscription IDs in workerd', async () =>
   expect(await post('/api/wallet/pass', { subscriptionId }).then(r => r.json())).toEqual({ demo: true, saveUrl: `/join/wallet-demo?sub=${subscriptionId}` });
   expect(calls).toHaveLength(0);
 });
-it('signs in workerd, updates after confirmation, and preserves the cap across a DO restart', async () => {
+it('signs a verifiable Wallet pass in workerd', async () => {
   dir = await mkdtemp(join(tmpdir(), 'wallet-worker-'));
   mf = start(true);
   const { subscriptionId } = await subscribe();
@@ -64,38 +64,4 @@ it('signs in workerd, updates after confirmation, and preserves the cap across a
   expect(JSON.parse(Buffer.from(header, 'base64url').toString()).alg).toBe('RS256');
   expect(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, new Uint8Array(Buffer.from(signature, 'base64url')), new TextEncoder().encode(`${header}.${body}`))).toBe(true);
   expect(JSON.parse(Buffer.from(body, 'base64url').toString()).payload.genericObjects[0].header.defaultValue.value).toBe('Clarion');
-  const response = await mf.dispatchFetch('https://worker.example/ws?client=twin', { headers: { Upgrade: 'websocket' } });
-  const ws = response.webSocket!;
-  ws.accept();
-  const phases: string[] = [];
-  ws.addEventListener('message', e => { const m = JSON.parse(String(e.data)); if (m.type === 'state') phases.push(m.data.phase); });
-  ws.send(JSON.stringify(envelope('ops.suspended', { reason: 'drone', estimatedReopen: new Date(Date.now() + 600000).toISOString() })));
-  await expect.poll(() => phases.includes('detection')).toBe(true);
-  expect(calls).toHaveLength(0);
-  await action('console.confirm_suspension');
-  const patches = () => calls.filter(c => c.method === 'PATCH');
-  const notifications = () => calls.filter(c => c.url.endsWith('/addMessage'));
-  expect(patches()).toHaveLength(1);
-  expect(patches()[0]!.body.textModulesData[2].body).toContain('suspendate');
-  expect(notifications()).toHaveLength(1);
-  expect(notifications()[0]!.authorization).toBe('Bearer test-access-token');
-  expect(notifications()[0]!.body.message.messageType).toBe('TEXT_AND_NOTIFY');
-  await action('console.reopen');
-  await action('console.reopen');
-  expect(notifications()).toHaveLength(3);
-  ws.close();
-  await mf.dispose();
-  mf = start(true);
-  await action('console.reset');
-  const next = await mf.dispatchFetch('https://worker.example/ws?client=twin', { headers: { Upgrade: 'websocket' } });
-  const twin = next.webSocket!;
-  twin.accept();
-  const states: string[] = [];
-  twin.addEventListener('message', e => { const m = JSON.parse(String(e.data)); if (m.type === 'state') states.push(m.data.phase); });
-  twin.send(JSON.stringify(envelope('ops.suspended', { reason: 'weather', estimatedReopen: new Date(Date.now() + 600000).toISOString() })));
-  await expect.poll(() => states.includes('detection')).toBe(true);
-  await action('console.confirm_suspension');
-  expect(patches()).toHaveLength(4);
-  expect(notifications()).toHaveLength(3);
-  twin.close();
 });

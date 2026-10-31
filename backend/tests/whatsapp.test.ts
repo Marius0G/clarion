@@ -1,14 +1,14 @@
-import "../src/node-runtime.js";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync,readFileSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
-import { Engine } from "../src/engine.js";
-import { roles } from "../src/types.js";
-import { catalog, selectTemplate, fillTemplate, whatsappPayload, createWhatsApp, verifyWhatsApp, parseStartCode, parseWhatsAppWebhook, buttonAction } from "../src/channels/whatsapp.js";
-import { FidsAdapter, mapFids } from "../src/data/flights.js";
+import { afterEach,describe,expect,it,vi } from "vitest";
 import type { Outbound } from "../src/channels/types.js";
-const m: Outbound = {messageId: "m", receiptId: "r", role: "passenger_home", lang: "ro", destination: "40712345678", text: "Clarion", situation: "runway_closed"};
+import { buttonAction,catalog,createWhatsApp,fillTemplate,parseStartCode,parseWhatsAppWebhook,selectTemplate,verifyWhatsApp,whatsappPayload } from "../src/channels/whatsapp.js";
+import { FidsAdapter,mapFids } from "../src/data/flights.js";
+import { Engine } from "../src/engine.js";
+import "../src/node-runtime.js";
+import { roles } from "../src/types.js";
+const m: Outbound = {messageId: "m", receiptId: "r", role: "passenger_home", lang: "ro", destination: "40712345678", text: "Clarion", situation: "subscribe"};
 const payload = (value: unknown) => ({entry: [{changes: [{value}]}]});
 const inbound = (text: string, id: string = crypto.randomUUID()) => payload({messages: [{id, from: m.destination, timestamp: String(Math.floor(Date.now()/1000)), text: {body: text}}]});
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -17,40 +17,29 @@ describe("WhatsApp templates", () => {
     expect(catalog).toEqual(JSON.parse(readFileSync(new URL("../../whatsapp/templates.json", import.meta.url), "utf8")));
   });
   it("maps only the documented roles and languages", () => {
-    expect(selectTemplate("passenger_terminal", "runway_closed", "en")?.name).toBe("suspendare_pasager");
-    expect(selectTemplate("relative_arrivals", "runway_closed", "ro")?.name).toBe("suspendare_asteptare");
-    expect(selectTemplate("rideshare", "runway_closed", "ro")?.name).toBe("suspendare_taxi");
-    expect(selectTemplate("staff", "runway_closed", "ro")?.name).toBe("suspendare_personal");
-    expect(selectTemplate("staff", "runway_closed", "en")).toBeUndefined();
-    expect(selectTemplate("taxi", "reopened", "en")).toBeUndefined();
-    expect(selectTemplate("staff", "reopened", "ro")).toBeUndefined();
-    expect(selectTemplate("relative_arrivals", "diverted", "ro")?.name).toBe("zbor_redirectionat");
-    expect(selectTemplate("passenger_home", "diverted", "ro")).toBeUndefined();
     for (const role of roles) expect(selectTemplate(role, "evacuation", "en")?.name).toBe("evacuare_terminal");
   });
   it("fills every supported template from incident state with named parameters and no placeholders", () => {
     const engine = new Engine();
-    for (const role of roles) for (const lang of ["ro", "en"] as const) for (const situation of ["subscribe", "runway_closed", "diverted", "evacuation", "reopen_wave", "reopened"] as const) {
+    for (const role of roles) for (const lang of ["ro", "en"] as const) for (const situation of ["subscribe", "evacuation"] as const) {
       const t = selectTemplate(role, situation, lang);
       if (!t) continue;
       const filled = fillTemplate(t, engine.templateValues({role, lang, flight: "W6 3412"}));
       expect(filled.text).not.toMatch(/\{\{/);
       expect(filled.parameters.every(p => p.parameter_name && p.text)).toBe(true);
     }
-    const t = selectTemplate("taxi", "runway_closed", "ro")!;
+    const t = selectTemplate("taxi", "subscribe", "ro")!;
     expect(() => fillTemplate(t, {})).toThrow("Missing WhatsApp parameter");
-    const values = engine.templateValues({role: "relative_arrivals", lang: "ro", flight: "W6 3412"});
-    expect(values.origine).toBe("Bergamo");
   });
   it("builds Cloud API templates with catalog buttons outside the window, text only inside it", () => {
     const values = new Engine().templateValues({role: m.role, lang: m.lang});
     const p = whatsappPayload({...m, values}) as any;
-    expect(p.template.name).toBe("suspendare_pasager");
-    expect(p.template.components.filter((c: any) => c.type === "button").map((c: any) => c.parameters[0].payload)).toEqual(["Sunt în terminal", "Sunt pe drum", "Nu am plecat încă"]);
+    expect(p.template.name).toBe("abonare_confirmata");
+    expect(p.template.components.filter((c: any) => c.type === "button").map((c: any) => c.parameters[0].payload)).toEqual(["Opresc alertele"]);
     expect(whatsappPayload({...m, values, lastInboundAt: new Date().toISOString()})?.type).toBe("text");
     expect(whatsappPayload({...m, values, lastInboundAt: new Date(Date.now()-86400000).toISOString()})?.type).toBe("template");
-    expect(whatsappPayload({...m, role: "public"})).toBeUndefined();
-    expect(whatsappPayload({...m, role: "public", lastInboundAt: new Date().toISOString()})?.type).toBe("text");
+    expect(whatsappPayload({...m, situation: undefined, role: "public"})).toBeUndefined();
+    expect(whatsappPayload({...m, situation: undefined, role: "public", lastInboundAt: new Date().toISOString()})?.type).toBe("text");
   });
   it("uses team env names and waits for webhook before claiming delivery", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({messages:[{id:"wamid.1"}]})));
@@ -112,7 +101,7 @@ describe("WhatsApp webhook and presence", () => {
       expect(next.state.flights.find(f => f.flight === "W4 3752")?.divertedTo).toBe("OTP");
     } finally { rmSync(dir, {recursive:true}); }
   });
-  it("counts Unity moves once, rejects invalid updates, and accepts Telegram replies", async () => {
+  it("counts Unity moves once, rejects invalid updates, and accepts WhatsApp replies", async () => {
     const e = new Engine();
     const event = (type:string,data:object) => e.handle({type,ts:new Date().toISOString(),data},"twin");
     await event("agent.register",{agents:[{agentId:"a",role:"taxi",channel:"whatsapp"}]});
@@ -120,7 +109,7 @@ describe("WhatsApp webhook and presence", () => {
     await event("agent.update",{agentId:"a",role:"taxi",location:"road"});
     expect(e.state.presence.taxi).toEqual({home:0,road:1,terminal:0,kerb:0,unknown:0});
     await expect(event("agent.update",{agentId:"a",role:"taxi",location:"moon"})).rejects.toThrow();
-    await e.telegramStart("123","passenger_home__"); e.updatePresence("telegram","123","Nu am plecat încă");
+    await e.whatsappWebhook(inbound("START PASAGER")); e.updatePresence("whatsapp",m.destination!,"Nu am plecat încă");
     expect(e.state.presence.passenger_home.home).toBe(1);
   });
 });
@@ -140,14 +129,5 @@ describe("recorded FIDS", () => {
     fetcher.mockRejectedValue(new Error("offline"));
     expect((await fids.get(301001)).dataSource).toBe("fixture");
     expect(fetcher.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
-  });
-  it("preserves simulated suspension and diversion across schedule refreshes", async () => {
-    const e = new Engine();
-    e.state.phase = "suspended";
-    const later = new Date(Date.now()+3600000).toISOString();
-    const mapped = mapFids(arrivals,"arr").map(f=>({...f,sched:later,est:later}));
-    e.updateFlights(mapped,"fids"); expect(e.state.flights[0]?.status).toBe("suspended");
-    e.state.flights[0]!.status="diverted"; e.state.flights[0]!.divertedTo="OTP";
-    e.updateFlights(mapped,"fids"); expect(e.state.flights[0]?.divertedTo).toBe("OTP");
   });
 });

@@ -1,21 +1,17 @@
-import "./node-runtime.js";
-import { createServer, type IncomingMessage } from "node:http";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { loadEnvFile } from "node:process";
+import { createHash,timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { WebSocketServer, WebSocket } from "ws";
-import { createHash, timingSafeEqual } from "node:crypto";
-import { agentRoute, opsCommand, opsWire, simCommand } from "./sim.js";
-import { Engine } from "./engine.js";
-import { Telegram } from "./channels/telegram.js";
-import { sms } from "./channels/sms.js";
-import { whatsapp, verifyWhatsApp } from "./channels/whatsapp.js";
-import { webpush } from "./channels/webpush.js";
+import { createServer,type IncomingMessage } from "node:http";
+import { dirname,resolve } from "node:path";
+import { loadEnvFile } from "node:process";
+import { fileURLToPath } from "node:url";
+import { WebSocket,WebSocketServer } from "ws";
 import { Wallet } from "./channels/wallet.js";
-import { wazeFeed } from "./channels/waze.js";
-import { aircraftNearLrcv, FidsAdapter } from "./data/flights.js";
-import type { Client, Envelope } from "./types.js";
+import { verifyWhatsApp,whatsapp } from "./channels/whatsapp.js";
+import { aircraftNearLrcv,FidsAdapter } from "./data/flights.js";
+import { Engine } from "./engine.js";
+import "./node-runtime.js";
+import { agentRoute,opsCommand,opsWire,simCommand } from "./sim.js";
+import type { Client,Envelope } from "./types.js";
 function numberEnv(name: string, fallback: number, min = 0, max = Infinity) {
   const n = Number(process.env[name] ?? fallback);
   if (!Number.isFinite(n) || n < min || n > max)
@@ -24,8 +20,7 @@ function numberEnv(name: string, fallback: number, min = 0, max = Infinity) {
 }
 function integerEnv(name: string, fallback: number, min: number, max: number) {
   const n = numberEnv(name, fallback, min, max);
-  if (!Number.isInteger(n))
-    throw new Error(`Invalid ${name}: integer required`);
+  if (!Number.isInteger(n)) throw new Error(`Invalid ${name}: integer required`);
   return n;
 }
 async function jsonBody(req: IncomingMessage): Promise<any> {
@@ -50,12 +45,6 @@ export function createControlTower() {
   const wallet = new Wallet(process.env, process.env.STATE_FILE
     ? `${process.env.STATE_FILE}.wallet.json`
     : fileURLToPath(new URL('../data/wallet.json', import.meta.url)).replace('/dist/data/', '/data/'));
-  const telegram = new Telegram();
-  const telegramReady = telegram.initialize().catch(() => {
-    console.warn(
-      "Telegram startup identity check failed; check token / network",
-    );
-  });
   const sockets = new WebSocketServer({
     noServer: true,
     maxPayload: 1024 * 1024,
@@ -80,14 +69,9 @@ export function createControlTower() {
           : "../../data/state.json",
       ),
     emit,
-    adapters: { telegram: (m) => telegram.send(m), sms, whatsapp, webpush },
+    adapters: { whatsapp },
     simSpeed: numberEnv("SIM_SPEED", 60, 0.001),
     seed: process.env.SIM_SEED,
-    autoConfirm: process.env.AUTO_CONFIRM === "true",
-    wavesEnabled: process.env.WAVES_ENABLED !== "false",
-    waveCount: integerEnv("WAVE_COUNT", 3, 1, 20),
-    waveMinutes: numberEnv("WAVE_MINUTES", 10, 0.01),
-    taxiGroup: process.env.TELEGRAM_TAXI_GROUP_ID,
   });
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
   let queue = Promise.resolve();
@@ -187,14 +171,8 @@ export function createControlTower() {
           JSON.stringify({
             ok: true,
             service: "clarion",
-            telegram: process.env.TELEGRAM_BOT_TOKEN ? "live" : "dry-run",
           }),
         );
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/telegram") {
-        await telegramReady;
-        res.end(JSON.stringify(telegram.status()));
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
@@ -210,28 +188,13 @@ export function createControlTower() {
         );
         return;
       }
-      if (req.method === "GET" && url.pathname === "/waze/cifs.json") {
-        res.end(JSON.stringify(wazeFeed(engine.state)));
-        return;
-      }
       if (req.method === "POST" && url.pathname === "/api/subscribe") {
         const body = await jsonBody(req);
-        await telegramReady;
         const sub = await ordered(async () => { const sub = engine.subscribe(body); await engine.confirmSubscription(sub); return sub; });
         res.writeHead(201);
         res.end(
           JSON.stringify({
             subscriptionId: sub.id,
-            ...(sub.channel === "telegram"
-              ? {
-                  telegramLink: engine.telegramLink(
-                    sub,
-                    telegram.botUsername ??
-                      process.env.TELEGRAM_BOT_USERNAME ??
-                      "ClarionDemoBot",
-                  ),
-                }
-              : {}),
           }),
         );
         return;
@@ -326,26 +289,9 @@ export function createControlTower() {
   refresh();
   const flights = setInterval(refresh, 60000);
   flights.unref();
-  void telegramReady.then(() =>
-    telegram.poll(
-      engine.telegramOffset,
-      (chat, payload) => ordered(() => engine.telegramStart(chat, payload)),
-      (id, chat) => {
-        void ordered(() => { engine.markRead(id, chat); });
-      },
-      (offset) => {
-        void ordered(() => {
-          engine.telegramOffset = offset;
-          engine.persist();
-        });
-      },
-      (chat, text) => { void ordered(() => engine.updatePresence("telegram", chat, text)); },
-    ),
-  );
   const stop = async () => {
     stopped = true;
     clearInterval(fidsPoll);
-    telegram.stop();
     clearInterval(tick);
     clearInterval(expiry);
     clearInterval(flights);
