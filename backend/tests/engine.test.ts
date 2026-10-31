@@ -1,3 +1,4 @@
+import "../src/node-runtime.js";
 import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

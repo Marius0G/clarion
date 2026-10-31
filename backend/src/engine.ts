@@ -1,14 +1,6 @@
-import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { simAbMetric } from "./data/sim-ab.js";
 import { wazeFeed } from "./channels/waze.js";
-import { dirname } from "node:path";
+import { engineRuntime } from "./runtime.js";
+const randomUUID = () => crypto.randomUUID();
 import {
   roles,
   isRole,
@@ -22,6 +14,8 @@ import {
   type State,
   type Subscription,
 } from "./types.js";
+import { buttonAction, parseStartCode, parseWhatsAppWebhook } from "./channels/whatsapp.js";
+import type { Flight } from "./types.js";
 import { render } from "./messages.js";
 import { fixtureSource, schedule } from "./data/flights.js";
 import { roalertDraft } from "./channels/roalert.js";
@@ -60,6 +54,7 @@ interface Store {
   readRecipientKeys?: string[];
   carAgents: string[];
   carMetricReported?: boolean;
+  whatsappInboundIds?: string[];
 }
 interface Options {
   file?: string;
@@ -80,6 +75,7 @@ export class Engine {
   agents: Agent[] = [];
   receipts: Receipt[] = [];
   telegramOffset = 0;
+  private whatsappInboundIds = new Set<string>();
   private firstNotified = new Set<string>();
   private readRecipientKeys = new Set<string>();
   private carAgents = new Set<string>();
@@ -87,8 +83,8 @@ export class Engine {
   private carMetricReported = false;
   constructor(private options: Options = {}) {
     this.state = this.fresh();
-    if (options.file && existsSync(options.file)) {
-      const saved = JSON.parse(readFileSync(options.file, "utf8")) as Store;
+    if (options.file && engineRuntime.exists(options.file)) {
+      const saved = engineRuntime.read(options.file) as Store;
       if (
         !saved.state ||
         !Array.isArray(saved.subscriptions) ||
@@ -97,6 +93,7 @@ export class Engine {
         throw new Error(
           "Invalid persisted state; refusing to discard subscribers",
         );
+      this.whatsappInboundIds = new Set(saved.whatsappInboundIds ?? []);
       this.state = saved.state;
       this.subscriptions = saved.subscriptions;
       this.agents = saved.agents;
@@ -110,6 +107,7 @@ export class Engine {
       this.carAgents = new Set(saved.carAgents);
       this.carMetricReported = saved.carMetricReported ?? false;
     }
+    const persistedDiversions = this.state.flights.filter(f => f.status === "diverted");
     this.state.flights = schedule().map((f) => {
       const previous = this.state.flights.find(
         (p) => p.flight === f.flight && p.dir === f.dir,
@@ -123,7 +121,9 @@ export class Engine {
           }
         : f;
     });
-    this.state.dataSource = fixtureSource;
+    for (const f of persistedDiversions) if (!this.state.flights.some(p => flightKey(p.flight) === flightKey(f.flight) && p.dir === f.dir)) this.state.flights.push(f);
+    this.state.dataSource = "fixture";
+    this.state.dataSourceDetail = fixtureSource;
     this.state.drone ??= null;
     this.state.reach ??= [];
     for (const role of roles)
@@ -138,6 +138,7 @@ export class Engine {
   }
   private fresh(): State {
     return {
+      presence: {} as State["presence"],
       drone: null,
       reach: [],
       phase: "normal",
@@ -165,12 +166,12 @@ export class Engine {
         isuTimeToT2: null,
         kerbPeak: null,
       },
-      dataSource: fixtureSource,
+      dataSource: "fixture",
+      dataSourceDetail: fixtureSource,
     };
   }
   persist() {
     if (!this.options.file) return;
-    mkdirSync(dirname(this.options.file), { recursive: true });
     const store: Store = {
       state: this.state,
       subscriptions: this.subscriptions,
@@ -181,18 +182,22 @@ export class Engine {
       readRecipientKeys: [...this.readRecipientKeys],
       carAgents: [...this.carAgents],
       carMetricReported: this.carMetricReported,
+      whatsappInboundIds: [...this.whatsappInboundIds],
     };
-    writeFileSync(this.options.file + ".tmp", JSON.stringify(store, null, 2), {
-      mode: 0o600,
-    });
-    renameSync(this.options.file + ".tmp", this.options.file);
+    engineRuntime.write(this.options.file, store);
   }
+
   private changed() {
     this.recount();
     this.persist();
     this.options.emit?.("state", this.snapshot());
   }
   private recount() {
+    this.state.presence = Object.fromEntries(roles.map(role => {
+      const counts = { home: 0, road: 0, terminal: 0, kerb: 0, unknown: 0 };
+      for (const p of [...this.subscriptions, ...this.agents].filter(p => p.role === role)) counts[p.location ?? "unknown"]++;
+      return [role, counts];
+    })) as State["presence"];
     for (const role of roles)
       this.state.counters[role].subscribers =
         this.subscriptions.filter((s) => s.role === role).length +
@@ -395,6 +400,86 @@ export class Engine {
     const base = `${sub.role}__${flight}`;
     const suffix = `__${sub.id.replace(/-/g, "")}`;
     return `https://t.me/${bot}?start=${encodeURIComponent(base.length + suffix.length <= 64 ? base + suffix : base)}`;
+  }
+  templateValues(sub: Pick<Subscription, "role" | "lang" | "flight">, extra: Record<string, string> = {}) {
+    const normalize = (s: string) => s.replace(/\s/g, "").toUpperCase();
+    const f = this.state.flights.find(f => normalize(f.flight) === normalize(sub.flight ?? "")) ?? (sub.flight ? undefined : this.state.flights.find(f => f.dir === (sub.role === "relative_arrivals" ? "arr" : "dep")));
+    const en = sub.lang === "en";
+    const unknown = en ? "not yet confirmed" : "încă neconfirmat";
+    const labels: Record<Role, [string, string]> = {
+      passenger_home: ["pasager", "passenger"], passenger_road: ["pasager pe drum", "passenger on the road"], passenger_terminal: ["pasager în terminal", "passenger in the terminal"], relative_arrivals: ["persoană care așteaptă o sosire", "someone meeting an arrival"], taxi: ["taximetrist", "taxi driver"], rideshare: ["șofer ride-hailing", "ride-hailing driver"], rent_a_car_ubt: ["operator rent-a-car/UBT", "rental/UBT operator"], staff: ["personal aeroportuar", "airport staff"], isu_smurd: ["echipaj ISU/SMURD", "emergency crew"], alt_airport: ["aeroport alternativ", "alternate airport"], public: ["vizitator", "visitor"],
+    };
+    const time = clock(this.state.since);
+    const eta = f ? clock(f.est) : unknown;
+    return {
+      rol: `${labels[sub.role][en ? 1 : 0]}${sub.flight ? ` (${sub.flight})` : ""}`, ora: time,
+      motiv: this.state.reason === "drone" ? (en ? "unauthorised drone reported near the runway" : "dronă neautorizată semnalată lângă pistă") : this.state.reason === "weather" ? (en ? "weather conditions" : "condiții meteo") : (en ? "operational incident" : "incident operațional"),
+      zbor: sub.flight ?? f?.flight ?? unknown, destinatie: f?.city ?? unknown, origine: f?.city ?? unknown,
+      aeroport: f?.divertedTo ?? unknown, ora_update: clock(new Date(Date.now() + 600000).toISOString()),
+      ora_minima: clock(this.state.estimatedReopen), instructiuni: en ? "Follow the dispatcher instructions and keep emergency access clear." : "Urmați indicațiile dispecerului și păstrați liber accesul echipajelor de urgență.",
+      ora_plecare: eta, ora_aterizare: eta, ora_sosire: eta, ora_acces: clock(this.state.estimatedReopen),
+      interval: extra.window || `${clock(this.state.estimatedReopen)}–${clock(new Date(Date.parse(this.state.estimatedReopen) + 1200000).toISOString())}`,
+      pasageri: unknown,
+    };
+  }
+  async confirmSubscription(sub: Subscription) {
+    if (sub.channel !== "whatsapp") return;
+    const draft: Draft = { messageId: randomUUID(), role: sub.role, lang: sub.lang, situation: "runway_closed", text: "Clarion", approved: true };
+    const receipt = this.newReceipt(draft, sub.id, false);
+    let result: import("./channels/types.js").Delivery | undefined;
+    try { result = await this.options.adapters?.whatsapp?.({messageId: draft.messageId, receiptId: receipt.id, role: sub.role, lang: sub.lang, destination: sub.destination, text: "Clarion: alerte activate / alerts activated", situation: "subscribe", values: this.templateValues(sub), lastInboundAt: sub.lastInboundAt}); } catch { console.warn("Clarion WhatsApp subscription confirmation failed"); }
+    receipt.providerId = result?.providerId;
+    receipt.simulated = result?.simulated ?? false;
+    if (result?.delivered) { receipt.delivered = true; this.state.counters[sub.role].delivered++; this.notified(receipt); }
+    this.changed();
+  }
+  updatePresence(channel: Subscription["channel"], destination: string, text: string) {
+    const action = buttonAction(text);
+    if (!action) return;
+    if (action === "unsubscribe") this.subscriptions = this.subscriptions.filter(s => s.channel !== channel || s.destination !== destination);
+    else if (action !== "read") for (const sub of this.subscriptions.filter(s => s.channel === channel && s.destination === destination)) sub.location = action;
+    this.changed();
+  }
+  async whatsappWebhook(body: unknown) {
+    for (const e of parseWhatsAppWebhook(body)) {
+      if (e.kind === "status") {
+        const r = this.receipts.find(r => r.providerId === e.id);
+        if (!r || (e.destination && !this.subscriptions.some(s => s.id === r.recipient && s.destination === e.destination))) continue;
+        if (e.status !== "sent" && !r.delivered) { r.delivered = true; this.state.counters[r.role].delivered++; this.notified(r, e.at); }
+        if (e.status === "read") this.markRead(r.id);
+      } else {
+        if (this.whatsappInboundIds.has(e.id)) continue;
+        const inboundAt = e.at ?? iso();
+        const start = parseStartCode(e.text);
+        this.expire();
+        let sub = this.subscriptions.find(s => s.channel === "whatsapp" && s.destination === e.destination && (!start || s.role === start.role && flightKey(s.flight ?? "") === flightKey(start.flight ?? "")));
+        if (start && !sub) sub = this.subscribe({...start, channel: "whatsapp", destination: e.destination, source: "jury", consent: true});
+        for (const s of this.subscriptions.filter(s => s.channel === "whatsapp" && s.destination === e.destination)) {
+          if (!s.lastInboundAt || inboundAt > s.lastInboundAt) s.lastInboundAt = inboundAt;
+        }
+        if (sub && start) await this.confirmSubscription(sub);
+        this.whatsappInboundIds.add(e.id);
+        if (this.whatsappInboundIds.size > 5000) this.whatsappInboundIds.delete(this.whatsappInboundIds.values().next().value!);
+        this.updatePresence("whatsapp", e.destination, e.text);
+        if (e.contextId) {
+          const r = this.receipts.find(r => r.providerId === e.contextId);
+          if (r) this.markRead(r.id, e.destination);
+        }
+      }
+    }
+    this.changed();
+  }
+  updateFlights(flights: Flight[], dataSource: "fids" | "fixture") {
+    const previous = this.state.flights;
+    this.state.flights = flights.map(f => {
+      const old = previous.find(p => flightKey(p.flight) === flightKey(f.flight) && p.dir === f.dir);
+      if (old?.status === "diverted") return {...f, status: old.status, divertedTo: old.divertedTo, est: old.est};
+      return this.state.phase === "suspended" && f.status === "scheduled" ? {...f, status: "suspended"} : {...f};
+    });
+    for (const old of previous.filter(f => f.status === "diverted")) if (!this.state.flights.some(f => flightKey(f.flight) === flightKey(old.flight) && f.dir === old.dir)) this.state.flights.push(old);
+    this.state.dataSource = dataSource;
+    this.state.dataSourceDetail = dataSource === "fixture" ? fixtureSource : "Live CRA schedule from fids.flightradar.live; incident status overlays are simulated.";
+    this.changed();
   }
   private values(
     flight?: string,
@@ -684,6 +769,13 @@ export class Engine {
             });
         break;
       }
+      case "agent.update": {
+        if (typeof data.agentId !== "string" || !isRole(data.role) || !["home", "road", "terminal", "kerb"].includes(data.location) || (data.action !== undefined && typeof data.action !== "string")) throw new Error("Invalid agent update");
+        const agent = this.agents.find(a => a.agentId === data.agentId);
+        if (!agent) throw new Error("Unknown agent");
+        agent.role = data.role; agent.location = data.location; agent.action = data.action;
+        break;
+      }
       case "metric.report":
         if (
           !["isuTimeToT2", "carsStartedInVain", "kerbPeak"].includes(
@@ -768,6 +860,9 @@ export class Engine {
           role: sub.role,
           lang: sub.lang,
           destination: sub.destination,
+          situation: draft.situation,
+          values: this.templateValues({...sub, flight: sub.flight ?? draft.flight}, extra),
+          lastInboundAt: sub.lastInboundAt,
           text: render(
             sub.role,
             draft.situation,
@@ -780,6 +875,7 @@ export class Engine {
           const result = await adapter?.(m);
           ok = result?.delivered ?? false;
           receipt.simulated = result?.simulated ?? false;
+          receipt.providerId = result?.providerId;
         } catch {
           console.warn(`Send failed: ${sub.channel} ${draft.role}`);
         }
@@ -897,8 +993,8 @@ export class Engine {
         ? `${sub.channel}:${sub.destination}`
         : r.recipient;
   }
-  private notified(r: Receipt) {
-    r.deliveredAt = iso();
+  private notified(r: Receipt, at?: string) {
+    r.deliveredAt = at && Date.parse(at) <= Date.now() ? at : iso();
     const elapsed =
       Date.parse(r.deliveredAt) - Date.parse(this.state.confirmedAt ?? "");
     if (r.delivered && elapsed >= 0 && elapsed <= 60000)
@@ -967,7 +1063,7 @@ export class Engine {
       metrics: {
         ...this.state.metrics,
         isuTimeToT2:
-          this.state.metrics.isuTimeToT2 ?? simAbMetric(this.options.simAbFile),
+          this.state.metrics.isuTimeToT2 ?? engineRuntime.metric(this.options.simAbFile),
       },
     };
   }

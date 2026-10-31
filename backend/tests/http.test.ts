@@ -118,3 +118,19 @@ describe("HTTP and WebSocket contract", () => {
     ).toEqual([]);
   });
 });
+
+describe("WhatsApp webhook HTTP routes", () => {
+  it("checks the verification token and processes jury subscriptions and buttons", async () => {
+    vi.stubEnv("WHATSAPP_VERIFY_TOKEN", "verify-test");
+    vi.stubEnv("WHATSAPP_TOKEN", "");
+    const good = await fetch(`${base}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-test&hub.challenge=1234`);
+    expect(good.status).toBe(200); expect(await good.text()).toBe("1234");
+    expect((await fetch(`${base}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=bad&hub.challenge=1234`)).status).toBe(403);
+    const post = (text: string) => fetch(`${base}/webhooks/whatsapp`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entry:[{changes:[{value:{messages:[{id:crypto.randomUUID(),from:"40700000000",text:{body:text}}]}}]}]})});
+    expect((await post("CLARION PASAGER W43831")).status).toBe(200);
+    expect((await post("Sunt în terminal")).status).toBe(200);
+    const state = await (await fetch(`${base}/api/state`)).json();
+    expect(state.presence.passenger_home.terminal).toBe(1);
+    expect((await post("Opresc alertele")).status).toBe(200);
+  });
+});

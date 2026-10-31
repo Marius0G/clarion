@@ -109,7 +109,7 @@ describe("channel adapters", () => {
     ).rejects.toThrow();
   });
   it("keeps WhatsApp off unless all configuration is supplied", async () => {
-    vi.stubEnv("WA_TOKEN", "");
+    vi.stubEnv("WHATSAPP_TOKEN", "");
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     expect((await whatsapp(message)).simulated).toBe(true);

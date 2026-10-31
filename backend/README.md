@@ -1,6 +1,6 @@
-# CONTROL TOWER backend
+# Clarion backend
 
-Node **22**, TypeScript, built-in HTTP/fetch and `ws`. Implements `../app/PM/CONTRACT.md`, SPEC v2 and the team plan pages 1–10. No frontend files are needed or modified. Dispatcher actions stay human-controlled; the Unity twin and real phones use the same message engine.
+Node **22**, TypeScript, built-in HTTP/fetch and `ws`. Implements `../app/PM/CONTRACT.md`, SPEC v3 and the team plan pages 1–10. No frontend files are needed or modified. Dispatcher actions stay human-controlled; the Unity twin and real phones use the same message engine.
 
 ## Run
 
@@ -13,17 +13,9 @@ npm test
 npm start                    # http://localhost:8787; ws://localhost:8787/ws?client=console
 ```
 
-`npm run dev` runs the source with watch mode. Copy `.env.example` to `.env`. Both `npm start` and `npm run dev` load `backend/.env` automatically using Node 22’s built-in loader; exported variables take precedence. All commands above run from `backend/`.
+`npm run dev` runs the source with watch mode. Copy `.env.example` to `.env`. The repo-root `.env` is also loaded for the team WhatsApp credentials, after backend values; existing/exported values win. Both `npm start` and `npm run dev` load `backend/.env` automatically using Node 22’s built-in loader; exported variables take precedence. All commands above run from `backend/`.
 
 In a second terminal, `cd backend && npm run demo` runs the **automatic CI mode** (`DEMO_MODE=auto`, the default). It resets the incident, registers 60 simulated agents and three unbound Telegram subscriptions, presses every console action, and checks delivery/read counters. Pauses default to 1.5 s plus seven seconds for simulated reads. Both modes preserve existing phone subscriptions: use a demo instance; approved messages can reach opted-in phones with real credentials.
-
-The requested npm alias needs this single addition to `backend/package.json`'s `scripts` (outside the permitted edit scope, pending approval):
-
-```json
-"demo:pitch": "tsx scripts/demo-pitch.ts"
-```
-
-Until that alias is added, the equivalent executable command is `npx tsx scripts/demo-pitch.ts` (or `DEMO_MODE=twin npm run demo`); append `--timeline video.json` directly with `npx`, or after `--` with npm run.
 
 For the pitch, reset the incident **in the console first**, start the video together with `npm run demo:pitch` (`DEMO_MODE=twin`), and follow each `Apasă: …` cue. Twin mode sends only the six scenario twin events; it never resets, registers agents/subscriptions, or presses console actions. It waits for confirmation (`phase=suspended`), approval of at least one selected role's drafts for each situation, the RO-Alert draft, recovery, each configured wave, and final normal phase. The operator chooses which roles receive messages. No minimum read/delivery count is asserted for this human-driven mode. RO-Alert remains a draft only.
 
@@ -59,10 +51,10 @@ Port conflicts: `PORT=8788 STATE_FILE=/tmp/tower-demo-state.json npm start`, the
 | `WAVE_COUNT`                                       | `3` (integer 1–20)                                                             |
 | `WAVE_MINUTES`                                     | `10`, window spacing in real clock minutes, independent of simulation speed    |
 | `TELEGRAM_BOT_TOKEN`                               | Missing = dry-run, no network sends or polling                                 |
-| `TELEGRAM_BOT_USERNAME`                            | Bot username without `@`; fallback placeholder `ControlTowerDemoBot` in dry-run; live username discovered with `getMe`        |
+| `TELEGRAM_BOT_USERNAME`                            | Bot username without `@`; fallback placeholder `ClarionDemoBot` in dry-run; live username discovered with `getMe`        |
 | `TELEGRAM_TAXI_GROUP_ID`                           | Optional opted-in “Taxi CRA” chat, one RO broadcast per approved alert/wave    |
 | `SMSLINK_CONNECTION_ID`, `SMSLINK_PASSWORD`        | Both required for SMSLink HTTPS sends; otherwise dry-run                       |
-| `WA_TOKEN`, `WA_PHONE_NUMBER_ID`, `WA_API_VERSION` | All required for WhatsApp Cloud API; otherwise dry-run                         |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Team Cloud API credentials; missing either = dry-run (Graph v23.0, same version as template submitter)                         |
 | `BACKEND_URL`                                      | Demo target; defaults to `http://localhost:$PORT`                              |
 | `DEMO_MODE`                                      | `auto`; `demo:pitch` defaults to `twin` (an explicit environment value overrides) |
 | `DEMO_TIMEOUT_MS`                                | `0` = no deadline; positive milliseconds per twin state/action wait             |
@@ -122,14 +114,14 @@ HTTP CORS permits `http://localhost:5173` and HTTPS subdomains of `*.pages.dev`;
 - `drone.detected`: normal → detection. Public channel adapters and Waze remain silent. Twin `ops.suspended` updates the estimate but cannot authorize public sends unless `AUTO_CONFIRM=true`.
 - `console.confirm_suspension`: detection → suspended, starts the first-minute clock and creates bilingual role drafts. No message is sent until `console.approve_messages {roles}`.
 - Runway closure leaves the terminal open. `payload.suspicious` creates evacuation drafts only after confirmation; if detected earlier, confirmation creates those drafts. Evacuation supersedes stale runway/diversion notices on approval. `flight.diverted` updates the matching arrival and creates drafts for that flight. Subscribers with another known flight are excluded from that diversion.
-- Approval is idempotent. The latest pending situation per role/language is sent; older pending notices are marked superseded. Each real recipient uses their language and flight context. All ten contract roles × five situations × RO/EN render without missing placeholders; SMS has no links. Rent-a-car/UBT contacts can use `staff` until the team versions the fixed ten-role contract.
+- Approval is idempotent. The latest pending situation per role/language is sent; older pending notices are marked superseded. Each real recipient uses their language and flight context. All eleven supported roles × five situations × RO/EN render without missing placeholders; SMS has no links. `rent_a_car_ubt` is supported directly, as in the current contract.
 - `console.request_roalert` requires confirmed evacuation and produces a draft for ISU. It has **no send path**.
 - Twin `ops.reopened` records readiness and awaits the console. `console.reopen` moves suspended → recovery; the next call moves recovery → normal only after all configured waves are opened. Each transition is timestamped in `timeline` and broadcasts state.
 - `console.open_wave {wave}` opens ordered configurable waves, emits `wave.green`, and sends “leave now” alerts to that wave’s stable assigned recipients. Wave opens are manual, so the operator can synchronize with video; no ten-minute real wait is enforced in the demo. The default assignment hashes subscription/agent IDs evenly; it does **not** claim distance-aware routing. Opening a wave explicitly approves its messages. Final reopening explicitly sends reopening notices.
 
 ## Counters and metric interpretation
 
-Per role, `subscribers` includes active real subscriptions (including Telegram subscriptions awaiting Start) and registered twin agents. `sent` counts notification attempts per endpoint; `delivered` means **provider API accepted** (or simulated twin delivery), not a verified handset receipt. Dry-run and stub attempts do not count as delivered. `read` counts idempotent message acknowledgements or simulated twin reads. Multiple incidents/messages can make sent/delivered/read exceed the subscriber count; invariant: **read ≤ delivered ≤ sent**.
+Per role, `subscribers` includes active real subscriptions (including Telegram subscriptions awaiting Start) and registered twin agents. `sent` counts notification attempts per endpoint. WhatsApp `delivered` requires a provider delivered/read webhook; Telegram/SMS count provider acceptance. Twin delivery is simulated. Dry-run and stub attempts do not count as delivered. `read` counts idempotent message acknowledgements or simulated twin reads. Multiple incidents/messages can make sent/delivered/read exceed the subscriber count; invariant: **read ≤ delivered ≤ sent**.
 
 Twin agents have seeded log-normal read latency, median 360,000 simulated ms (sigma 0.7), divided once by `SIM_SPEED`. After a read, each notification has a seeded 48% acting probability; “acting” follows after 30 simulated seconds. These are assumptions from the plan, not observed human behavior. Pending receipts resume after restart. All simulated messages pass through the same renderer, and `agent.notified` reports notified/read/acting.
 
@@ -144,10 +136,35 @@ Twin agents have seeded log-normal read latency, median 360,000 simulated ms (si
 
 ## Data / channel limitations
 
-`src/data/flights.ts` contains a **clearly labelled illustrative Wizz winter 2026/27 fixture**, three departures and three matching return arrivals for the current Europe/Bucharest operating day (00:00 through the following night before 02:00). Before 02:00 the previous day remains selected. Bergamo `W6 3412` arrives at 23:55 after its outbound `W6 3411`; every return follows its outbound by a plausible round-trip duration. The 21/week assumption is from the team plan; route selection, flight numbers and times are not a verified live timetable. `craiova-airport.ro` could not be fetched during implementation. Suspended/diverted overlays never imply airline cancellation. OpenSky is fetched at startup and every minute with a three-second timeout and empty fallback; it is separate from FIDS and is not required for the demo.
+`src/data/flights.ts` polls both FIDS CRA endpoints every five minutes with a three-second fetch timeout and five-minute cache. It maps epoch timestamps, estimates, delays and airport direction, then reapplies simulated incident overlays. Failures fall back to a **clearly labelled illustrative Wizz winter 2026/27 fixture**, three departures and three matching return arrivals for the current Europe/Bucharest operating day (00:00 through the following night before 02:00). Before 02:00 the previous day remains selected. Bergamo `W6 3412` arrives at 23:55 after its outbound `W6 3411`; every return follows its outbound by a plausible round-trip duration. The 21/week assumption is from the team plan; route selection, flight numbers and times are not a verified live timetable. `craiova-airport.ro` could not be fetched during implementation. Suspended/diverted overlays never imply airline cancellation. OpenSky is fetched at startup and every minute with a three-second timeout and empty fallback; it is separate from FIDS and is not required for the demo.
 
-Telegram uses real Bot API `sendMessage`, long-poll `getUpdates`, callback ownership checks and a persisted offset. SMSLink uses the HTTPS POST gateway and checks `MESSAGE;1;` success. WhatsApp uses Cloud API text messages: real use requires a test recipient/recent inbound conversation or approved templates outside the customer-service window; template onboarding and delivery/read webhooks are not implemented. Web push and Google Wallet remain dry-run stubs; Wallet demo enforces three notifications/pass/day in memory. It is not a real Wallet pass issuer or exposed subscription channel.
+Telegram uses real Bot API `sendMessage`, long-poll `getUpdates`, callback ownership checks and a persisted offset. SMSLink uses the HTTPS POST gateway and checks `MESSAGE;1;` success. WhatsApp is the primary real phone channel. See the setup and Worker integration below. Web push and Google Wallet remain dry-run stubs; Wallet demo enforces three notifications/pass/day in memory. It is not a real Wallet pass issuer or exposed subscription channel.
 
 Waze exposes a **simulated** JSON closure for T2 access while suspended/evacuating; the polyline follows the last access segment in the local OSRM corridor fixture. It is not validated with Waze or submitted to a partner feed. This demo follows the requested suspension closure; it is not an assertion that every real runway suspension closes the access road. RO-Alert is a draft only, never sent.
 
 Primary adapter references: [Telegram Bot API](https://core.telegram.org/bots/api), [Telegram deep links](https://core.telegram.org/bots/features#deep-linking), [SMSLink success responses](https://smslink.ro/sms-gateway-raspunsurile-de-confirmare-posibile-ale-sms-gateway-http.html), [Waze CIFS](https://developers.google.com/waze/data-feed/cifs-specification), [OpenSky REST API](https://openskynetwork.github.io/opensky-api/rest.html).
+
+
+## Primary WhatsApp channel and webhooks
+
+Use the team's existing Clarion account (+40 700 000 000), not a new account. Configure `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` from root `.env.example`; `WHATSAPP_WABA_ID` belongs to the template submission/status script and is not needed for sends. Backend `.env.example` also lists `WHATSAPP_VERIFY_TOKEN`: choose its value and enter the same value in Meta's webhook setup. Register HTTPS `/webhooks/whatsapp` and subscribe to messages; GET handles Meta's challenge and POST processes inbound messages/statuses. This work does not change the Meta account configuration or deploy the endpoint.
+
+The sender uses the exact names, RO/EN languages, named body parameters and quick-reply button payloads in `whatsapp/templates.json`. `src/channels/whatsapp-catalog.ts` is a portable generated copy; a test requires matching parsed JSON content. Update it when the source catalog changes. Only Meta-approved templates can succeed; submission is not approval. Check actual approval separately with the team's existing `whatsapp/submit-templates.mjs --status`. API rejection is a failed send; missing credentials use dry-run.
+
+- Subscription: `abonare_confirmata`; suspension confirmation/approval: `suspendare_pasager` for all passenger roles, `suspendare_asteptare` for relatives, `suspendare_taxi` for taxi/rideshare, `suspendare_personal` for staff.
+- Diversion: `zbor_redirectionat` for relatives waiting for the matching flight; evacuation: `evacuare_terminal` for all roles.
+- Recovery wave/final reopening: `reluare_pasager`, `reluare_asteptare`, `reluare_taxi`. Staff and other roles have no reopening template. The catalog contains no English taxi/staff templates. These combinations use free-form text inside the customer-service window; outside it they require a **separate consented Telegram/SMS subscription**. No channel consent or destination is inferred; existing reserve subscriptions receive the normal engine alerts. Unsupported WhatsApp sends are logged and never counted as delivered.
+
+QR prefill example: `CLARION PASAGER W43831`. Also accepted: `START CLARION PASAGER W43831`, `START TAXI`, `START relative_arrivals W63412 EN`. Canonical role codes and PASAGER/PASSENGER, ASTEPTARE/RELATIVE, TAXI, BOLT and PERSONAL/STAFF aliases are supported. An inbound Start records consent, destination and language, sends confirmation, and opens the 24-hour window. Every subsequent inbound message extends that window; an outbound message never does. Inside it the adapter sends free-form text, including rendered template content when available. Outside it only a supported template is sent. Button replies and exact typed button texts update location or unsubscribe. Subscribe through HTTP with WhatsApp and a destination to receive the template confirmation before an inbound conversation.
+
+Provider message IDs attach to private receipts. `sent` webhook events do not duplicate attempt counters; delivered/read advance counters idempotently, including out-of-order read-before-delivered notifications. Duplicate inbound webhook IDs are retained across restart (last 5,000) to avoid duplicate subscription confirmations. Unknown receipts do not affect counters. `state.presence[role]` contains home/road/terminal/kerb/unknown counts from active subscriptions and registered Unity agents. `agent.update` moves one existing agent; Telegram inline presence buttons use the same catalog mapping.
+
+`state.dataSource` is `fids` or `fixture`; `dataSourceDetail` carries the explicit illustrative-fixture warning. Recorded unmodified real API responses from 31 October 2026 are under `tests/fixtures/fids-*-2026-10-31.json`; they are schedule snapshots, not incident evidence.
+
+## Shared modules / Worker integration
+
+Existing exports (`Engine`, `whatsapp`, `Telegram`, renderers and types) remain available. `engine.ts`, messages and channel modules have no Node builtin imports. Channels use fetch and accept explicit credentials (`createWhatsApp(env, fetcher)`, `new Telegram(token)`); default exports retain Node environment defaults through a guarded environment accessor.
+
+Node filesystem persistence and the optional sim-ab file projection live in `node-runtime.ts`. `server.ts` installs it automatically. Direct Node consumers using `new Engine({file, simAbFile})` must import `./node-runtime.js` first. Workers must **not** import that file or `server.ts`; use `Engine` without `file`, or supply Durable Object storage hooks through `engineRuntime` in `runtime.ts`. The hooks accept/return the complete private store, including subscriptions, receipts, replay IDs and metric deduplication sets. Keep one engine/storage configuration per isolated runtime.
+
+Worker routes can use `verifyWhatsApp(url.searchParams, env.WHATSAPP_VERIFY_TOKEN)` for GET, and await `engine.whatsappWebhook(body)` for POST. `parseWhatsAppWebhook(body)` is the pure parser. After an HTTP subscription, await `engine.confirmSubscription(sub)`; `subscribe()` retains its synchronous return type for compatibility. Use `new FidsAdapter().get()` then `engine.updateFlights(result.flights, result.dataSource)` at startup and every five minutes. Keep engine mutations serialized, as the Node server does.

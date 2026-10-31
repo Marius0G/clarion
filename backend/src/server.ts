@@ -1,3 +1,4 @@
+import "./node-runtime.js";
 import { createServer, type IncomingMessage } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -7,10 +8,10 @@ import { WebSocketServer, WebSocket } from "ws";
 import { Engine } from "./engine.js";
 import { Telegram } from "./channels/telegram.js";
 import { sms } from "./channels/sms.js";
-import { whatsapp } from "./channels/whatsapp.js";
+import { whatsapp, verifyWhatsApp } from "./channels/whatsapp.js";
 import { webpush } from "./channels/webpush.js";
 import { wazeFeed } from "./channels/waze.js";
-import { aircraftNearLrcv } from "./data/flights.js";
+import { aircraftNearLrcv, FidsAdapter } from "./data/flights.js";
 import type { Envelope } from "./types.js";
 function numberEnv(name: string, fallback: number, min = 0, max = Infinity) {
   const n = Number(process.env[name] ?? fallback);
@@ -38,6 +39,9 @@ export function loadBackendEnv(
   // The compiled entry point lives under dist/src, so resolve the package root too.
   const actual = file.replace("/dist/.env", "/.env");
   if (existsSync(actual)) loadEnvFile(actual);
+  // Team WhatsApp account lives in repo-root .env; backend/exported values win.
+  const teamEnv = resolve(dirname(actual), "../.env");
+  if (existsSync(teamEnv)) loadEnvFile(teamEnv);
 }
 export function createControlTower() {
   const telegram = new Telegram();
@@ -119,11 +123,23 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
+      if (url.pathname === "/webhooks/whatsapp") {
+        if (req.method === "GET") {
+          const challenge = verifyWhatsApp(url.searchParams, process.env.WHATSAPP_VERIFY_TOKEN);
+          res.writeHead(challenge === undefined ? 403 : 200, {"Content-Type": "text/plain"});
+          res.end(challenge ?? "Forbidden"); return;
+        }
+        if (req.method === "POST") {
+          const body = await jsonBody(req);
+          await ordered(() => engine.whatsappWebhook(body));
+          res.end(JSON.stringify({ok: true})); return;
+        }
+      }
       if (req.method === "GET" && url.pathname === "/health") {
         res.end(
           JSON.stringify({
             ok: true,
-            service: "control-tower",
+            service: "clarion",
             telegram: process.env.TELEGRAM_BOT_TOKEN ? "live" : "dry-run",
           }),
         );
@@ -154,7 +170,7 @@ export function createControlTower() {
       if (req.method === "POST" && url.pathname === "/api/subscribe") {
         const body = await jsonBody(req);
         await telegramReady;
-        const sub = await ordered(() => engine.subscribe(body));
+        const sub = await ordered(async () => { const sub = engine.subscribe(body); await engine.confirmSubscription(sub); return sub; });
         res.writeHead(201);
         res.end(
           JSON.stringify({
@@ -165,7 +181,7 @@ export function createControlTower() {
                     sub,
                     telegram.botUsername ??
                       process.env.TELEGRAM_BOT_USERNAME ??
-                      "ControlTowerDemoBot",
+                      "ClarionDemoBot",
                   ),
                 }
               : {}),
@@ -240,6 +256,15 @@ export function createControlTower() {
     void ordered(() => engine.expire());
   }, 60000);
   expiry.unref();
+  const fids = new FidsAdapter();
+  let stopped = false;
+  const refreshFids = async () => {
+    const result = await fids.get();
+    if (!stopped) await ordered(() => engine.updateFlights(result.flights, result.dataSource));
+  };
+  void refreshFids();
+  const fidsPoll = setInterval(() => { void refreshFids(); }, 300000);
+  fidsPoll.unref();
   const refresh = () => {
     void aircraftNearLrcv().then((data) => {
       aircraft = data;
@@ -253,7 +278,7 @@ export function createControlTower() {
       engine.telegramOffset,
       (chat, payload) => ordered(() => engine.telegramStart(chat, payload)),
       (id, chat) => {
-        void ordered(() => engine.markRead(id, chat));
+        void ordered(() => { engine.markRead(id, chat); });
       },
       (offset) => {
         void ordered(() => {
@@ -261,9 +286,12 @@ export function createControlTower() {
           engine.persist();
         });
       },
+      (chat, text) => { void ordered(() => engine.updatePresence("telegram", chat, text)); },
     ),
   );
   const stop = async () => {
+    stopped = true;
+    clearInterval(fidsPoll);
     telegram.stop();
     clearInterval(tick);
     clearInterval(expiry);
@@ -284,7 +312,7 @@ if (
   const server = createControlTower();
   const port = integerEnv("PORT", 8787, 1, 65535);
   server.http.listen(port, "0.0.0.0", () =>
-    console.log(`CONTROL TOWER listening on :${port}`),
+    console.log(`Clarion listening on :${port}`),
   );
   for (const signal of ["SIGINT", "SIGTERM"] as const)
     process.once(signal, () => {

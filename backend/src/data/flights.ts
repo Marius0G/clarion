@@ -99,3 +99,48 @@ export async function aircraftNearLrcv(): Promise<unknown[]> {
     return [];
   }
 }
+
+export interface FidsRow {
+  flight_iata: string; dep_iata: string; arr_iata: string;
+  dep_time_ts: number; arr_time_ts: number; status?: string;
+  dep_estimated_ts?: number; arr_estimated_ts?: number;
+  dep_delayed?: number | null; arr_delayed?: number | null;
+}
+export function mapFids(body: unknown, dir: Flight["dir"]): Flight[] {
+  if (!Array.isArray(body)) throw new Error("Invalid FIDS response");
+  return body.map((r: FidsRow) => {
+    const stamp = dir === "dep" ? r.dep_time_ts : r.arr_time_ts;
+    const iata = dir === "dep" ? r.arr_iata : r.dep_iata;
+    if (!r.flight_iata || !iata || !Number.isFinite(stamp) || stamp <= 0) throw new Error("Invalid FIDS row");
+    const sched = new Date(stamp * 1000).toISOString();
+    const delay = (dir === "dep" ? r.dep_delayed : r.arr_delayed) ?? 0;
+    const estimated = dir === "dep" ? r.dep_estimated_ts : r.arr_estimated_ts;
+    const cities: Record<string, string> = { CRL: "Bruxelles Charleroi", LTN: "London Luton", BGY: "Bergamo", DTM: "Dortmund", OTP: "Bucharest" };
+    return {flight: r.flight_iata.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2"), dir, city: cities[iata] ?? iata, iata, sched, est: new Date(estimated && Number.isFinite(estimated) && estimated > 0 ? estimated * 1000 : stamp * 1000 + Math.max(0, Number(delay) || 0) * 60000).toISOString(), status: r.status === "landed" ? "landed" : r.status === "departed" ? "departed" : "scheduled"};
+  });
+}
+export class FidsAdapter {
+  private cached?: { flights: Flight[]; dataSource: "fids" | "fixture" };
+  private until = 0;
+  private pending?: Promise<{flights: Flight[]; dataSource: "fids" | "fixture"}>;
+  constructor(private fetcher: typeof fetch = fetch) {}
+  async get(now = Date.now()) {
+    if (this.cached && now < this.until) return this.cached;
+    if (this.pending) return this.pending;
+    this.pending = (async () => {
+      try {
+        const sets = await Promise.all((["departures", "arrivals"] as const).map(async direction => {
+          const r = await this.fetcher(`https://fids.flightradar.live/api/schedules/${direction}/CRA`, {signal: AbortSignal.timeout(3000)});
+          if (!r.ok) throw new Error("FIDS unavailable");
+          return mapFids(await r.json(), direction === "departures" ? "dep" : "arr");
+        }));
+        const flights = sets.flat().sort((a,b) => a.sched.localeCompare(b.sched));
+        if (!flights.length) throw new Error("Empty FIDS schedule");
+        this.cached = {flights, dataSource: "fids"};
+      } catch { this.cached = {flights: schedule(new Date(now)), dataSource: "fixture"}; }
+      this.until = now + 300000;
+      return this.cached!;
+    })();
+    try { return await this.pending; } finally { this.pending = undefined; }
+  }
+}

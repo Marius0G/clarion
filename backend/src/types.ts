@@ -33,7 +33,10 @@ export interface Flight {
   status: "scheduled" | "suspended" | "diverted" | "landed" | "departed";
   divertedTo?: string;
 }
+export type Location = "home" | "road" | "terminal" | "kerb" | "unknown";
 export interface Subscription {
+  location?: Location;
+  lastInboundAt?: string;
   id: string;
   role: Role;
   flight?: string;
@@ -47,6 +50,8 @@ export interface Subscription {
   route?: string;
 }
 export interface Agent {
+  location?: Location;
+  action?: string;
   agentId: string;
   role: Role;
   channel: Channel;
@@ -69,6 +74,7 @@ export interface Draft {
   flight?: string;
 }
 export interface Receipt {
+  providerId?: string;
   id: string;
   role: Role;
   recipient: string;
@@ -84,6 +90,7 @@ export interface Receipt {
   willAct?: boolean;
 }
 export interface State {
+  presence: Record<Role, Record<Location, number>>;
   drone: {
     lat: number;
     lon: number;
@@ -142,6 +149,7 @@ export interface State {
     kerbPeak: number | null;
   };
   dataSource: string;
+  dataSourceDetail?: string;
 }
 export const isRole = (v: unknown): v is Role => roles.includes(v as Role);
 export const isChannel = (v: unknown): v is Channel =>

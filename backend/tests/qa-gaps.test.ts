@@ -1,3 +1,4 @@
+import "../src/node-runtime.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -318,7 +319,7 @@ describe("QA gaps", () => {
       expect((await response.json()).telegramLink).toContain(
         "t.me/ActualTowerBot",
       );
-      expect(log).toHaveBeenCalledWith("Telegram bot @ActualTowerBot");
+      expect(log).toHaveBeenCalledWith("Clarion Telegram bot @ActualTowerBot");
     } finally {
       await s.stop();
     }
