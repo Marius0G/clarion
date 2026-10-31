@@ -1,6 +1,6 @@
 /**
  * Fake Unity + fake vision service on the real T2 map (docs/contract/map), so the admin screen runs without
- * Marius's build. Same contract as SPEC-v2; not a model of anything: Unity and vision/ replace it.
+ * Marius's build. Same contract as SPEC-v2; an illustrative deterministic model: Unity and vision/ replace it.
  *
  * Twin (client=twin), every second: sim.status, truth.report (exact queues, D0), flight.update on connect and change.
  *   Answers every ops.command with ops.ack and applies a toy effect.
@@ -8,11 +8,13 @@
  *   crowd.positions (persistent people who walk, in world metres with level), only where a camera sees.
  *
  *   BACKEND_URL=http://localhost:8787 DEMO_TOKEN=... npm run demo:terminal
- *   Knobs (env): SIM_SPEED (sim s per real s, 30), LOAD (arrivals x, 1), COVERAGE (camera share x, 1), START (HH:MM, 13:30)
+ *   Knobs (env): SIM_SPEED (sim s per real s, 10), LOAD (arrivals x, 1), COVERAGE (camera share x, 1), START (HH:MM, 15:00 rush / 00:00 day), CLARION_SCENARIO (rush/day), SEED (1)
  *   Keys (TTY): + / - load, s security surge, c check-in surge, d delay next flight, x cancel it, k camera outage at
  *   security, e end evacuations, r reset, q quit.
  */
 import { WebSocket } from "ws";
+import { DAY, SECURITY_RATE, DESK_RATE, flightSnapshot, rollingSchedule, arrivalsBetween,
+  advanceQueue, gateOccupancy, randomStep, type Scenario } from "./feed-math.js";
 import zoneData from "../../docs/contract/map/zones.json" with { type: "json" };
 import navData from "../../docs/contract/terminal.json" with { type: "json" };
 
@@ -20,10 +22,16 @@ type Level = "G" | "U" | "X";
 type XZ = [number, number];
 interface Ring { outer: XZ[]; holes?: XZ[][] }
 const base = process.env.BACKEND_URL ?? `http://localhost:${process.env.PORT ?? 8787}`;
-const SIM_SPEED = Number(process.env.SIM_SPEED ?? 30);
+let SIM_SPEED = Number(process.env.SIM_SPEED ?? 10);
+let scenario: Scenario = process.env.CLARION_SCENARIO === "day" ? "day" : "rush";
+let seed = Number(process.env.SEED ?? 1) >>> 0, randomSeed = seed, noiseSeed = seed;
+const random = () => { const next = randomStep(randomSeed); randomSeed = next.seed; return next.value; };
+// Separate noise from walking so render-timer ordering cannot change camera measurements.
+const noiseRandom = () => { const next = randomStep(noiseSeed); noiseSeed = next.seed; return next.value; };
+let running = true;
 let load = Number(process.env.LOAD ?? 1);
 const coverageScale = Number(process.env.COVERAGE ?? 1);
-const [h0, m0] = (process.env.START ?? "13:30").split(":").map(Number);
+const [h0, m0] = (process.env.START ?? (scenario === "rush" ? "15:00" : "00:00")).split(":").map(Number);
 
 // ---------- geometry ----------
 const zoneGeo = new Map(zoneData.zones.map(z => [z.id, { level: z.level as Level, area: z.area_m2, rings: z.polygons_world as Ring[] }]));
@@ -40,7 +48,7 @@ function randomIn(id: string): XZ {
   const ring = zoneGeo.get(id)!.rings[0]!.outer;
   const xs = ring.map(p => p[0]), zs = ring.map(p => p[1]);
   for (let i = 0; i < 200; i++) {
-    const p: XZ = [Math.min(...xs) + Math.random() * (Math.max(...xs) - Math.min(...xs)), Math.min(...zs) + Math.random() * (Math.max(...zs) - Math.min(...zs))];
+    const p: XZ = [Math.min(...xs) + random() * (Math.max(...xs) - Math.min(...xs)), Math.min(...zs) + random() * (Math.max(...zs) - Math.min(...zs))];
     if (insideZone(p, id)) return p;
   }
   return [xs.reduce((a, b) => a + b) / xs.length, zs.reduce((a, b) => a + b) / zs.length];
@@ -51,17 +59,18 @@ function randomIn(id: string): XZ {
 interface Queue { waiting: number; lanes: number; perLane: number; arrivals: number; open: boolean; zone: string; next: string | null }
 const lanes0 = navData.lanes as Record<string, { initial: number }>;
 const fresh = (): Record<string, Queue> => ({
-  "check_in:1": { waiting: 34, lanes: lanes0["check_in:1"]!.initial, perLane: 0.75, arrivals: 1.2, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
-  "check_in:2": { waiting: 12, lanes: lanes0["check_in:2"]!.initial, perLane: 0.75, arrivals: 0.7, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
-  "check_in:3": { waiting: 5, lanes: lanes0["check_in:3"]!.initial, perLane: 0.75, arrivals: 0.4, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
-  U_SECURITY_QUEUE: { waiting: 45, lanes: lanes0.security!.initial, perLane: 1.6, arrivals: 1.6, open: true, zone: "U_SECURITY_QUEUE", next: "U_CONCOURSE" },
-  U_PASSPORT_DEP: { waiting: 10, lanes: 2, perLane: 2.2, arrivals: 0, open: true, zone: "U_PASSPORT_DEP", next: "U_CORRIDOR_EAST" },
+  "check_in:1": { waiting: 0, lanes: lanes0["check_in:1"]!.initial, perLane: DESK_RATE, arrivals: 0, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
+  "check_in:2": { waiting: 0, lanes: lanes0["check_in:2"]!.initial, perLane: DESK_RATE, arrivals: 0, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
+  "check_in:3": { waiting: 0, lanes: lanes0["check_in:3"]!.initial, perLane: DESK_RATE, arrivals: 0, open: true, zone: "G_CHECKIN_QUEUE", next: "U_SECURITY_QUEUE" },
+  U_SECURITY_QUEUE: { waiting: 0, lanes: lanes0.security!.initial, perLane: SECURITY_RATE, arrivals: 0, open: true, zone: "U_SECURITY_QUEUE", next: "U_CONCOURSE" },
+  // ASSUMPTION: passport service 2.2 pax/min; not supplied by Marius.
+  U_PASSPORT_DEP: { waiting: 0, lanes: 2, perLane: 2.2, arrivals: 0, open: true, zone: "U_PASSPORT_DEP", next: "U_CORRIDOR_EAST" },
 });
 /** Places without a queue: people present. */
 const freshCrowd = (): Record<string, number> => ({
   G_DEPARTURES: 40, G_CENTER: 14, G_WEST: 10, G_CAFE: 12, G_MEETING: 18, X_KERB_DEPARTURES: 8, X_TAXI_RANK: 6,
   U_SECURITY: 6, U_CONCOURSE: 55, U_DUTY_FREE: 16, U_CAFE: 12, U_CORRIDOR_EAST: 20,
-  U_GATE_1: 30, U_GATE_2: 12, U_GATE_3: 0, U_GATE_6: 8, U_GATE_8: 0,
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`U_GATE_${i + 1}`, 0])),
 });
 /** Lane key the backend keeps for a queue (D12 one counter per place). */
 const laneKeyOf = (q: string) => q === "U_SECURITY_QUEUE" ? "security" : q;
@@ -70,21 +79,15 @@ const evacuated = new Set<string>();
 const startTime = (h0 ?? 13) * 3600 + (m0 ?? 30) * 60;
 let simTime = startTime;
 const hhmm = (s: number) => `${String(Math.floor(s / 3600) % 24).padStart(2, "0")}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}`;
-const at = (h: number, m = 0) => h * 3600 + m * 60;
-const freshFlights = () => [
-  { flight: "W6 3751", airline: "W6", destination: "Londra Luton", std: at(14, 40), gate: "U_GATE_1", checkIn: "check_in:1", pax: 186 },
-  { flight: "RO 642", airline: "RO", destination: "București", std: at(15, 5), gate: "U_GATE_2", checkIn: "check_in:2", pax: 64 },
-  { flight: "W6 3311", airline: "W6", destination: "Dortmund", std: at(15, 30), gate: "U_GATE_6", checkIn: "check_in:1", pax: 172 },
-  { flight: "FR 2104", airline: "FR", destination: "Bergamo", std: at(16, 10), gate: "U_GATE_3", checkIn: "check_in:3", pax: 160 },
-  { flight: "W6 4405", airline: "W6", destination: "Memmingen", std: at(16, 45), gate: "U_GATE_8", checkIn: "check_in:2", pax: 180 },
-].map(f => ({ ...f, checkInDesks: [] as string[], gateCloseAt: f.std - 1200, status: "scheduled", delayMin: 0 }));
-let flights = freshFlights();
+// Absolute simulation seconds keep midnight and delays ordered on the same clock.
+let flights = rollingSchedule(simTime);
+const gateZone = (gate: string) => navData.nodes.find(n => n.id === gate)?.zone ?? gate;
 
 // ---------- cameras (vision) ----------
 /** Share of each place a camera sees. Not listed = no camera: vision never reports it (shows as unknown). */
 const cameras0: Record<string, number> = {
   G_CHECKIN_QUEUE: 0.85, G_DEPARTURES: 0.6, G_CENTER: 0.5, U_SECURITY_QUEUE: 0.9, U_SECURITY: 0.7, U_PASSPORT_DEP: 0.8,
-  U_CONCOURSE: 0.55, U_CORRIDOR_EAST: 0.5, U_GATE_1: 0.6, U_GATE_2: 0.6, U_GATE_6: 0.5, X_TAXI_RANK: 0.4,
+  U_CONCOURSE: 0.55, U_CORRIDOR_EAST: 0.5, U_GATE_1: 0.6, U_GATE_2: 0.6, U_GATE_6: 0.5, U_GATE_3: 0.6, U_GATE_9: 0.6, U_GATE_10: 0.6, X_TAXI_RANK: 0.4,
 };
 let outage = false;
 const coverageOf = (zone: string) => (outage && zone.startsWith("U_SECURITY")) ? 0 : Math.min(1, (cameras0[zone] ?? 0) * coverageScale);
@@ -97,9 +100,9 @@ const placeCount = (zone: string) =>
   Object.values(queues).filter(q => q.zone === zone).reduce((s, q) => s + q.waiting, 0) + (crowd[zone] ?? 0);
 function syncDots() {
   for (const zone of new Set([...Object.values(queues).map(q => q.zone), ...Object.keys(crowd)])) {
-    const want = Math.min(400, placeCount(zone)), list = dots.get(zone) ?? [];
-    while (list.length > want) list.splice(Math.floor(Math.random() * list.length), 1);
-    while (list.length < want) { const [x, z] = randomIn(zone); const [tx, tz] = randomIn(zone); list.push({ x, z, tx, tz, zone, staff: Math.random() < 0.03 }); }
+    const want = Math.min(400, Math.round(placeCount(zone))), list = dots.get(zone) ?? [];
+    while (list.length > want) list.splice(Math.floor(random() * list.length), 1);
+    while (list.length < want) { const [x, z] = randomIn(zone); const [tx, tz] = randomIn(zone); list.push({ x, z, tx, tz, zone, staff: random() < 0.03 }); }
     dots.set(zone, list);
   }
 }
@@ -121,9 +124,9 @@ const twin = open("twin"), vision = open("vision");
 const sender = (ws: WebSocket) => (type: string, data: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type, ts: new Date().toISOString(), data })); };
 const toTwin = sender(twin), toVision = sender(vision);
 const take = (from: number, n: number) => Math.min(from, Math.max(0, Math.round(n)));
-const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+const gauss = () => Math.sqrt(-2 * Math.log(1 - noiseRandom())) * Math.cos(2 * Math.PI * noiseRandom());
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const sendFlights = () => toTwin("flight.update", { flights });
+const sendFlights = () => toTwin("flight.update", { flights: flightSnapshot(flights, simTime) });
 let lastEvent = "";
 const note = (s: string) => { lastEvent = `${hhmm(simTime)} ${s}`; };
 
@@ -133,17 +136,30 @@ for (const [name, ws] of [["twin", twin], ["vision", vision]] as const)
 /** Which queue a command's zone names: lane keys, zone ids and legacy aliases. */
 function queueFor(zone: string): string | null {
   if (zone === "security" || zone === "U_SECURITY_QUEUE" || zone === "U_SECURITY") return "U_SECURITY_QUEUE";
-  const g = /^(?:check_in|bag_drop):(\d)$/.exec(zone); if (g) return `check_in:${g[1]}`;
+  const g = /^(?:check_in|bag_drop):([1-3])$/.exec(zone); if (g) return `check_in:${g[1]}`;
   if (zone === "G_CHECKIN_QUEUE" || zone === "G_CHECKIN_DESKS") return Object.entries(queues).filter(([k]) => k.startsWith("check_in")).sort((a, b) => b[1].waiting - a[1].waiting)[0]![0];
   return queues[zone] ? zone : null;
 }
 twin.on("message", raw => {
   const m = JSON.parse(raw.toString());
+  if (m.type === "sim.command") {
+    const c = m.data;
+    if (c.speed > 0) SIM_SPEED = c.speed;
+    if (Number.isInteger(c.seed)) seed = c.seed >>> 0;
+    if (c.action === "stop") running = false;
+    if (c.action === "start") {
+      if (c.scenario === "day" || c.scenario === "rush") scenario = c.scenario;
+      running = true;
+      reset(scenario === "rush" ? 15 * 3600 : 0);
+    }
+    toTwin("sim.status", { running, scenario, arm: "B", coverage: 0.5, seed, speed: SIM_SPEED, simTime, agents: 0 });
+    return;
+  }
   if (m.type !== "ops.command") return;
   const c = m.data;
   toTwin("ops.ack", { id: c.id });
   const q = c.zone ? queueFor(c.zone) : null;
-  if (c.type === "staff" && q) { queues[q]!.lanes = Math.max(0, Math.min(6, queues[q]!.lanes + c.delta)); note(`${q} ${c.delta > 0 ? "+" : ""}${c.delta} linie → ${queues[q]!.lanes}`); }
+  if (c.type === "staff" && q) { queues[q]!.lanes = Math.max(0, Math.min(4, queues[q]!.lanes + c.delta)); note(`${q} ${c.delta > 0 ? "+" : ""}${c.delta} linie → ${queues[q]!.lanes}`); }
   if ((c.type === "close" || c.type === "open") && q) { queues[q]!.open = c.type === "open"; note(`${c.type} ${q}`); }
   if (c.type === "redirect") {
     const from = queueFor(c.from), to = queueFor(c.to);
@@ -154,34 +170,40 @@ twin.on("message", raw => {
 
 /** Unity: move the true crowd one tick, report sim.status + truth.report. */
 function unityTick() {
-  const minutes = SIM_SPEED / 60;
-  simTime += SIM_SPEED;
-  const toPlace: Record<string, number> = {};
+  const minutes = SIM_SPEED / 60, previousTime = simTime;
+  if (running) simTime += SIM_SPEED;
+  if (!running) return;
+  if (Math.floor(simTime / DAY) !== Math.floor(previousTime / DAY)) { flights = rollingSchedule(simTime, flights); sendFlights(); }
+  const arrivals = arrivalsBetween(flights, previousTime, simTime, scenario, load);
+  const incoming: Record<string, number> = { ...arrivals.checkIn, U_SECURITY_QUEUE: arrivals.security };
   for (const [id, q] of Object.entries(queues)) {
-    if (evacuated.has(q.zone) || evacuated.has(id)) { q.waiting -= take(q.waiting, q.waiting * 0.25 + 1); continue; }
-    q.waiting += Math.round(q.arrivals * load * minutes * (0.6 + Math.random() * 0.8));
-    const served = q.open ? take(q.waiting, q.lanes * q.perLane * minutes * (0.85 + Math.random() * 0.3)) : 0;
-    q.waiting -= served;
-    if (q.next && queues[q.next]) queues[q.next]!.waiting += served; else if (q.next) toPlace[q.next] = (toPlace[q.next] ?? 0) + served;
+    if (evacuated.has(q.zone) || evacuated.has(id)) { q.waiting -= take(q.waiting, q.waiting * 0.25 + 1); q.arrivals = 0; continue; }
+    const n = incoming[id] ?? 0;
+    q.arrivals = n / minutes;
+    const result = advanceQueue(q.waiting, n, q.open ? q.lanes : 0, q.perLane, minutes);
+    q.waiting = result.waiting;
+    if (q.next && queues[q.next]) incoming[q.next] = (incoming[q.next] ?? 0) + result.served;
   }
-  for (const [z, n] of Object.entries(toPlace)) crowd[z] = (crowd[z] ?? 0) + n;
-  // Landside walk-ins, airside drift towards the gate of the next flights, boarding empties a gate.
-  crowd.G_DEPARTURES = Math.max(10, Math.round((crowd.G_DEPARTURES ?? 0) * 0.97 + 2 * load * minutes * Math.random()));
-  const move = (from: string, to: string, share: number) => { const n = take(crowd[from] ?? 0, (crowd[from] ?? 0) * share * minutes); crowd[from] = (crowd[from] ?? 0) - n; crowd[to] = (crowd[to] ?? 0) + n; };
-  move("U_CONCOURSE", "U_DUTY_FREE", 0.03); move("U_DUTY_FREE", "U_CORRIDOR_EAST", 0.06); move("U_CONCOURSE", "U_CORRIDOR_EAST", 0.04);
-  const upcoming = flights.filter(f => f.status !== "cancelled" && f.status !== "departed" && f.std + f.delayMin * 60 > simTime).slice(0, 3);
-  for (const f of upcoming) move("U_CORRIDOR_EAST", f.gate, 0.05 / upcoming.length);
+  // Non-queue zones are stage estimates, not buckets that accumulate all day.
+  crowd.G_DEPARTURES = Math.round(arrivals.total / minutes * 5);
+  crowd.U_CONCOURSE = Math.round(queues.U_SECURITY_QUEUE!.lanes * SECURITY_RATE * 5);
+  for (const z of Object.keys(crowd)) if (z.startsWith("U_GATE_")) crowd[z] = 0;
+  let flightChanged = false;
   for (const f of flights) {
     const dep = f.std + f.delayMin * 60;
-    if (f.status === "scheduled" && simTime >= dep - 1800 && simTime < dep) { f.status = "boarding"; sendFlights(); note(`boarding ${f.flight}`); }
-    if ((f.status === "boarding" || f.status === "delayed") && simTime >= dep) { f.status = "departed"; crowd[f.gate] = 0; sendFlights(); note(`departed ${f.flight}`); }
-    if (f.status === "delayed" && simTime >= dep - 1800 && simTime < dep) { f.status = "boarding"; sendFlights(); }
+    if (f.status !== "cancelled") {
+      const next = simTime >= dep ? "departed" : simTime >= dep - 1800 ? "boarding" : f.status;
+      if (next !== f.status) { f.status = next; flightChanged = true; }
+    }
+    const zone = gateZone(f.gate);
+    crowd[zone] = (crowd[zone] ?? 0) + gateOccupancy(f, simTime, scenario, load);
   }
+  if (flightChanged) sendFlights();
   for (const z of Object.keys(crowd)) if (evacuated.has(z)) crowd[z] = (crowd[z] ?? 0) - take(crowd[z] ?? 0, (crowd[z] ?? 0) * 0.25 + 1);
 
-  toTwin("sim.status", { running: true, scenario: "terminal", arm: "B", coverage: 0.5, seed: 1, speed: SIM_SPEED, simTime, agents: 0 });
+  toTwin("sim.status", { running, scenario, arm: "B", coverage: 0.5, seed, speed: SIM_SPEED, simTime, agents: 0 });
   toTwin("truth.report", { zones: [
-    ...Object.entries(queues).map(([zone, q]) => ({ zone, waiting: q.waiting, waitMin: q.open && q.lanes ? round1(q.waiting / (q.lanes * q.perLane)) : null })),
+    ...Object.entries(queues).map(([zone, q]) => ({ zone, waiting: Math.round(q.waiting), waitMin: q.open && q.lanes ? round1(q.waiting / (q.lanes * q.perLane)) : null })),
     ...Object.entries(crowd).filter(([z]) => cameras0[z]).map(([zone, waiting]) => ({ zone, waiting, waitMin: null })),
   ] });
 }
@@ -189,7 +211,7 @@ function unityTick() {
 /** Vision: what the cameras would report, from the truth plus noise. Lanes from the backend (D12). */
 async function visionTick() {
   let held: Record<string, number> = {};
-  try { held = (await (await fetch(`${base}/api/sim`)).json() as { lanes?: Record<string, number> }).lanes ?? {}; } catch { /* backend busy */ }
+  try { held = (await (await fetch(`${base}/api/sim`, { signal: AbortSignal.timeout(2000) })).json() as { lanes?: Record<string, number> }).lanes ?? {}; } catch { /* backend busy */ }
   const rows: Record<string, unknown>[] = [];
   const estimate = (truth: number, coverage: number) => {
     const sd = Math.max(1, truth * (0.04 + (1 - coverage) * 0.15));
@@ -199,12 +221,20 @@ async function visionTick() {
     const coverage = coverageOf(q.zone);
     if (coverage < 0.1) continue;
     const { waiting, sd } = estimate(q.waiting, coverage);
-    const n = held[laneKeyOf(id)] ?? q.lanes, mu = q.perLane * 0.95; // the service measures mu itself, a little off
+    const n = held[laneKeyOf(id)] ?? q.lanes, mu = q.perLane; // processing rates measured by Marius
     const area = zoneGeo.get(q.zone)!.area / (id.startsWith("check_in") ? 3 : 1);
     const row: Record<string, unknown> = { zone: id, waiting, waitingSd: round1(sd), density: round1(waiting / area), coverage: round1(coverage) };
     if (!q.open || !n) { rows.push({ ...row, waitMin: null }); continue; }
-    const lambda = q.arrivals * load + (id === "U_SECURITY_QUEUE" ? Object.entries(queues).filter(([k]) => k.startsWith("check_in")).reduce((s, [, c]) => s + Math.min(c.arrivals * load, c.lanes * c.perLane), 0) : 0);
-    const waitAt = (inMin: number, l = n) => Math.max(0, waiting + (lambda - mu * l) * inMin) / (mu * l);
+    const waitAt = (inMin: number, l = n) => {
+      // Forecast from schedule demand, not truth.report; integrate future minutes.
+      let predicted = waiting;
+      for (let m = 0; m < inMin; m++) {
+        const demand = arrivalsBetween(flights, simTime + m * 60, simTime + (m + 1) * 60, scenario, load);
+        const lambda = id === "U_SECURITY_QUEUE" ? demand.total : demand.checkIn[id] ?? 0;
+        predicted = advanceQueue(predicted, lambda, l, mu, 1).waiting;
+      }
+      return predicted / (mu * l);
+    };
     const forecast = [30, 60, 90, 120].map(inMin => ({ inMin, waitMin: round1(waitAt(inMin)) }));
     const waitMin = round1(waiting / (mu * n));
     let advice: unknown;
@@ -236,10 +266,19 @@ async function visionTick() {
   toVision("crowd.positions", { people });
 }
 
+/** Reset demand and random state while preserving lanes chosen by the admin (D12). */
+function reset(time: number) {
+  const lanes = Object.fromEntries(Object.entries(queues).map(([id, q]) => [id, q.lanes]));
+  queues = fresh();
+  for (const [id, q] of Object.entries(queues)) q.lanes = lanes[id] ?? q.lanes;
+  crowd = freshCrowd(); simTime = time; flights = rollingSchedule(simTime);
+  randomSeed = seed; noiseSeed = seed; evacuated.clear(); outage = false; dots.clear(); sendFlights();
+}
+
 // ---------- keys ----------
 function status() {
   const s = queues.U_SECURITY_QUEUE!;
-  const line = `${hhmm(simTime)}  load ${load.toFixed(1)}x  security ${s.waiting} pers/${s.lanes} linii  check-in ${["1", "2", "3"].map(g => queues[`check_in:${g}`]!.waiting).join("/")}${outage ? "  CAMERA OFF" : ""}${evacuated.size ? `  evac ${[...evacuated].join(",")}` : ""}  | ${lastEvent}`;
+  const line = `${hhmm(simTime)}  load ${load.toFixed(1)}x  security ${Math.round(s.waiting)} pers/${s.lanes} linii  check-in ${["1", "2", "3"].map(g => Math.round(queues[`check_in:${g}`]!.waiting)).join("/")}${outage ? "  CAMERA OFF" : ""}${evacuated.size ? `  evac ${[...evacuated].join(",")}` : ""}  | ${lastEvent}`;
   if (process.stdout.isTTY) process.stdout.write(`\r\x1b[2K${line.slice(0, (process.stdout.columns || 120) - 1)}`);
 }
 if (process.stdin.isTTY) {
@@ -256,7 +295,7 @@ if (process.stdin.isTTY) {
       const f = flights.find(f => f.status === "scheduled" || f.status === "boarding");
       if (f) { if (k === "d") { f.status = "delayed"; f.delayMin += 30; } else f.status = "cancelled"; sendFlights(); note(`${f.flight} ${f.status}${k === "d" ? ` +${f.delayMin} min` : ""}`); }
     }
-    if (k === "r") { queues = fresh(); crowd = freshCrowd(); flights = freshFlights(); evacuated.clear(); outage = false; simTime = startTime; dots.clear(); sendFlights(); note("reset"); }
+    if (k === "r") { reset(startTime); note("reset"); }
     status();
   });
 }
@@ -266,11 +305,17 @@ console.log(`fake Unity + fake vision on the T2 map, connected to ${base}`);
 if (process.stdin.isTTY) console.log("keys: + - load · s security surge · c check-in surge · d delay · x cancel · k camera off · e end evac · r reset · q quit");
 // Start from the lanes the backend holds, so both sides agree.
 try {
-  const held = (await (await fetch(`${base}/api/sim`)).json() as { lanes?: Record<string, number> }).lanes ?? {};
+  const held = (await (await fetch(`${base}/api/sim`, { signal: AbortSignal.timeout(2000) })).json() as { lanes?: Record<string, number> }).lanes ?? {};
   for (const [id, q] of Object.entries(queues)) q.lanes = held[laneKeyOf(id)] ?? q.lanes;
 } catch { /* keep defaults */ }
 sendFlights();
-const tick = () => { unityTick(); syncDots(); void visionTick(); status(); };
+let ticking = false;
+const tick = async () => {
+  if (ticking) return;
+  ticking = true;
+  try { unityTick(); syncDots(); await visionTick(); status(); }
+  finally { ticking = false; }
+};
 tick();
 const timer = setInterval(tick, 1000);
 // Dots walk 4 times a second; positions go out with the vision tick (the backend keeps ~1/s).
