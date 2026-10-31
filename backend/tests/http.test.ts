@@ -52,6 +52,7 @@ describe("HTTP and WebSocket contract", () => {
           channel: "telegram",
           lang: "en",
           consent,
+          source: "jury",
           flight: "W6 3412",
         }),
       });
@@ -81,6 +82,8 @@ describe("HTTP and WebSocket contract", () => {
       });
     const initial = await message();
     expect(initial.type).toBe("state");
+    expect(initial.data.reach).toHaveLength(6);
+    expect(initial.data.drone).toBeNull();
     expect(initial.data.phase).toBe("normal");
     const rejected = message();
     ws.send(
@@ -92,6 +95,14 @@ describe("HTTP and WebSocket contract", () => {
     );
     expect((await rejected).type).toBe("error");
     ws.close();
+  });
+  it("exposes Telegram configuration without secrets", async () => {
+    expect(await (await fetch(`${base}/api/telegram`)).json()).toEqual({
+      enabled: false,
+      botUsername: null,
+      deepLinkExample: null,
+    });
+    expect(server.engine.subscriptions[0]?.source).toBe("jury");
   });
   it("accepts enveloped console actions and rejects twin events over action route", async () => {
     const post = (type: string) =>

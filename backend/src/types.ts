@@ -5,6 +5,7 @@ export const roles = [
   "relative_arrivals",
   "taxi",
   "rideshare",
+  "rent_a_car_ubt",
   "isu_smurd",
   "staff",
   "alt_airport",
@@ -39,6 +40,7 @@ export interface Subscription {
   channel: Channel;
   lang: Lang;
   destination?: string;
+  source: "jury" | "relative" | "qr" | "direct";
   consent: true;
   expiresAt: string;
   date?: string;
@@ -75,12 +77,28 @@ export interface Receipt {
   read: boolean;
   simulated: boolean;
   notifiedAt: string;
+  deliveredAt?: string;
   readAt?: number;
   actAt?: number;
   acted?: boolean;
   willAct?: boolean;
 }
 export interface State {
+  drone: {
+    lat: number;
+    lon: number;
+    distanceM: number;
+    bearingDeg: number;
+    nearRunway: "09" | "27";
+    source: "radar" | "report";
+    at: string;
+  } | null;
+  reach: {
+    step: number;
+    key: string;
+    reached: number;
+    status: "active" | "idle" | "draft";
+  }[];
   phase: Phase;
   since: string;
   reason: string | null;
@@ -106,8 +124,21 @@ export interface State {
   metrics: {
     notifiedFirstMinute: number;
     readCount: number;
+    readRecipients: number;
     carsStartedInVain: number;
-    isuTimeToT2: number | null;
+    isuTimeToT2:
+      | number
+      | {
+          median: number;
+          interval: [number, number];
+          source: "sim-ab";
+          units: "minutes";
+          coverage: number;
+          waves: boolean;
+          model: string;
+          intervalLabel: string;
+        }
+      | null;
     kerbPeak: number | null;
   };
   dataSource: string;

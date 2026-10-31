@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { loadEnvFile } from "node:process";
 import { existsSync } from "node:fs";
 import { WebSocketServer, WebSocket } from "ws";
 import { Engine } from "./engine.js";
@@ -31,8 +32,20 @@ async function jsonBody(req: IncomingMessage): Promise<any> {
   }
   return JSON.parse(body);
 }
+export function loadBackendEnv(
+  file = fileURLToPath(new URL("../.env", import.meta.url)),
+) {
+  // The compiled entry point lives under dist/src, so resolve the package root too.
+  const actual = file.replace("/dist/.env", "/.env");
+  if (existsSync(actual)) loadEnvFile(actual);
+}
 export function createControlTower() {
   const telegram = new Telegram();
+  const telegramReady = telegram.initialize().catch(() => {
+    console.warn(
+      "Telegram startup identity check failed; check token / network",
+    );
+  });
   const sockets = new WebSocketServer({
     noServer: true,
     maxPayload: 1024 * 1024,
@@ -116,6 +129,11 @@ export function createControlTower() {
         );
         return;
       }
+      if (req.method === "GET" && url.pathname === "/api/telegram") {
+        await telegramReady;
+        res.end(JSON.stringify(telegram.status()));
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         res.end(JSON.stringify(engine.snapshot()));
         return;
@@ -135,6 +153,7 @@ export function createControlTower() {
       }
       if (req.method === "POST" && url.pathname === "/api/subscribe") {
         const body = await jsonBody(req);
+        await telegramReady;
         const sub = await ordered(() => engine.subscribe(body));
         res.writeHead(201);
         res.end(
@@ -144,7 +163,9 @@ export function createControlTower() {
               ? {
                   telegramLink: engine.telegramLink(
                     sub,
-                    process.env.TELEGRAM_BOT_USERNAME ?? "ControlTowerDemoBot",
+                    telegram.botUsername ??
+                      process.env.TELEGRAM_BOT_USERNAME ??
+                      "ControlTowerDemoBot",
                   ),
                 }
               : {}),
@@ -227,18 +248,20 @@ export function createControlTower() {
   refresh();
   const flights = setInterval(refresh, 60000);
   flights.unref();
-  void telegram.poll(
-    engine.telegramOffset,
-    (chat, payload) => ordered(() => engine.telegramStart(chat, payload)),
-    (id, chat) => {
-      void ordered(() => engine.markRead(id, chat));
-    },
-    (offset) => {
-      void ordered(() => {
-        engine.telegramOffset = offset;
-        engine.persist();
-      });
-    },
+  void telegramReady.then(() =>
+    telegram.poll(
+      engine.telegramOffset,
+      (chat, payload) => ordered(() => engine.telegramStart(chat, payload)),
+      (id, chat) => {
+        void ordered(() => engine.markRead(id, chat));
+      },
+      (offset) => {
+        void ordered(() => {
+          engine.telegramOffset = offset;
+          engine.persist();
+        });
+      },
+    ),
   );
   const stop = async () => {
     telegram.stop();
@@ -257,6 +280,7 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
+  loadBackendEnv();
   const server = createControlTower();
   const port = integerEnv("PORT", 8787, 1, 65535);
   server.http.listen(port, "0.0.0.0", () =>

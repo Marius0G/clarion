@@ -1,42 +1,90 @@
 import type { Flight } from "../types.js";
 export const fixtureSource =
   "FIXTURE: Wizz winter 2026/27; 21 departures/week per team plan. Routes, flight numbers and times illustrative, not a verified airline timetable. craiova-airport.ro unavailable on 2026-10-31.";
-// Seven days × three departures: deliberately a fixture, never presented as a live FIDS.
+// One Bucharest operating day, including the following night before 02:00.
+// These are illustrative out-and-back rotations, not verified airline slots.
 export function schedule(now = new Date()): Flight[] {
-  const routes = [
-    ["Bergamo", "BGY"],
-    ["London Luton", "LTN"],
-    ["Birmingham", "BHX"],
-    ["Brussels Charleroi", "CRL"],
-    ["Dortmund", "DTM"],
-    ["Rome", "FCO"],
-    ["Bologna", "BLQ"],
-  ];
-  return Array.from({ length: 21 }, (_, i) => {
-    const date = new Date(now);
-    date.setUTCHours(6 + (i % 3) * 6, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() + Math.floor(i / 3));
-    const [city, iata] = routes[i % routes.length]!;
-    return {
-      flight: `W6 ${3400 + i * 2}`,
-      dir: "dep" as const,
-      city: city!,
-      iata: iata!,
-      sched: date.toISOString(),
-      est: date.toISOString(),
-      status: "scheduled" as const,
-    };
-  }).flatMap((f) => [
-    f,
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Bucharest",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (name: string) =>
+    Number(parts.find((p) => p.type === name)!.value);
+  const day = new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
+  if (part("hour") < 2) day.setUTCDate(day.getUTCDate() - 1);
+  const localTime = (hour: number, minute: number) => {
+    const wall = Date.UTC(
+      day.getUTCFullYear(),
+      day.getUTCMonth(),
+      day.getUTCDate(),
+      hour,
+      minute,
+    );
+    // Resolve offset for this date (EET/EEST), independently of host timezone.
+    let utc = wall;
+    for (let i = 0; i < 3; i++) {
+      const offset = new Intl.DateTimeFormat("en", {
+        timeZone: "Europe/Bucharest",
+        timeZoneName: "longOffset",
+      })
+        .formatToParts(new Date(utc))
+        .find((p) => p.type === "timeZoneName")!.value;
+      const match = /GMT([+-])(\d{2}):(\d{2})/.exec(offset)!;
+      utc =
+        wall -
+        (match[1] === "+" ? 1 : -1) *
+          (Number(match[2]) * 60 + Number(match[3])) *
+          60000;
+    }
+    return new Date(utc).toISOString();
+  };
+  const rotations = [
     {
-      ...f,
-      flight:
-        f.iata === "BGY" ? "W6 3412" : `W6 ${Number(f.flight.slice(3)) + 1}`,
-      dir: "arr" as const,
-      sched: new Date(Date.parse(f.sched) - 3600000).toISOString(),
-      est: new Date(Date.parse(f.sched) - 3600000).toISOString(),
+      city: "London Luton",
+      iata: "LTN",
+      dep: "W6 3751",
+      arr: "W6 3752",
+      out: [6, 0],
+      back: [12, 40],
     },
-  ]);
+    {
+      city: "Dortmund",
+      iata: "DTM",
+      dep: "W6 3761",
+      arr: "W6 3762",
+      out: [14, 0],
+      back: [20, 0],
+    },
+    {
+      city: "Bergamo",
+      iata: "BGY",
+      dep: "W6 3411",
+      arr: "W6 3412",
+      out: [19, 0],
+      back: [23, 55],
+    },
+  ];
+  return rotations
+    .flatMap((r) =>
+      (["dep", "arr"] as const).map((dir) => {
+        const time = dir === "dep" ? r.out : r.back;
+        const sched = localTime(time[0]!, time[1]!);
+        return {
+          flight: dir === "dep" ? r.dep : r.arr,
+          dir,
+          city: r.city,
+          iata: r.iata,
+          sched,
+          est: sched,
+          status: "scheduled" as const,
+        };
+      }),
+    )
+    .sort((a, b) => a.sched.localeCompare(b.sched));
 }
 export async function aircraftNearLrcv(): Promise<unknown[]> {
   try {

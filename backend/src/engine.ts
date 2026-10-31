@@ -6,6 +6,8 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { simAbMetric } from "./data/sim-ab.js";
+import { wazeFeed } from "./channels/waze.js";
 import { dirname } from "node:path";
 import {
   roles,
@@ -24,6 +26,8 @@ import { render } from "./messages.js";
 import { fixtureSource, schedule } from "./data/flights.js";
 import { roalertDraft } from "./channels/roalert.js";
 import type { Adapter, Outbound } from "./channels/types.js";
+// Demo assumption: 10 drivers/minute while the simulated Waze closure is active.
+export const WAZE_DRIVERS_PER_MINUTE = 10;
 const iso = () => new Date().toISOString();
 const flightKey = (value: string) => value.replace(/\s/g, "").toUpperCase();
 const clock = (date: string) =>
@@ -53,6 +57,7 @@ interface Store {
   receipts: Receipt[];
   telegramOffset: number;
   firstNotified: string[];
+  readRecipientKeys?: string[];
   carAgents: string[];
   carMetricReported?: boolean;
 }
@@ -67,6 +72,7 @@ interface Options {
   waveCount?: number;
   waveMinutes?: number;
   taxiGroup?: string;
+  simAbFile?: string;
 }
 export class Engine {
   state: State;
@@ -75,6 +81,7 @@ export class Engine {
   receipts: Receipt[] = [];
   telegramOffset = 0;
   private firstNotified = new Set<string>();
+  private readRecipientKeys = new Set<string>();
   private carAgents = new Set<string>();
   private generation = 0;
   private carMetricReported = false;
@@ -96,13 +103,43 @@ export class Engine {
       this.receipts = saved.receipts;
       this.telegramOffset = saved.telegramOffset ?? 0;
       this.firstNotified = new Set(saved.firstNotified);
+      this.readRecipientKeys = new Set(
+        saved.readRecipientKeys ??
+          this.receipts.filter((r) => r.read).map((r) => this.recipientKey(r)),
+      );
       this.carAgents = new Set(saved.carAgents);
       this.carMetricReported = saved.carMetricReported ?? false;
     }
+    this.state.flights = schedule().map((f) => {
+      const previous = this.state.flights.find(
+        (p) => p.flight === f.flight && p.dir === f.dir,
+      );
+      return previous && this.state.phase !== "normal"
+        ? {
+            ...f,
+            status: previous.status,
+            divertedTo: previous.divertedTo,
+            est: previous.status === "diverted" ? previous.est : f.est,
+          }
+        : f;
+    });
+    this.state.dataSource = fixtureSource;
+    this.state.drone ??= null;
+    this.state.reach ??= [];
+    for (const role of roles)
+      this.state.counters[role] ??= {
+        subscribers: 0,
+        sent: 0,
+        delivered: 0,
+        read: 0,
+      };
+    for (const sub of this.subscriptions) sub.source ??= "direct";
     this.expire();
   }
   private fresh(): State {
     return {
+      drone: null,
+      reach: [],
       phase: "normal",
       since: iso(),
       reason: null,
@@ -123,6 +160,7 @@ export class Engine {
       metrics: {
         notifiedFirstMinute: 0,
         readCount: 0,
+        readRecipients: 0,
         carsStartedInVain: 0,
         isuTimeToT2: null,
         kerbPeak: null,
@@ -140,6 +178,7 @@ export class Engine {
       receipts: this.receipts,
       telegramOffset: this.telegramOffset,
       firstNotified: [...this.firstNotified],
+      readRecipientKeys: [...this.readRecipientKeys],
       carAgents: [...this.carAgents],
       carMetricReported: this.carMetricReported,
     };
@@ -151,13 +190,70 @@ export class Engine {
   private changed() {
     this.recount();
     this.persist();
-    this.options.emit?.("state", this.state);
+    this.options.emit?.("state", this.snapshot());
   }
   private recount() {
     for (const role of roles)
       this.state.counters[role].subscribers =
         this.subscriptions.filter((s) => s.role === role).length +
         this.agents.filter((a) => a.role === role).length;
+    const incident =
+      this.state.phase === "suspended" || this.state.phase === "recovery";
+    const closure = wazeFeed(this.state).incidents.length > 0;
+    const counts = [
+      this.subscriptions.filter((s) => s.source === "relative").length,
+      this.subscriptions.filter((s) => s.flight).length,
+      this.subscriptions.length,
+      this.receipts.filter(
+        (r) =>
+          [
+            "taxi",
+            "rideshare",
+            "rent_a_car_ubt",
+            "staff",
+            "alt_airport",
+          ].includes(r.role) &&
+          !this.agents.some((a) => a.agentId === r.recipient),
+      ).length,
+      closure && this.state.confirmedAt
+        ? Math.floor(
+            (Math.max(0, Date.now() - Date.parse(this.state.confirmedAt)) /
+              60000) *
+              WAZE_DRIVERS_PER_MINUTE,
+          )
+        : 0,
+      this.state.roalertDraft ? 1 : 0,
+    ];
+    this.state.reach = [
+      "share_link",
+      "flight_subscriptions",
+      "daily_value",
+      "contacts",
+      "location",
+      "ro_alert",
+    ].map((key, i) => ({
+      step: i + 1,
+      key,
+      reached: counts[i]!,
+      status:
+        i === 5
+          ? this.state.roalertDraft
+            ? "draft"
+            : "idle"
+          : i === 4
+            ? closure
+              ? "active"
+              : "idle"
+            : i === 2
+              ? incident
+                ? "active"
+                : "idle"
+              : counts[i]! > 0
+                ? "active"
+                : "idle",
+    }));
+    this.state.metrics.readRecipients = this.readRecipientKeys.size;
+    this.state.metrics.notifiedFirstMinute = this.firstNotified.size;
   }
   private timeline(type: string, data: Record<string, unknown> = {}) {
     this.state.timeline.push({
@@ -213,6 +309,11 @@ export class Engine {
       throw new Error("Invalid destination");
     if (input.channel === "telegram" && input.destination !== undefined)
       throw new Error("Telegram chat must be bound by /start");
+    if (
+      input.source !== undefined &&
+      !["jury", "relative", "qr", "direct"].includes(input.source)
+    )
+      throw new Error("Invalid subscription source");
     const flight = this.state.flights.find(
       (f) => flightKey(f.flight) === flightKey(String(input.flight ?? "")),
     );
@@ -227,6 +328,7 @@ export class Engine {
       role: input.role,
       channel: input.channel,
       lang: input.lang,
+      source: input.source ?? "direct",
       consent: true,
       flight: input.flight,
       date,
@@ -239,7 +341,18 @@ export class Engine {
     return sub;
   }
   async telegramStart(chat: string, payload: string): Promise<void> {
-    const [role, rawFlight, subscriptionId] = payload.split("__");
+    const [role, rawFlight, suffix, explicitSource] = payload.split("__");
+    const sources = ["jury", "relative", "qr", "direct"];
+    const subscriptionId =
+      suffix && !sources.includes(suffix) ? suffix : undefined;
+    const source =
+      explicitSource ??
+      (suffix && sources.includes(suffix)
+        ? suffix
+        : role === "relative_arrivals"
+          ? "relative"
+          : "direct");
+    if (!sources.includes(source)) throw new Error("Invalid Telegram source");
     if (!isRole(role)) throw new Error("Unknown Telegram role");
     const flight = rawFlight
       ?.replace(/_/g, " ")
@@ -269,6 +382,7 @@ export class Engine {
         role,
         flight: flight || undefined,
         channel: "telegram",
+        source,
         lang: "ro",
         consent: true,
       });
@@ -386,9 +500,42 @@ export class Engine {
           !["09", "27"].includes(data.nearRunway) ||
           !["radar", "report"].includes(data.source) ||
           !Number.isFinite(data.distanceM) ||
-          !Number.isFinite(data.bearingDeg)
+          data.distanceM < 0 ||
+          !Number.isFinite(data.bearingDeg) ||
+          data.bearingDeg < 0 ||
+          data.bearingDeg >= 360 ||
+          ((data.lat !== undefined || data.lon !== undefined) &&
+            (!Number.isFinite(data.lat) ||
+              !Number.isFinite(data.lon) ||
+              Math.abs(data.lat) > 90 ||
+              Math.abs(data.lon) > 180))
         )
           throw new Error("Invalid detection");
+        {
+          const angular = data.distanceM / 6371000,
+            bearing = (data.bearingDeg * Math.PI) / 180;
+          const originLat = (44.3181 * Math.PI) / 180,
+            originLon = (23.8886 * Math.PI) / 180;
+          const lat = Math.asin(
+            Math.sin(originLat) * Math.cos(angular) +
+              Math.cos(originLat) * Math.sin(angular) * Math.cos(bearing),
+          );
+          const lon =
+            originLon +
+            Math.atan2(
+              Math.sin(bearing) * Math.sin(angular) * Math.cos(originLat),
+              Math.cos(angular) - Math.sin(originLat) * Math.sin(lat),
+            );
+          this.state.drone = {
+            lat: data.lat ?? (lat * 180) / Math.PI,
+            lon: data.lon ?? (((lon * 180) / Math.PI + 540) % 360) - 180,
+            distanceM: data.distanceM,
+            bearingDeg: data.bearingDeg,
+            nearRunway: data.nearRunway,
+            source: data.source,
+            at: event.ts,
+          };
+        }
         this.state.reason = "drone";
         this.transition("detection", type);
         break;
@@ -483,6 +630,8 @@ export class Engine {
             throw new Error("Open all configured waves before final reopening");
           this.transition("normal", "console.reopen");
           this.state.reason = null;
+          this.state.drone = null;
+          this.state.roalertDraft = null;
           this.state.flights.forEach((f) => {
             if (f.status === "suspended") f.status = "scheduled";
           });
@@ -554,6 +703,7 @@ export class Engine {
         this.state = this.fresh();
         this.receipts = [];
         this.firstNotified.clear();
+        this.readRecipientKeys.clear();
         this.carAgents.clear();
         this.carMetricReported = false;
         this.agents = [];
@@ -699,6 +849,7 @@ export class Engine {
           if (result?.delivered) {
             receipt.delivered = true;
             this.state.counters.taxi.delivered++;
+            this.notified(receipt);
           }
         } catch {
           console.warn("Taxi group send failed");
@@ -737,21 +888,22 @@ export class Engine {
     this.persist();
     return r;
   }
-  private notified(r: Receipt) {
+  private recipientKey(r: Receipt): string {
     const sub = this.subscriptions.find((s) => s.id === r.recipient);
-    const recipientKey = r.simulated
+    // Recipient endpoints, not inferred people across unrelated channels.
+    return this.agents.some((a) => a.agentId === r.recipient)
       ? `agent:${r.recipient}`
       : sub?.destination
         ? `${sub.channel}:${sub.destination}`
         : r.recipient;
-    if (
-      this.state.confirmedAt &&
-      Date.now() - Date.parse(this.state.confirmedAt) <= 60000 &&
-      !this.firstNotified.has(recipientKey)
-    ) {
-      this.firstNotified.add(recipientKey);
-      this.state.metrics.notifiedFirstMinute++;
-    }
+  }
+  private notified(r: Receipt) {
+    r.deliveredAt = iso();
+    const elapsed =
+      Date.parse(r.deliveredAt) - Date.parse(this.state.confirmedAt ?? "");
+    if (r.delivered && elapsed >= 0 && elapsed <= 60000)
+      this.firstNotified.add(this.recipientKey(r));
+    this.recount();
   }
   markRead(id: string, chat?: string) {
     const r = this.receipts.find((r) => r.id === id);
@@ -765,6 +917,7 @@ export class Engine {
     )
       return;
     r.read = true;
+    this.readRecipientKeys.add(this.recipientKey(r));
     this.state.counters[r.role].read++;
     this.state.metrics.readCount++;
     const agent = this.agents.find((a) => a.agentId === r.recipient);
@@ -809,6 +962,13 @@ export class Engine {
   }
   snapshot() {
     this.expire();
-    return this.state;
+    return {
+      ...this.state,
+      metrics: {
+        ...this.state.metrics,
+        isuTimeToT2:
+          this.state.metrics.isuTimeToT2 ?? simAbMetric(this.options.simAbFile),
+      },
+    };
   }
 }

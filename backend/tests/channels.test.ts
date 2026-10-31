@@ -123,10 +123,10 @@ describe("channel adapters", () => {
   });
 });
 describe("flight data", () => {
-  it("has 21 fixture departures per week plus arrivals", () => {
+  it("has three fixture departures per operating day plus matching arrivals", () => {
     const flights = schedule();
-    expect(flights.filter((f) => f.dir === "dep")).toHaveLength(21);
-    expect(flights.filter((f) => f.dir === "arr")).toHaveLength(21);
+    expect(flights.filter((f) => f.dir === "dep")).toHaveLength(3);
+    expect(flights.filter((f) => f.dir === "arr")).toHaveLength(3);
   });
   it("uses a three-second OpenSky timeout and empty fallback", async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error("offline"));

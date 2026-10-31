@@ -13,7 +13,7 @@ npm test
 npm start                    # http://localhost:8787; ws://localhost:8787/ws?client=console
 ```
 
-`npm run dev` runs the source with watch mode. Copy `.env.example` to `.env` and load it explicitly, e.g. `node --env-file=.env dist/src/server.js`. `npm start` reads exported environment variables; it does not implicitly load `.env`. All commands above run from `backend/`.
+`npm run dev` runs the source with watch mode. Copy `.env.example` to `.env`. Both `npm start` and `npm run dev` load `backend/.env` automatically using Node 22’s built-in loader; exported variables take precedence. All commands above run from `backend/`.
 
 In a second terminal, `cd backend && npm run demo`. This fake twin registers 60 agents, creates three unbound Telegram test subscriptions, resets demo counters, detects a drone on runway **27**, confirms suspension through the console API, approves messages, diverts Bergamo to OTP, intercepts with a net, triggers a T2 evacuation and RO-Alert draft, then opens all waves and returns to normal. Pauses default to 1.5 s; an extra seven-second wait allows simulated reads. The reported `isuTimeToT2=10.2` is **scripted fixture minutes, not a measured improvement**. The driver asserts no sends before confirmation, transitions through suspended/recovery/normal, and moving delivery/read counters. It preserves existing phone subscriptions, so with real credentials it sends the scenario to opted-in phones. Run against a demo instance.
 
@@ -32,7 +32,7 @@ Port conflicts: `PORT=8788 STATE_FILE=/tmp/tower-demo-state.json npm start`, the
 | `WAVE_COUNT`                                       | `3` (integer 1–20)                                                             |
 | `WAVE_MINUTES`                                     | `10`, window spacing in real clock minutes, independent of simulation speed    |
 | `TELEGRAM_BOT_TOKEN`                               | Missing = dry-run, no network sends or polling                                 |
-| `TELEGRAM_BOT_USERNAME`                            | Bot username without `@`; defaults to placeholder `ControlTowerDemoBot`        |
+| `TELEGRAM_BOT_USERNAME`                            | Bot username without `@`; fallback placeholder `ControlTowerDemoBot` in dry-run; live username discovered with `getMe`        |
 | `TELEGRAM_TAXI_GROUP_ID`                           | Optional opted-in “Taxi CRA” chat, one RO broadcast per approved alert/wave    |
 | `SMSLINK_CONNECTION_ID`, `SMSLINK_PASSWORD`        | Both required for SMSLink HTTPS sends; otherwise dry-run                       |
 | `WA_TOKEN`, `WA_PHONE_NUMBER_ID`, `WA_API_VERSION` | All required for WhatsApp Cloud API; otherwise dry-run                         |
@@ -44,7 +44,7 @@ No secrets or private channel IDs appear in public state. Local JSON storage con
 ## Telegram and jury QR
 
 1. Open the official **@BotFather** in Telegram, send `/newbot`, choose a display name and a unique username ending in `bot`.
-2. Set `TELEGRAM_BOT_TOKEN` to the token BotFather returns, and `TELEGRAM_BOT_USERNAME` to that username. Restart the backend. Run only one long poller for a token; an existing webhook must be removed before `getUpdates` can run.
+2. Set `TELEGRAM_BOT_TOKEN` in `backend/.env` to the token BotFather returns. Startup calls `getMe`, logs the verified bot username and uses it for links; `TELEGRAM_BOT_USERNAME` is only a fallback. Restart the backend. Run only one long poller for a token; an existing webhook must be removed before `getUpdates` can run.
 3. Point the printed jury QR at the frontend `/join` URL. The frontend collects role, optional flight, language and channel consent and calls `POST /api/subscribe`; then opens the returned `telegramLink`.
 4. The person must press **Start**. The bot binds the private chat ID; the UI subscription alone cannot receive messages. Opening the role deep link and pressing Start is the direct Telegram opt-in. A `/start` link without an API subscription defaults to Romanian.
 5. Confirm suspension and approve the selected roles. The phone receives the role alert with **“Am înțeles / Got it”**. Pressing it increments read once, only for that message’s own chat.
@@ -66,6 +66,7 @@ All WS frames use `{ "type": "...", "ts": "<ISO-8601>", "data": {} }`. Connect t
 | HTTP                  | Body / response                                                                    |
 | --------------------- | ---------------------------------------------------------------------------------- |
 | `GET /health`         | `{ok, service, telegram}`                                                          |
+| `GET /api/telegram`  | `{enabled, botUsername, deepLinkExample}` (no token or private chat IDs) |
 | `GET /api/state`      | Contract state plus `metrics`, `estimatedReopen`, `confirmedAt`, `dataSource`      |
 | `POST /api/subscribe` | `{role, flight?, channel, lang, consent:true}` → `{subscriptionId, telegramLink?}` |
 | `POST /api/action`    | Same enveloped `console.*` event as WS → current state                             |
@@ -103,16 +104,17 @@ Per role, `subscribers` includes active real subscriptions (including Telegram s
 Twin agents have seeded log-normal read latency, median 360,000 simulated ms (sigma 0.7), divided once by `SIM_SPEED`. After a read, each notification has a seeded 48% acting probability; “acting” follows after 30 simulated seconds. These are assumptions from the plan, not observed human behavior. Pending receipts resume after restart. All simulated messages pass through the same renderer, and `agent.notified` reports notified/read/acting.
 
 - `notifiedFirstMinute`: **unique recipient endpoints** successfully notified within 60 real seconds of confirmation. Twin agents included; dry-run sends and unknown taxi group membership excluded. At most the recipients actually reached, never all subscriber records by assumption.
+- `readRecipients`: unique endpoints acknowledging at least one delivered message (same endpoint identity as first-minute reach).
 - `readCount`: message acknowledgements, including simulation; counts messages, not unique people.
 - `carsStartedInVain`: fallback **synthetic proxy**: unique home/relative/taxi/rideshare agents that finish a read/action cycle without acting. Not measured traffic, and no claimed saved cars. Unity should report its actual count via `metric.report` to replace the proxy.
-- `isuTimeToT2`: null until `metric.report {name:"isuTimeToT2",value:<minutes>}`. No invented baseline or improvement. Demo reports the team fixture 10.2 minutes.
+- `isuTimeToT2`: a twin-reported number in minutes takes precedence. Otherwise the optional `../sim-ab/out/results.json` supplies `{median, interval:[p05,p95], source:"sim-ab", units:"minutes", coverage:0.5, waves:false, model, intervalLabel}` for the alerted journey time (mean of four crews per seed). Missing or malformed results return null. This is an uncalibrated simulation, not observed performance or minutes saved. Demo reports the team fixture 10.2 minutes.
 - `kerbPeak`: null until twin reports it (peak vehicle count).
 
 `metric.report` accepts finite nonnegative values for the three twin-reported metrics. No coverage percentage is invented: Unity registers the relevant opted-in population for each 20/50/80% A/B run, keeping the same seed/agents between comparisons. The backend does not run Unity’s 20-seed experiment or claim causal improvement.
 
 ## Data / channel limitations
 
-`src/data/flights.ts` contains a **clearly labelled illustrative Wizz winter 2026/27 fixture**, exactly 21 departures and 21 corresponding arrivals across seven days. The 21/week assumption is from the team plan; route selection, flight numbers and times are not a verified live timetable. `craiova-airport.ro` could not be fetched during implementation. Suspended/diverted overlays never imply airline cancellation. OpenSky is fetched at startup and every minute with a three-second timeout and empty fallback; it is separate from FIDS and is not required for the demo.
+`src/data/flights.ts` contains a **clearly labelled illustrative Wizz winter 2026/27 fixture**, three departures and three matching return arrivals for the current Europe/Bucharest operating day (00:00 through the following night before 02:00). Before 02:00 the previous day remains selected. Bergamo `W6 3412` arrives at 23:55 after its outbound `W6 3411`; every return follows its outbound by a plausible round-trip duration. The 21/week assumption is from the team plan; route selection, flight numbers and times are not a verified live timetable. `craiova-airport.ro` could not be fetched during implementation. Suspended/diverted overlays never imply airline cancellation. OpenSky is fetched at startup and every minute with a three-second timeout and empty fallback; it is separate from FIDS and is not required for the demo.
 
 Telegram uses real Bot API `sendMessage`, long-poll `getUpdates`, callback ownership checks and a persisted offset. SMSLink uses the HTTPS POST gateway and checks `MESSAGE;1;` success. WhatsApp uses Cloud API text messages: real use requires a test recipient/recent inbound conversation or approved templates outside the customer-service window; template onboarding and delivery/read webhooks are not implemented. Web push and Google Wallet remain dry-run stubs; Wallet demo enforces three notifications/pass/day in memory. It is not a real Wallet pass issuer or exposed subscription channel.
 
