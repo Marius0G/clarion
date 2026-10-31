@@ -8,7 +8,6 @@ const Page =
     ? lazy(() => import("./join/Join"))
     : window.location.pathname.startsWith("/m/") ? lazy(() => import("./me/Me"))
     : window.location.pathname === "/twin" ? lazy(() => import("./twin/Twin"))
-    : window.location.pathname === "/v1" ? lazy(() => import("./LegacyApp"))
     : lazy(() => import("./App"));
 
 createRoot(document.getElementById("root")!).render(
