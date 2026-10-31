@@ -32,7 +32,7 @@ Sursa: `Bogdan-ca/Moni`, `src/whatsapp.js`, `src/core.js`, `src/agent/`, `src/co
 - Cont = număr de telefon (E.164, `normalizePhone`). OTP de 6 cifre, valabil 5 min. Sesiune `sid:<token>` de 90 de zile în cookie.
 - Link de o singură folosință trimis din WhatsApp (`link:<token>` → telefon, 15 min), ca pasagerul să deschidă pagina deja logat.
 - Google OAuth (din `src/gmail.js`), cu scope `openid email profile` în loc de `gmail.readonly`: „Continuă cu Google” pe `/join` preia numele și emailul.
-- Extensia de browser: login-ul ei (`auth:signin`, `auth:status`, `auth:signout`) se portează la fel. **De clarificat la ce folosește extensia în Clarion.**
+- Fără extensie de browser: totul e pe site.
 
 ### D4. Wallet: boarding pass + intrarea în WhatsApp
 Pe `/join` pasagerul se loghează (Google sau telefon) și salvează cardul Clarion în Google Wallet, cu zborul lui. Cardul are un link `wa.me/15556318672?text=START <zbor> <token>`. La primul mesaj, backend-ul leagă telefonul de zbor prin token și deschide fereastra de 24h, în care putem trimite text liber fără template-uri aprobate.
@@ -122,6 +122,3 @@ Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu f
 5. **Agenții cu telefon (D9):** mesajul cu etapa (`public`, `airside`, `gate`) și nodul curent, legat de `agentId` și de telefonul din WhatsApp. Ritmul de trimitere.
 6. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` folosită în demo.
 7. **Rutele către Unity (D7):** forma mesajului prin care backend-ul îi trimite unui agent ruta (listă de noduri).
-
-## De stabilit în continuare
-- La ce folosește extensia de browser (D3).
