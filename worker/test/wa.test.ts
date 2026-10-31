@@ -5,7 +5,7 @@ import { validWhatsAppSignature } from '../src/channels.js';
 import { WhatsAppAgent, parseStart, type WaStore } from '../src/wa/index.js';
 import { PROVISIONAL_FLIGHTS, clockFrom, clockText, findFlight, type Flight } from '../src/wa/flights.js';
 import { arrivalPlan, toolsFor, waitAt, type AirportView, type Profile, type ZoneRow } from '../src/wa/tools.js';
-import { fallbackReply, paceReactions, toBubbles } from '../src/wa/agent.js';
+import { fallbackReply, paceReactions, toBubbles, reply } from '../src/wa/agent.js';
 import { parseWebhook, redact, splitText } from '../src/wa/transport.js';
 
 const hm = (h: number, m: number) => h * 3600 + m * 60;
@@ -151,6 +151,26 @@ describe('bubbles', () => {
   });
 });
 
+describe('tool-derived urgency', () => {
+  it.each([
+    ['myFlight', { status: 'delayed', delayMin: 20 }],
+    ['myFlight', { status: 'cancelled' }],
+    ['reportIssue', { status: 'sent' }],
+  ])('filters a model reaction after %s regardless of the incoming wording', async (name, result) => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const responses = [
+      { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't', name, input: {} }] },
+      { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]👍\n---\nConfirmed 🙂' }] },
+    ];
+    const answer = await reply({
+      env: { ANTHROPIC_API_KEY: 'k' }, fetcher: async () => Response.json(responses.shift()),
+      profile: { phone: '+40712345678', role: 'passenger' }, clock: sim7, history: [], text: 'Details',
+      tools: { [name]: async () => result },
+    });
+    expect(answer).toEqual({ bubbles: ['Confirmed'], used: [name] });
+  });
+});
+
 describe('WhatsAppAgent turn', () => {
   type Call = { url: string; body: any };
   function harness(env: Record<string, string>, claude: any[] = []) {
@@ -241,6 +261,45 @@ describe('WhatsAppAgent turn', () => {
     expect(sent.filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Securitate: 12 min acum.', 'Poarta G2 se închide la 09:10.']);
     expect((await store.get<any>('wa:ctx:+40712345678')).history.map((h: any) => h.role)).toEqual(['user', 'clarion', 'clarion', 'clarion']);
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(true);
+  });
+
+  it.each([
+    ['ro', 'pasager', 'Evacuare la securitate?', 'routeTo'],
+    ['en', 'pasager', 'Evacuation at security?', 'routeTo'],
+    ['ro', 'pasager', 'Zborul e anulat?', 'myFlight'],
+    ['en', 'pasager', 'Is my flight delayed?', 'myFlight'],
+    ['ro', 'pasager', 'S-a schimbat poarta?', 'myFlight'],
+    ['en', 'pasager', 'Has the gate changed?', 'myFlight'],
+    ['ro', 'staff', 'Bagaj abandonat la poarta 3?', 'reportIssue'],
+    ['en', 'staff', 'Unattended bag at gate 3?', 'reportIssue'],
+  ])('suppresses all urgent reactions and emoji (%s, %s, %s)', async (lang, role, text, tool) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const { agent, store, meta } = harness({ ...live, ANTHROPIC_API_KEY: 'k' }, [
+      { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'urgent', name: tool, input: { text, to: 'exit' } }] },
+      { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]⚠️\n---\nReceived ⚠️. Exit 1 → 2. 👩🏽‍🚒 🇷🇴 1️⃣\n---\n🙏' }] },
+    ]);
+    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang });
+    await agent.inbound(inbound(text));
+    expect(meta().filter(b => b.type === 'reaction')).toEqual([]);
+    expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Received . Exit 1 → 2.']);
+  });
+
+  it('keeps the queue reaction and Moni prompt in English', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const { agent, store, calls, meta } = harness({ ...live, ANTHROPIC_API_KEY: 'k' }, [
+      { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'q', name: 'queues', input: {} }] },
+      { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]👀\n---\nSecurity: 12 min now 🙂' }] },
+    ]);
+    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', lang: 'en' });
+    await agent.inbound(inbound('Is the security queue long?'));
+    expect(meta().filter(b => b.type === 'reaction').at(-1)?.reaction.emoji).toBe('👀');
+    expect(meta().find(b => b.type === 'text')?.text.body).toBe('Security: 12 min now 🙂');
+    const prompt = calls.find(c => c.url.startsWith('https://api.anthropic.com'))!.body.system[0].text;
+    expect(prompt).toContain('Clarion: [react]👀');
+    expect(prompt).toContain('no [react] bubble, no reactions and no emoji');
+    expect(prompt).toContain("Their check-in desk group's queue has yours=true");
   });
 
   it('a bag button tap is saved and answered with the situation', async () => {

@@ -270,7 +270,7 @@ describe('evacuation (D10, A10)', () => {
     const generic = h.m.evacuate(['check_in:2'], 'ops-1');
     expect(await h.m.plan(plan())).toBe(2);
     expect(await generic).toBe('planned');
-    expect(h.texts()).toEqual([{ to: '40712345678', text: '⚠️ Evacuare: Check-in, grupul 2 e închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul.' }]);
+    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Check-in, grupul 2 e închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul.' }]);
     expect(h.unity).toEqual([
       { type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining('Ieși pe Ieșirea 1') } },
       { type: 'agent.route', data: { agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' } },
@@ -358,4 +358,29 @@ it('describes admin changes to the affected flight group and sends the same text
   expect(h.texts()[0]!.text).toContain('Check-in, grupul 2: fluxul este mutat la Check-in, grupul 3.');
   expect(h.texts()[0]!.text).not.toMatch(/fii la|mergi|abon/iu);
   expect(await h.m.adminChanged({ type: 'close', zone: 'check_in:2' })).toBe(0);
+});
+
+
+describe('urgent automatic delivery', () => {
+  it.each(['ro', 'en'] as const)('cleans flight and evacuation text on WhatsApp and Unity (%s)', async lang => {
+    quiet();
+    const h = harness(fakeSim().view);
+    const phone = '+40712345678';
+    await h.store.put(`wa:last:${phone}`, Date.now());
+    const subs = [{ channel: 'whatsapp' as const, phone }, { channel: 'sim' as const, agentId: 'urgent', role: 'passenger', flight: 'W6 3751' }];
+    for (const sub of subs) {
+      for (const kind of ['flight', 'evacuate'] as const) {
+        expect(await h.m.notify(sub, { kind, text: '[react]⚠️\n---\nAlert ⚠️ W6 3751 → Exit 2 🇷🇴' })).toBe('sent');
+      }
+    }
+    expect(h.graph.filter(b => b.type === 'reaction')).toEqual([]);
+    expect(h.texts().map(m => m.text)).toEqual(['Alert  W6 3751 → Exit 2', 'Alert  W6 3751 → Exit 2']);
+    expect(h.unity.map(m => m.data.text)).toEqual(['Alert  W6 3751 → Exit 2', 'Alert  W6 3751 → Exit 2']);
+    const cancelled = fromSim([row({ status: 'cancelled' })])[0]!;
+    const delayed = fromSim([row({ status: 'delayed', delayMin: 20 })])[0]!;
+    for (const text of [h.m.flightText(cancelled, false, lang), h.m.flightText(delayed, false, lang), h.m.evacuateText(['security'], lang)]) {
+      expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
+      expect(text).not.toContain('[react]');
+    }
+  });
 });

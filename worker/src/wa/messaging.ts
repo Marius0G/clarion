@@ -1,3 +1,5 @@
+import { urgentBubbles } from './urgency.js';
+import { toBubbles } from './agent.js';
 import { clearPrefix } from '../reset-store.js';
 import { copy, say, language, localSource, nodeName, type Lang } from './texts.js';
 // Outbound passenger messages (SPEC-v2 D10, D14, D15, D17): one fan-out for real phones (WhatsApp) and simulated
@@ -189,6 +191,7 @@ export class Messaging {
     return next;
   }
   private async deliver(sub: Subscriber, { estimate, ...m }: { kind: NotifyKind; text: string; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+    if (m.kind === 'flight' || m.kind === 'evacuate') m.text = urgentBubbles(toBubbles(m.text)).join('\n');
     const now = this.deps.now?.() ?? Date.now();
     const nonUrgent = m.kind !== 'flight' && m.kind !== 'evacuate';
     const lastKey = `msg:last:${this.identity(sub)}`;
@@ -285,7 +288,7 @@ export class Messaging {
 
   /** Flight changes bypass the non-urgent limit. */
   flightText(f: Flight, hasCheckedBag?: boolean, lang?: Lang) {
-    if (f.status === 'cancelled' || f.status === 'departed') return `✈️ ${this.arriveText(f, hasCheckedBag, lang)}`;
+    if (f.status === 'cancelled' || f.status === 'departed') return this.arriveText(f, hasCheckedBag, lang);
     const change = f.delayMin > 0
       ? copy.delayedDeparture(lang, f)
       : copy.scheduledDeparture(lang, f);

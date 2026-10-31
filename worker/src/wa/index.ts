@@ -1,3 +1,4 @@
+import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
 import { say, language } from './texts.js';
 import { consumeJoin } from '../join.js';
@@ -97,12 +98,16 @@ export class WhatsAppAgent {
   private async turn(m: InboundMessage) {
     console.log(JSON.stringify({ wa: 'in', id: m.id, type: m.type, from: masked(m.phone) }));
     await this.wa.markReadTyping(m.id);
-    // A reaction within a second, before the agent thinks; the agent's own reaction replaces it, or it comes off.
-    const quick = m.text ? quickReaction(m.text) : null;
-    if (quick) await this.wa.sendReaction(m.phone, m.id, quick);
-
     const key = `wa:profile:${m.phone}`;
     let profile: Profile = { phone: m.phone, role: 'passenger', lang: 'ro', ...(await this.store.get<Profile>(key)) };
+    // Check urgency before sending even a provisional reaction.
+    const flight = profile.flight && findFlight(this.view.flights(), profile.flight);
+    const flightAlert = flight && (flight.status === 'delayed' || flight.status === 'cancelled')
+      && /flight|zbor|gate|poart/i.test(m.text ?? '');
+    const urgent = m.text && (urgentText(m.text) || flightAlert || (profile.role === 'staff' && staffIncident(m.text)));
+    const quick = m.text && !urgent ? quickReaction(m.text) : null;
+    if (quick) await this.wa.sendReaction(m.phone, m.id, quick);
+
     const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
       profile = { ...profile, ...patch }; await this.store.put(key, profile);

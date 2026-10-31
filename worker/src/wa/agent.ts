@@ -1,3 +1,4 @@
+import { urgentText, staffIncident, urgentBubbles, urgentResult } from './urgency.js';
 import { say, type Lang } from './texts.js';
 // The Claude agent behind Clarion's WhatsApp, ported from Moni src/agent/agent.js (SPEC-v2 D2, D15).
 // Same loop, bubbles and reaction pacing; Clarion's prompt and tools instead of Moni's money ones.
@@ -275,19 +276,30 @@ export interface ReplyInput { env: WaEnv; fetcher: Fetch; profile: Profile; cloc
 /** Clarion's answer to one message, as bubbles. @returns used = tool names called, for the log. */
 export async function reply({ env, fetcher, profile, clock, history, text, tools }: ReplyInput): Promise<{ bubbles: string[]; used: string[] }> {
   const used: string[] = [];
-  if (!hasLlm(env)) return { bubbles: await fallbackReply(text, tools, used, profile.role, profile.lang), used };
+  let urgent = urgentText(text) || (profile.role === 'staff' && staffIncident(text));
+  const trackedTools: Tools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
+    if (name === 'reportIssue') urgent = true;
+    const result = await fn(input);
+    if (urgentResult(result)) urgent = true;
+    return result;
+  }]));
+  const finish = (bubbles: string[]) => {
+    urgent ||= bubbles.some(urgentText);
+    return { bubbles: urgent ? urgentBubbles(bubbles) : paceReactions(bubbles, history), used };
+  };
+  if (!hasLlm(env)) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   try {
     const context = contextBlock(profile, clock);
     const messages = buildMessages(history, text);
-    let bubbles = toBubbles(await runAgent(env, fetcher, context, messages, tools, used, profile.lang));
+    let bubbles = toBubbles(await runAgent(env, fetcher, context, messages, trackedTools, used, profile.lang));
     if (!bubbles.some(isWords) && !ACK.test(text)) {
-      const again = toBubbles(await runAgent(env, fetcher, context, [...messages, { role: 'assistant', content: bubbles.join('\n---\n') || '(nimic)' }, { role: 'user', content: '(Clarion, a venit doar un emoji. Răspunde-mi în cuvinte.)' }], tools, used, profile.lang));
+      const again = toBubbles(await runAgent(env, fetcher, context, [...messages, { role: 'assistant', content: bubbles.join('\n---\n') || '(nimic)' }, { role: 'user', content: '(Clarion, a venit doar un emoji. Răspunde-mi în cuvinte.)' }], trackedTools, used, profile.lang));
       bubbles = again.some(isWords) ? again : [...bubbles, say(profile.lang, 'tangled')];
     }
-    return { bubbles: paceReactions(bubbles, history), used };
+    return finish(bubbles);
   } catch (e) {
     console.error(JSON.stringify({ wa: 'agent-error', error: String((e as Error)?.message ?? e).slice(0, 200) }));
-    return { bubbles: [say(profile.lang, 'fallback')], used };
+    return finish([say(profile.lang, 'fallback')]);
   }
 }
 
