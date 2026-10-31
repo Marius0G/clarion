@@ -34,7 +34,7 @@ describe('passenger page profiles', () => {
     await h.inbound('cum ajung la poarta?');
     const p = await h.agent.profile('+40712345678');
     expect(p?.pageToken).toBeTruthy();
-    expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~2 min'))).toBe(true);
+    expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~3 min'))).toBe(true);
     expect(h.texts().some(m => m.text.includes(`/m/${p!.pageToken}`))).toBe(true);
     expect(await h.m.passenger(p!.pageToken!)).toBeDefined();
     await h.inbound('când să fiu la aeroport?');
@@ -213,9 +213,9 @@ describe('staff reports (D11, D18 beat 4)', () => {
     expect((await h.store.get<Profile>('wa:profile:+40712345678'))!.role).toBe('staff');
     await h.inbound('Bagaj abandonat lângă check-in Wizz');
     const [r] = await h.agent.reports.list();
-    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 1 });
+    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2 });
     expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status', 'etaMin']);
-    expect(h.texts().at(-1)!.text).toBe('Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~1 min');
+    expect(h.texts().at(-1)!.text).toBe('Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min');
     expect((await h.agent.reports.close('R1'))!.status).toBe('closed');
     expect(await h.agent.reports.close('R9')).toBeUndefined();
   });

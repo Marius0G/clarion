@@ -1,3 +1,4 @@
+import { zones, points } from '../../../backend/src/terminal.js';
 import { clockText, etd, gateName, type Flight } from './flights.js';
 import type { arrivalPlan } from './tools.js';
 import type { OpsCommand } from '../../../backend/src/sim.js';
@@ -143,6 +144,10 @@ export const EN_ISSUES = { bagaj_abandonat: 'Unattended baggage', medical: 'Medi
 
 /** "check_in:2" -> "Check-in, grupul 2" (desk group, D8); "check_in:W6" -> "Check-in W6" (legacy per airline). */
 export function zoneName(zone: string, lang?: Lang) {
+  const real = zones.find(z => z.id === zone);
+  if (real) return lang === 'en' ? real.name_en : real.name_ro;
+  const point = points.find(p => p.id === zone && p.evacuation_exit);
+  if (point) return lang === 'en' ? 'Exit' : 'Ieșire';
   const [base, suffix] = zone.split(':');
   const name = (lang === 'en' ? EN_ZONE_NAMES : ZONE_NAMES)[base!] ?? base;
   if (!suffix) return name!;

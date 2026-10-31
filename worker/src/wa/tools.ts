@@ -1,5 +1,6 @@
 import { airportInfo } from './airport-info.js';
 import { factPatch } from './context.js';
+import { flowRow, mapNodeId } from '../../../backend/src/mapIds.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
 import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
@@ -65,8 +66,8 @@ export function waitAt(row: ZoneRow | undefined, base: string, inMin: number): {
 function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight) {
   const group = flight.checkIn?.split(':')[1];
   const suffixes = [...(group ? [group] : []), flight.airline];
-  for (const suffix of suffixes) for (const base of bases) if (flow[`${base}:${suffix}`]) return { key: `${base}:${suffix}`, base, row: flow[`${base}:${suffix}`] };
-  for (const base of bases) if (flow[base]) return { key: base, base, row: flow[base] };
+  for (const suffix of suffixes) for (const base of bases) { const key = `${base}:${suffix}`, row = flowRow(flow, key); if (row) return { key, base, row }; }
+  for (const base of bases) { const row = flowRow(flow, base); if (row) return { key: base, base, row }; }
   return { key: `${bases[0]}:${suffixes[0]}`, base: bases[0]!, row: undefined };
 }
 
@@ -77,7 +78,7 @@ function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight)
 export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined, blocked: readonly string[] = []) {
   const bag = hasCheckedBag !== false;
   const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight);
-  const secZone = { key: 'security', row: flow.security };
+  const secZone = { key: 'security', row: flowRow(flow, 'security') };
   const close = closeAt(flight);
   const walk = route(terminalGraph, 'security', flight.gate, zoneDensities(flow, zoneAreas), blocked);
   const steps = (inMin: number) => {
@@ -97,7 +98,7 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
   const totalMin = plan.reduce((s, x) => s + x.min, 0);
   const likelyAt = Math.max(clock.now, close - totalMin * 60);
   const queues = plan.filter(s => !['walk', 'margin'].includes(s.zone)).map(s => ({
-    zone: s.zone, label: s.step, nowMin: flow[s.zone]?.waitMin ?? null,
+    zone: s.zone, label: s.step, nowMin: flowRow(flow, s.zone)?.waitMin ?? null,
     forecastMin: s.min, forecastAt: clockText(likelyAt), source: s.source,
   }));
   // Rounded down to 5 minutes: "14:20" reads better than "14:23" and errs on the early side.
@@ -175,11 +176,11 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
     },
     async queues() {
       const flow = view.flow(), clock = view.clock(), p = profile();
-      const mine = new Set(ownZones(p.flight ? findFlight(view.flights(), p.flight) : p.airline ? { airline: p.airline } : undefined));
+      const mine = new Set(ownZones(p.flight ? findFlight(view.flights(), p.flight) : p.airline ? { airline: p.airline } : undefined).slice(0, 2).map(mapNodeId));
       const zones = Object.entries(flow).map(([zone, z]) => ({
         zone: zoneName(zone, p.lang), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
         ...(z.forecast?.length && { forecast: z.forecast.map(p => ({ inMin: p.inMin, waitMin: p.waitMin })) }),
-        ...(mine.has(zone) && { yours: true }),
+        ...(mine.has(mapNodeId(zone)) && { yours: true }),
       }));
       if (!zones.length) return { available: false, note: say(profile().lang, 'noQueues'), now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
       return { available: true, zones, now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };

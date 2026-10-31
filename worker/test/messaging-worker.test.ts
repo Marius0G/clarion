@@ -64,15 +64,15 @@ describe('passenger messaging in the Tower', () => {
     expect(await response.json()).toEqual({
       lang: 'ro', simTime: 25200,
       flight: { flight: 'W6 3751', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', gateCloseAt: '09:10', status: 'scheduled', delayMin: 0 },
-      arriveBy: '08:30', entranceToGateMin: 38,
+      arriveBy: '08:30', entranceToGateMin: 39,
       queues: [
-        { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', nowMin: null, forecastMin: 12, forecastAt: '08:32', source: 'estimare standard' },
-        { zone: 'security', label: 'Control de securitate', nowMin: null, forecastMin: 15, forecastAt: '08:32', source: 'estimare standard' },
+        { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', nowMin: null, forecastMin: 12, forecastAt: '08:31', source: 'estimare standard' },
+        { zone: 'security', label: 'Control de securitate', nowMin: null, forecastMin: 15, forecastAt: '08:31', source: 'estimare standard' },
       ],
       steps: [
         { zone: 'bag_drop:2', label: 'Predare bagaje, grupul 2', waitMin: 12 },
         { zone: 'security', label: 'Control de securitate', waitMin: 15 },
-        { zone: 'walk', label: 'Drum până la poarta 2', waitMin: 1 },
+        { zone: 'walk', label: 'Drum până la poarta 2', waitMin: 2 },
       ],
       alerts: [{ at: expect.any(String), kind: 'arrive', text: u.of('agent.message')[0].text }],
       evacuation: { active: false, zones: [] },
@@ -104,8 +104,8 @@ describe('passenger messaging in the Tower', () => {
     expect((await api('/api/reports', undefined, '')).status).toBe(401);
     await expect.poll(async () => (await (await api('/api/reports')).json() as any[]).length, { timeout: 10000 }).toBe(1);
     const [report] = await (await api('/api/reports')).json() as any[];
-    expect(report).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 1 });
-    expect(report.etaMin).toBe(1);
+    expect(report).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2 });
+    expect(report.etaMin).toBe(2);
     expect((await api('/api/reports/R1/close', {}, '')).status).toBe(401);
     expect(await (await api('/api/reports/R1/close', {})).json()).toMatchObject({ id: 'R1', status: 'closed' });
     expect((await api('/api/reports/R7/close', {})).status).toBe(404);

@@ -1,3 +1,4 @@
+import { desksForAirline } from '../../../backend/src/mapIds.js';
 // Flights and the clock the WhatsApp agent reads (SPEC-v2 D13, D14).
 // Times are seconds on the displayed clock: seconds since midnight of the simulated day when Unity sends
 // simTime (D13; assumption until Marius confirms the origin), otherwise Romanian wall-clock time.
@@ -24,11 +25,11 @@ export const GATE_CLOSE_BEFORE_MIN = 30;
  * Flight numbers and gates are placeholders, not the real CRA timetable. Desk groups as in D8.
  */
 export const PROVISIONAL_FLIGHTS: readonly Flight[] = [
-  { flight: 'W6 3751', airline: 'W6', destination: 'Londra Luton', std: hm(9, 40), gateCloseAt: hm(9, 10), gate: 'gate_2', checkIn: 'check_in:1', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 180 },
-  { flight: 'W6 3401', airline: 'W6', destination: 'Milano Bergamo', std: hm(13, 5), gateCloseAt: hm(12, 35), gate: 'gate_1', checkIn: 'check_in:1', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 186 },
-  { flight: 'RO 7653', airline: 'RO', destination: 'București Otopeni', std: hm(15, 20), gateCloseAt: hm(14, 55), gate: 'gate_3', checkIn: 'check_in:2', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 68 },
-  { flight: 'FR 2214', airline: 'FR', destination: 'Londra Stansted', std: hm(17, 45), gateCloseAt: hm(17, 15), gate: 'gate_3', checkIn: 'check_in:2', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 189 },
-  { flight: 'W6 4307', airline: 'W6', destination: 'Dortmund', std: hm(20, 30), gateCloseAt: hm(20, 0), gate: 'gate_2', checkIn: 'check_in:1', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 180 },
+  { flight: 'W6 3751', airline: 'W6', destination: 'Londra Luton', std: hm(9, 40), gateCloseAt: hm(9, 10), gate: 'gate_2', checkIn: 'check_in:1', checkInDesks: [...desksForAirline('W6')], status: 'scheduled', delayMin: 0, pax: 180 },
+  { flight: 'W6 3401', airline: 'W6', destination: 'Milano Bergamo', std: hm(13, 5), gateCloseAt: hm(12, 35), gate: 'gate_4', checkIn: 'check_in:1', checkInDesks: [...desksForAirline('W6')], status: 'scheduled', delayMin: 0, pax: 186 },
+  { flight: 'RO 7653', airline: 'RO', destination: 'București Otopeni', std: hm(15, 20), gateCloseAt: hm(14, 55), gate: 'gate_5', checkIn: 'check_in:2', checkInDesks: [...desksForAirline('RO')], status: 'scheduled', delayMin: 0, pax: 68 },
+  { flight: 'FR 2214', airline: 'FR', destination: 'Londra Stansted', std: hm(17, 45), gateCloseAt: hm(17, 15), gate: 'gate_3', checkIn: 'check_in:3', checkInDesks: [...desksForAirline('FR')], status: 'scheduled', delayMin: 0, pax: 189 },
+  { flight: 'W6 4307', airline: 'W6', destination: 'Dortmund', std: hm(20, 30), gateCloseAt: hm(20, 0), gate: 'gate_6', checkIn: 'check_in:1', checkInDesks: [...desksForAirline('W6')], status: 'scheduled', delayMin: 0, pax: 180 },
 ];
 
 /** "W6 3751", "w63751", "W6-3751" -> "W63751", for comparing flight numbers. */
@@ -80,7 +81,7 @@ export function findFlight(flights: readonly Flight[], code: string) {
 export const etd = (f: Flight) => f.std + f.delayMin * 60;
 export const closeAt = (f: Flight) => f.gateCloseAt + f.delayMin * 60;
 /** "gate_2" -> "2", "G2" -> "G2", "" -> "necunoscută încă". */
-export const gateName = (gate: string) => (gate ? gate.replace(/^gate_/, '') : 'necunoscută încă');
+export const gateName = (gate: string) => (gate ? gate.replace(/^(?:gate_|U_GATE_|G)/, '') : 'necunoscută încă');
 
 /** Simulated time when Unity reports simTime, otherwise Bucharest wall-clock seconds since midnight. */
 export function clockFrom(simTime: number | null | undefined, connected: boolean, nowMs = Date.now()): Clock {

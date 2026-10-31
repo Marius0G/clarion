@@ -20,15 +20,18 @@ function setup(flow: Record<string, ZoneRow> = {}, blocked: string[] = []) {
 describe('live routing tools', () => {
   it('routes to the flight gate and desk group and gives a step list, minutes and passenger link', async () => {
     const { tools } = setup();
-    expect(await tools.routeTo!({ to: 'gate' })).toMatchObject({ status: 'ready',
-      nodes: ['entrance', 'security', 'airside', 'gate_2'], totalSec: 95, minutes: 2,
-      steps: ['Intrarea', 'Control de securitate', 'Zona de plecări', 'Poarta 2'], link: 'https://passenger.example/m/token' });
-    expect(await tools.routeTo!({ to: 'check_in' })).toMatchObject({ to: 'check_in:1', totalSec: 25, minutes: 1 });
+    const result = await tools.routeTo!({ to: 'gate' }) as any;
+    expect(result).toMatchObject({ status: 'ready', minutes: 3, from: 'entrance', to: 'gate_2', link: 'https://passenger.example/m/token' });
+    expect(result.nodes).toContain('U_SECURITY');
+    expect(result.nodes).toContain('escalator_east_U');
+    expect(result.steps.at(-1)).toBe('Poarta 2');
+    expect(result.totalSec).toBeCloseTo(160.67016, 4);
+    expect(await tools.routeTo!({ to: 'check_in' })).toMatchObject({ to: 'check_in:1', minutes: 1 });
     expect(await tools.routeTo!({ to: 'invalid' })).toMatchObject({ error: 'invalid_destination' });
   });
   it('chooses a reachable exit and respects density, blocked zones and unknown destinations', async () => {
-    expect(await setup().tools.routeTo!({ to: 'exit' })).toMatchObject({ to: 'exit_1', totalSec: 20 });
-    expect(await setup({}, ['exit_1']).tools.routeTo!({ to: 'exit' })).toMatchObject({ to: 'exit_2', totalSec: 100 });
+    expect(await setup().tools.routeTo!({ to: 'exit' })).toMatchObject({ to: 'door_departures', minutes: 1 });
+    expect(await setup({}, ['door_departures']).tools.routeTo!({ to: 'exit' })).toMatchObject({ to: 'door_emergency_east', minutes: 1 });
     expect(await setup({}, ['security']).tools.routeTo!({ to: 'gate' })).toMatchObject({ status: 'unavailable' });
     expect(await setup({ security: { waiting: 0, waitMin: 0, density: 5.4 } }).tools.routeTo!({ to: 'gate' })).toMatchObject({ status: 'unavailable' });
     expect(await setup().tools.routeTo!({ flight: 'XX 9999' })).toMatchObject({ error: 'unknown_flight' });
@@ -36,9 +39,9 @@ describe('live routing tools', () => {
   it('persists the crowd-sensitive response ETA, with an explicit unknown/blocked fallback', async () => {
     const h = setup({ security: { waiting: 0, waitMin: 0, density: 4 } }); h.staff();
     const r = await h.tools.reportIssue!({ text: 'medical la securitate' }) as any;
-    // rho=4 → 0.15626 m/s; 20 free-flow seconds × 1.34/v = 171.5 seconds → 3 minutes.
-    expect(r).toMatchObject({ status: 'sent', etaMin: 3, note: expect.stringContaining('Echipa ajunge în ~3 min') });
-    expect((await h.reports.list())[0]).toMatchObject({ node: 'security', etaMin: 3 });
+    // Only edges touching the crowded queue slow down; other segments retain free speed.
+    expect(r).toMatchObject({ status: 'sent', etaMin: 2, note: expect.stringContaining('Echipa ajunge în ~2 min') });
+    expect((await h.reports.list())[0]).toMatchObject({ node: 'security', etaMin: 2 });
     expect(await h.tools.reportIssue!({ text: 'medical undeva' })).toMatchObject({ etaMin: null });
     const blocked = setup({}, ['security']); blocked.staff();
     expect(await blocked.tools.reportIssue!({ text: 'medical la securitate' })).toMatchObject({ etaMin: null });
@@ -46,9 +49,9 @@ describe('live routing tools', () => {
   it('uses security-to-gate routing in arrival plans, retaining the fallback for absent gates', () => {
     const h = setup(); const f = PROVISIONAL_FLIGHTS[0]!;
     const walk = (flight = f, flow = h.view.flow()) => arrivalPlan(flight, flow, h.view.clock(), false).steps.find(s => s.zone === 'walk');
-    expect(walk()).toMatchObject({ min: 1, source: 'traseu live' });
+    expect(walk()).toMatchObject({ min: 2, source: 'traseu live' });
     expect(walk(f, { security: { waiting: 0, waitMin: 0, density: 4 } })!.min).toBeGreaterThan(1);
-    expect(walk({ ...f, gate: 'gate_4' })).toMatchObject({ min: 6, source: 'constantă' });
+    expect(walk({ ...f, gate: 'missing_gate' })).toMatchObject({ min: 5, source: 'constantă' });
   });
   it('keeps blocked state beyond the retained ops history and applies reopening', () => {
     const sim = new SimStore(); sim.sent({ type: 'close', zone: 'security' });

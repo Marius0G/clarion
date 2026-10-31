@@ -96,7 +96,7 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   await expect.poll(() => texts().filter(t => t.includes('Cu situația de acum') && !t.includes('/m/')).length, { timeout: 10000 }).toBe(1);
   const passenger = async (): Promise<any> => { const r = await api(`/api/me?token=${pageToken}`, undefined, ''); expect(r.status).toBe(200); return r.json(); };
   expect(await passenger()).toMatchObject({ arriveBy: '08:25', steps: [
-    { zone: 'bag_drop:2', label: expect.any(String), waitMin: 10 }, { zone: 'security', label: expect.any(String), waitMin: 20 }, { zone: 'walk', label: expect.any(String), waitMin: 1 }], evacuation: { active: false, zones: [] } });
+    { zone: 'bag_drop:2', label: expect.any(String), waitMin: 10 }, { zone: 'security', label: expect.any(String), waitMin: 20 }, { zone: 'walk', label: expect.any(String), waitMin: 2 }], evacuation: { active: false, zones: [] } });
   twin.send('agent.register', { agentId: 'demo-passenger', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' });
   await expect.poll(() => twin.of('agent.message')).toEqual([expect.objectContaining({ agentId: 'demo-passenger', kind: 'arrive', text: expect.stringContaining('Cu situația de acum') })]);
 
@@ -124,7 +124,7 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   await expect.poll(() => texts().some(t => t.includes('ești înregistrat ca angajat')), { timeout: 10000 }).toBe(true);
   await whatsapp(reportText);
   await expect.poll(async () => (await api('/api/reports')).json(), { timeout: 10000 }).toEqual([
-    expect.objectContaining({ id: 'R1', text: reportText, kind: 'bagaj_abandonat', node: 'check_in:2', etaMin: 1, status: 'open' })]);
+    expect.objectContaining({ id: 'R1', text: reportText, kind: 'bagaj_abandonat', node: 'check_in:2', etaMin: 2, status: 'open' })]);
   const evac = await api('/api/ops/command', { type: 'evacuate', zones: ['check_in:2'] });
   expect(evac.status).toBe(202);
   const { command: evacuation }: any = await evac.json();

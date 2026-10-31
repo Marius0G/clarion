@@ -1,3 +1,4 @@
+import { isNodeId, mapNodeId } from '../../../backend/src/mapIds.js';
 import { urgentBubbles } from './urgency.js';
 import { toBubbles } from './agent.js';
 import { clearPrefix } from '../reset-store.js';
@@ -49,7 +50,7 @@ export function splitRegister(data: any): { sims: SimSubscriber[]; rest: any | n
 // ---- evac.plan from vision (A9, A10).
 export interface EvacRoute { from: string; exit: string; nodes: string[] }
 export interface EvacPlan { id: string; blocked: string[]; clearSec: number; exits: { exit: string; people: number; clearSec: number }[]; routes: EvacRoute[] }
-const node = (v: unknown) => typeof v === 'string' && /^[a-z][a-z0-9_]{0,39}(:[A-Za-z0-9_-]{1,16})?$/.test(v);
+const node = isNodeId;
 const secs = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 export function evacPlan(d: any): EvacPlan {
   const ok = d && typeof d === 'object' && text(d.id, 100) && Array.isArray(d.blocked) && d.blocked.length <= 50 && d.blocked.every(node) && secs(d.clearSec) &&
@@ -76,8 +77,8 @@ export function estimateStage(f: Flight | undefined, now: number): 'public' | 'a
 /** A representative node per stage, then the route that leaves from it; else the first route (vision's best exit). */
 export function routeFor(plan: EvacPlan, f: Flight | undefined, now: number): EvacRoute {
   const stage = estimateStage(f, now);
-  const candidates = stage === 'gate' ? [f?.gate, 'airside'] : stage === 'airside' ? ['airside', 'security'] : stage === 'public' ? [f?.checkIn, f?.checkIn?.replace('check_in:', 'bag_drop:'), 'entrance', 'security'] : [];
-  for (const c of candidates) { const r = c && plan.routes.find(x => x.from === c); if (r) return r; }
+  const candidates = stage === 'gate' ? [f?.gate, 'airside'] : stage === 'airside' ? ['airside', 'security'] : stage === 'public' ? [f?.checkIn, f?.checkIn?.replace('check_in:', 'bag_drop:'), 'G_CHECKIN_QUEUE', 'entrance', 'security'] : [];
+  for (const c of candidates) { const r = c && (plan.routes.find(x => x.from === c) ?? plan.routes.find(x => mapNodeId(x.from) === mapNodeId(c))); if (r) return r; }
   return plan.routes[0]!;
 }
 

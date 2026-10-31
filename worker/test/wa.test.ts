@@ -65,14 +65,14 @@ describe('whenToArrive (D5)', () => {
   it('gate close − (bag drop + security + walk + 10 min margin), floored to 5 minutes', () => {
     const flow = { 'bag_drop:1': { waiting: 30, waitMin: 12 }, 'bag_drop:2': { waiting: 90, waitMin: 40 }, bag_drop: { waiting: 90, waitMin: 40 }, security: { waiting: 50, waitMin: 18 } };
     const p = arrivalPlan(W6, flow, sim7, true);
-    // 12 + 18 + 1 + 10 = 41 min before 09:10 = 08:29 -> 08:25. The flight's desk group wins over other groups and the shared one (D8).
-    expect(p.totalMin).toBe(41);
+    // 12 + 18 + 2 + 10 = 42 min before 09:10 = 08:28 -> 08:25. The flight's desk group wins over other groups and the shared one (D8).
+    expect(p.totalMin).toBe(42);
     expect(p.beAtEntranceAt).toBe('08:25');
     expect(p.gateCloseAt).toBe('09:10');
     expect(p.minutesFromNow).toBe(85);
     expect(p.steps.map(s => s.step)).toEqual(['Predare bagaje, grupul 1', 'Control de securitate', 'Drum până la poarta 2', 'Marjă']);
     expect(p.clock).toBe('ora simulării');
-    // Hand luggage only: no bag drop. 18 + 1 + 10 = 29 -> 08:41 -> 08:40.
+    // Hand luggage only: no bag drop. 18 + 2 + 10 = 30 -> 08:40 -> 08:40.
     expect(arrivalPlan(W6, flow, sim7, false).beAtEntranceAt).toBe('08:40');
   });
   it('uses the forecast for the time he gets there', () => {
@@ -82,14 +82,14 @@ describe('whenToArrive (D5)', () => {
     expect(security.source).toBe('prognoză');
     // Arrival ≈ 70 min from now: 30 + 10 * (≈10/60) ≈ 32 min at security.
     expect(security.min).toBe(32);
-    expect(p.beAtEntranceAt).toBe('08:15');
+    expect(p.beAtEntranceAt).toBe('08:10');
   });
   it('falls back to live wait, then a standard estimate', () => {
     expect(waitAt({ waiting: 5, waitMin: 7 }, 'security', 30)).toEqual({ min: 7, source: 'acum' });
     expect(waitAt(undefined, 'security', 30)).toEqual({ min: 15, source: 'estimare standard' });
     const p = arrivalPlan(W6, {}, sim7, undefined);
     expect(p.assumedCheckedBag).toBe(true);
-    expect(p.beAtEntranceAt).toBe('08:30'); // 12 + 15 + 1 + 10 = 38 -> 08:32 -> 08:30
+    expect(p.beAtEntranceAt).toBe('08:30'); // 12 + 15 + 2 + 10 = 39 -> 08:31 -> 08:30
   });
   it('flags late when the time has passed', () => {
     expect(arrivalPlan(W6, {}, { now: hm(9, 0), sim: true }, false).late).toBe(true);
@@ -117,7 +117,7 @@ describe('agent tools', () => {
   });
   it('whenToArrive saves the bag answer and handles cancelled flights', async () => {
     const { tools, profile } = setup({ flight: 'W6 3751', airline: 'W6' });
-    // No live flow: 15 (standard security) + 1 + 10 = 26 -> 08:44 -> 08:40.
+    // No live flow: 15 (standard security) + 2 + 10 = 27 -> 08:43 -> 08:40.
     expect(await tools.whenToArrive!({ hasCheckedBag: false })).toMatchObject({ beAtEntranceAt: '08:40', assumedCheckedBag: false });
     expect(profile().hasCheckedBag).toBe(false);
     const cancelled = PROVISIONAL_FLIGHTS.map(f => (f.flight === 'W6 3751' ? { ...f, status: 'cancelled' as const } : f));
@@ -138,7 +138,7 @@ describe('agent tools', () => {
   });
   it('the no-key fallback answers from the same tools', async () => {
     const { tools } = setup({ flight: 'W6 3751', airline: 'W6', hasCheckedBag: true });
-    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~38 min');
+    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~39 min');
     expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta 2,');
   });
 });
@@ -308,7 +308,7 @@ describe('WhatsAppAgent turn', () => {
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751', airline: 'W6' });
     await agent.inbound(inbound('', { type: 'interactive', text: undefined, interactive: { button_reply: { id: 'bag:no', title: 'Doar de mână' } } }));
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(false);
-    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~29 min');
+    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~30 min');
   });
 
   it('answers the fallback when Claude fails, and respects WA_ALLOWLIST', async () => {
