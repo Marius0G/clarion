@@ -89,7 +89,7 @@ Rezultatul A/B din Unity 3D se adaugă aici numai după validare, cu acoperire, 
 
 | Înainte | Contribuția din repo pentru hackathon |
 |---|---|
-| Modelul 3D al orașului, pregătit înainte și declarat ca asset de vizualizare. Rămâne într-un repo privat. | Simularea Unity: agenți, reacții, legătura cu backend-ul și rulările A/B. Codul nou intră în `twin/ClarionTwin/`, persona în `sim/`. |
+| Nimic din simularea Unity. Eventualele asset-uri 3D terțe se declară în inventarul de licențe. | Modelul 3D al orașului, construit în timpul evenimentului și păstrat într-un repo privat. Simularea Unity: agenți, reacții, legătura cu backend-ul și rulările A/B. Codul nou intră în `twin/ClarionTwin/`, persona în `sim/`. |
 | Date publice și servicii externe. Nu sunt creația echipei. | Hartă React/MapLibre, GeoJSON locale, straturi T2 și intervenție, coridor SCJU, grilă și puncte operaționale aproximative; vreme/METAR cu rezervă locală. |
 | Nimic din aplicație: codul a început în timpul evenimentului, vezi istoricul commit-urilor. | Consolă cu confirmare, aprobare pe rol, prezență, contoare, cronologie, ciornă RO-Alert, valuri și redeschidere. Panou public de zboruri, numărător pentru T2 și clonă 2D `/twin` pentru teste și urgențe. Exercițiile inițiale și scenariile generale rămân în repo. |
 | API-uri de mesagerie și formate publice. | Backend Node, Worker/Durable Object, stare persistentă, contract HTTP/WS, mesaje RO/EN, WhatsApp și webhook-uri, Telegram, SMSLink; adaptoare simulate Waze/push/Wallet. |
@@ -97,7 +97,7 @@ Rezultatul A/B din Unity 3D se adaugă aici numai după validare, cu acoperire, 
 | Formatul boarding pass BCBP. | `/join`, `/join/qr`, alegere rol/canal, acord, mesaj WhatsApp precompletat, activare Telegram, link pentru rude, scanner local unde browserul îl suportă. |
 | Cercetare și ipoteze declarate în documentele sursă. | `sim-ab/`, 20 de perechi de seed-uri, export JSON/CSV, sensibilități, teste, scenarii automate și de pitch, contract, documentație și materiale de prezentare. |
 
-Prezența codului nu dovedește livrarea pe un telefon sau aprobarea Meta. Lista de scenă include doar ce trece pre-flight. Acordul organizatorului pentru modelul 3D (art. 11) este **neconfirmat** la această revizie. Inventarul licențelor pentru asset-uri se verifică separat, cu Marius.
+Prezența codului nu dovedește livrarea pe un telefon sau aprobarea Meta. Lista de scenă include doar ce trece pre-flight. Modelul 3D este într-un repo privat, iar istoricul lui poate fi arătat organizatorului la cerere. Inventarul licențelor pentru asset-uri se verifică separat, cu Marius.
 
 ## Date și licențe
 
