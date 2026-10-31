@@ -71,3 +71,13 @@
 .ops .t2-zone.s-none .fill { fill:#c8c8c8 }.ops .t2-zone.lit .fill { fill:#aaa }
 .ops .t2-shell path { filter:none }.ops .t2-zone.s-full .fill { animation:none }
 .ops .t2-legend .sw.s-near,.ops .t2-legend .sw.s-full { background:#b3b3b3; border-color:#E07800 }
+/* D29 controls share the console palette, including map-provided zoom buttons. */
+.ops { --rule:#8A8A8A }
+.ops .ops-floors button,.ops .ops-gear,.ops .ops-seg button,.ops .t2-zoom button { background:#e4e4e4; color:#252525; border:1px solid #8A8A8A; border-radius:2px; box-shadow:none }
+.ops button.on,.ops button[aria-pressed="true"] { color:#0E2F57; border-color:#0E2F57; background:#e4e4e4 }
+.ops .t2-zoom { border-radius:2px; box-shadow:none; gap:1px }
+.ops .ops-alarm-blink { animation:ops-alarm-blink 1s steps(2,end) infinite }
+@keyframes ops-alarm-blink { 50% { opacity:.25 } }
+.ops-shelve { display:grid; gap:8px; margin-top:8px }
+.ops-shelve label { display:flex; gap:8px; align-items:center }
+.ops-shelve input { width:100%; min-width:0 }
