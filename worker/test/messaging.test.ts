@@ -34,7 +34,7 @@ describe('passenger page profiles', () => {
     await h.inbound('cum ajung la poarta?');
     const p = await h.agent.profile('+40712345678');
     expect(p?.pageToken).toBeTruthy();
-    expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~3 min'))).toBe(true);
+    expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~4 min'))).toBe(true);
     expect(h.texts().some(m => m.text.includes(`/m/${p!.pageToken}`))).toBe(true);
     expect(await h.m.passenger(p!.pageToken!)).toBeDefined();
     await h.inbound('când să fiu la aeroport?');

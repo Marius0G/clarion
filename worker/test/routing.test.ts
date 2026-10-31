@@ -21,11 +21,11 @@ describe('live routing tools', () => {
   it('routes to the flight gate and desk group and gives a step list, minutes and passenger link', async () => {
     const { tools } = setup();
     const result = await tools.routeTo!({ to: 'gate' }) as any;
-    expect(result).toMatchObject({ status: 'ready', minutes: 3, from: 'entrance', to: 'gate_2', link: 'https://passenger.example/m/token' });
+    expect(result).toMatchObject({ status: 'ready', minutes: 4, from: 'entrance', to: 'gate_2', link: 'https://passenger.example/m/token' });
     expect(result.nodes).toContain('U_SECURITY');
-    expect(result.nodes).toContain('escalator_east_U');
+    expect(result.nodes.some((n: string) => n === 'escalator_east_U' || n === 'stairs_east_U')).toBe(true);
     expect(result.steps.at(-1)).toBe('Poarta 2');
-    expect(result.totalSec).toBeCloseTo(160.67016, 4);
+    expect(result.totalSec).toBeCloseTo(181.10578, 4);
     expect(await tools.routeTo!({ to: 'check_in' })).toMatchObject({ to: 'check_in:1', minutes: 1 });
     expect(await tools.routeTo!({ to: 'invalid' })).toMatchObject({ error: 'invalid_destination' });
   });
@@ -40,8 +40,8 @@ describe('live routing tools', () => {
     const h = setup({ security: { waiting: 0, waitMin: 0, density: 4 } }); h.staff();
     const r = await h.tools.reportIssue!({ text: 'medical la securitate' }) as any;
     // Only edges touching the crowded queue slow down; other segments retain free speed.
-    expect(r).toMatchObject({ status: 'sent', etaMin: 2, note: expect.stringContaining('Echipa ajunge în ~2 min') });
-    expect((await h.reports.list())[0]).toMatchObject({ node: 'security', etaMin: 2 });
+    expect(r).toMatchObject({ status: 'sent', etaMin: 3, note: expect.stringContaining('Echipa ajunge în ~3 min') });
+    expect((await h.reports.list())[0]).toMatchObject({ node: 'security', etaMin: 3 });
     expect(await h.tools.reportIssue!({ text: 'medical undeva' })).toMatchObject({ etaMin: null });
     const blocked = setup({}, ['security']); blocked.staff();
     expect(await blocked.tools.reportIssue!({ text: 'medical la securitate' })).toMatchObject({ etaMin: null });

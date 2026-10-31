@@ -2,32 +2,32 @@
 <title>T2 - Etaj 1 (Upper floor)</title>
 <image id="base" href="base_etaj1.png" xlink:href="base_etaj1.png" x="0" y="0" width="3000" height="1050"/>
 <g id="zones" stroke-width="3" fill-opacity="0.35">
-<path id="U_SECURITY_QUEUE" class="zone queue" data-code="U1" data-kind="queue" data-side="landside" fill="#f57c00" stroke="#f57c00" fill-rule="evenodd" d="M1124.3,500.1 L1331.6,567.6 L1317.4,636.6 L1107.5,568.3 Z"><title>U1 Coadă securitate</title></path>
-<path id="U_SECURITY" class="zone service" data-code="U2" data-kind="service" data-side="landside" fill="#d32f2f" stroke="#d32f2f" fill-rule="evenodd" d="M1121.5,357.2 L1385.2,443.1 L1359.6,571.4 L1089.5,483.5 Z"><title>U2 Control de securitate (benzi)</title></path>
-<path id="U_ESCALATOR_TOP" class="zone stairs" data-code="U9" data-kind="stairs" data-side="landside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M1522.2,773.3 L1529.1,770.9 L1538.9,770.9 L1545.8,773.4 L1551.6,777.8 L1556.0,783.7 L1558.8,793.0 L1558.4,800.4 L1555.9,807.3 L1549.7,814.8 L1512.6,839.4 L1508.1,841.2 L1500.8,842.3 L1493.6,841.2 L1489.0,839.3 L1481.5,833.1 L1477.0,824.5 L1476.0,814.8 L1478.9,805.4 L1485.1,797.9 Z"><title>U9 Capăt scări + escalator</title></path>
-<path id="U_CONCOURSE" class="zone circulation" data-code="U3" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M1053.5,471.8 L1566.6,638.9 L1545.2,773.2 L1538.9,770.9 L1529.1,770.9 L1524.7,772.4 L1018.1,607.5 Z M1317.4,636.6 L1331.6,567.6 L1124.3,500.1 L1107.5,568.3 Z"><title>U3 Galerie landside</title></path>
+<path id="U_SECURITY_QUEUE" class="zone queue" data-code="U1" data-kind="queue" data-side="landside" fill="#f57c00" stroke="#f57c00" fill-rule="evenodd" d="M1313.4,656.3 L1487.4,713.0 L1475.4,782.7 L1299.2,725.3 Z"><title>U1 Coadă securitate</title></path>
+<path id="U_SECURITY" class="zone service" data-code="U2" data-kind="service" data-side="landside" fill="#d32f2f" stroke="#d32f2f" fill-rule="evenodd" d="M1323.6,423.0 L1552.2,497.4 L1515.7,716.9 L1277.8,639.5 Z"><title>U2 Control de securitate (benzi)</title></path>
+<path id="U_ESCALATOR_TOP" class="zone stairs" data-code="U9" data-kind="stairs" data-side="landside" fill="#ab47bc" stroke="#ab47bc" fill-rule="evenodd" d="M1632.1,824.9 L1634.0,817.8 L1637.9,811.6 L1643.5,806.8 L1650.1,803.8 L1657.4,802.9 L1664.7,804.1 L1673.2,808.9 L1678.0,814.5 L1680.2,818.8 L1681.8,826.0 L1681.0,864.1 L1678.0,873.3 L1675.2,877.4 L1669.6,882.2 L1660.6,885.7 L1650.8,885.5 L1641.9,881.6 L1635.1,874.5 L1632.9,870.2 L1631.3,863.0 Z"><title>U9 Capăt scări + escalator</title></path>
+<path id="U_CONCOURSE" class="zone circulation" data-code="U3" data-kind="circulation" data-side="landside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M948.7,563.9 L954.1,565.6 L946.3,594.6 L1246.8,692.5 L1259.5,633.5 L1515.7,716.9 L1516.7,710.9 L1595.7,734.7 L1594.6,741.2 L1680.6,740.8 L1671.4,807.9 L1664.7,804.1 L1657.4,802.9 L1650.1,803.8 L1643.5,806.8 L1637.9,811.6 L1634.0,817.8 L1632.1,824.9 L1631.3,863.0 L1633.8,872.0 L1574.9,872.3 L1575.6,865.8 L1550.2,865.9 L927.5,663.2 L948.8,584.9 L943.3,583.2 Z M1475.4,782.7 L1487.4,713.0 L1313.4,656.3 L1299.2,725.3 Z"><title>U3 Galerie landside</title></path>
 <path id="U_PASSPORT_DEP" class="zone queue" data-code="U4" data-kind="queue" data-side="airside" fill="#f57c00" stroke="#f57c00" fill-rule="evenodd" d="M1020.0,321.9 L896.6,281.1 L935.5,161.3 L1058.9,202.1 Z"><title>U4 Control pașapoarte plecări</title></path>
 <path id="U_DUTY_FREE" class="zone shops" data-code="U5" data-kind="shops" data-side="airside" fill="#7c4dff" stroke="#7c4dff" fill-rule="evenodd" d="M1248.7,269.6 L1438.9,331.4 L1411.1,417.0 L1220.9,355.2 Z"><title>U5 Duty free</title></path>
 <path id="U_CAFE" class="zone shops" data-code="U6" data-kind="shops" data-side="airside" fill="#7c4dff" stroke="#7c4dff" fill-rule="evenodd" d="M1778.5,469.8 L1892.6,506.9 L1867.9,583.0 L1753.8,545.9 Z"><title>U6 Cafenea airside</title></path>
 <path id="U_WC" class="zone wc" data-code="U7" data-kind="wc" data-side="airside" fill="#546e7a" stroke="#546e7a" fill-rule="evenodd" d="M2078.9,541.3 L2178.9,541.3 L2178.9,582.7 L2078.9,585.0 Z"><title>U7 Toalete airside</title></path>
-<path id="U_CORRIDOR_EAST" class="zone circulation" data-code="U8" data-kind="circulation" data-side="airside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M2287.1,661.2 L2290.5,571.2 L2365.6,570.9 L2363.4,660.9 L2540.4,660.0 L2541.0,780.0 L2078.3,782.3 L2086.9,662.2 Z"><title>U8 Coridor airside (peste check-in)</title></path>
+<path id="U_CORRIDOR_EAST" class="zone circulation" data-code="U8" data-kind="circulation" data-side="airside" fill="#78909c" stroke="#78909c" fill-rule="evenodd" d="M2288.9,612.8 L2291.3,548.8 L2366.2,548.5 L2364.6,612.4 L2540.1,611.5 L2540.7,731.5 L2134.9,733.5 L2142.4,613.5 Z"><title>U8 Coridor airside (peste check-in)</title></path>
 <path id="U_GATE_1" class="zone gate" data-code="P1" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M370.9,221.5 L82.3,226.0 L80.4,100.0 L369.0,95.5 Z"><title>P1 Poarta 1 (non-Schengen)</title></path>
 <path id="U_GATE_2" class="zone gate" data-code="P2" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M652.1,217.2 L370.9,221.5 L369.0,95.5 L663.7,91.0 Z"><title>P2 Poarta 2 (non-Schengen)</title></path>
 <path id="U_GATE_3" class="zone gate" data-code="P3" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M935.5,161.3 L896.6,281.1 L916.3,287.6 L701.0,216.4 L652.1,217.2 L663.7,91.0 L720.3,90.1 Z"><title>P3 Poarta 3 (non-Schengen)</title></path>
 <path id="U_GATE_4" class="zone gate" data-code="P4" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M1190.4,378.2 L916.3,287.6 L916.3,287.6 L1020.0,321.9 L1058.9,202.1 L1230.0,258.6 Z"><title>P4 Poarta 4 (Schengen)</title></path>
-<path id="U_GATE_5" class="zone gate" data-code="P5" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M1464.5,468.9 L1190.4,378.2 L1230.0,258.6 L1504.0,349.2 Z M1411.1,417.0 L1438.9,331.4 L1248.7,269.6 L1220.9,355.2 Z"><title>P5 Poarta 5 (Schengen)</title></path>
-<path id="U_GATE_6" class="zone gate" data-code="P6" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M1741.2,560.4 L1464.5,468.9 L1504.0,349.2 L1773.0,438.2 Z"><title>P6 Poarta 6 (Schengen)</title></path>
-<path id="U_GATE_7" class="zone gate" data-code="P7" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2039.9,459.8 L2042.8,585.8 L1832.5,590.6 L1741.2,560.4 L1773.0,438.2 L1851.4,464.1 Z M1892.6,506.9 L1778.5,469.8 L1753.8,545.9 L1867.9,583.0 Z"><title>P7 Poarta 7 (Schengen)</title></path>
-<path id="U_GATE_8" class="zone gate" data-code="P8" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2331.1,571.0 L2290.5,571.2 L2290.2,580.1 L2042.8,585.8 L2039.9,459.8 L2328.4,453.2 Z M2178.9,582.7 L2178.9,541.3 L2078.9,541.3 L2078.9,585.0 Z"><title>P8 Poarta 8 (Schengen)</title></path>
-<path id="U_GATE_9" class="zone gate" data-code="P9" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2619.9,572.6 L2365.4,578.4 L2365.6,570.9 L2331.1,571.0 L2328.4,453.2 L2617.0,446.6 Z"><title>P9 Poarta 9 (Schengen)</title></path>
+<path id="U_GATE_5" class="zone gate" data-code="P5" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M1464.5,468.8 L1190.4,378.2 L1230.0,258.6 L1504.0,349.2 Z M1438.9,331.4 L1248.7,269.6 L1220.9,355.2 L1411.1,417.0 Z"><title>P5 Poarta 5 (Schengen)</title></path>
+<path id="U_GATE_6" class="zone gate" data-code="P6" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M1741.2,560.4 L1464.5,468.8 L1504.0,349.2 L1773.0,438.2 Z"><title>P6 Poarta 6 (Schengen)</title></path>
+<path id="U_GATE_7" class="zone gate" data-code="P7" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2039.9,459.8 L2042.8,585.8 L1832.5,590.6 L1741.2,560.4 L1773.0,438.2 L1851.4,464.1 Z M1753.8,545.9 L1867.9,583.0 L1892.6,506.9 L1778.5,469.8 Z"><title>P7 Poarta 7 (Schengen)</title></path>
+<path id="U_GATE_8" class="zone gate" data-code="P8" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2330.6,548.6 L2291.3,548.8 L2290.1,580.1 L2178.9,582.7 L2178.9,541.3 L2078.9,541.3 L2078.9,585.0 L2042.8,585.8 L2039.9,459.8 L2328.4,453.2 Z"><title>P8 Poarta 8 (Schengen)</title></path>
+<path id="U_GATE_9" class="zone gate" data-code="P9" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2619.9,572.6 L2365.5,578.4 L2366.2,548.5 L2330.6,548.6 L2328.4,453.2 L2617.0,446.6 Z"><title>P9 Poarta 9 (Schengen)</title></path>
 <path id="U_GATE_10" class="zone gate" data-code="P10" data-kind="gate" data-side="airside" fill="#009688" stroke="#009688" fill-rule="evenodd" d="M2908.4,566.0 L2619.9,572.6 L2617.0,446.6 L2905.5,440.0 Z"><title>P10 Poarta 10 (Schengen)</title></path>
 </g>
 <g id="points">
-<circle id="stairs_west_U" class="point stairs" cx="1028.0" cy="600.2" r="5" fill="#fff" stroke="#000"><title>stairs_west</title></circle>
-<circle id="stairs_east_U" class="point stairs" cx="1500.9" cy="817.3" r="5" fill="#fff" stroke="#000"><title>stairs_east</title></circle>
-<circle id="escalator_east_U" class="point escalator" cx="1533.9" cy="795.4" r="5" fill="#fff" stroke="#000"><title>escalator_east</title></circle>
-<circle id="lift_east_U" class="point lift" cx="1502.1" cy="627.3" r="5" fill="#fff" stroke="#000"><title>lift_east</title></circle>
-<circle id="lift_west_U" class="point lift" cx="1040.3" cy="599.0" r="5" fill="#fff" stroke="#000"><title>lift_west</title></circle>
+<circle id="stairs_west_U" class="point stairs" cx="932.0" cy="654.1" r="5" fill="#fff" stroke="#000"><title>stairs_west</title></circle>
+<circle id="stairs_east_U" class="point stairs" cx="1656.2" cy="861.1" r="5" fill="#fff" stroke="#000"><title>stairs_east</title></circle>
+<circle id="escalator_east_U" class="point escalator" cx="1656.9" cy="827.9" r="5" fill="#fff" stroke="#000"><title>escalator_east</title></circle>
+<circle id="lift_east_U" class="point lift" cx="1611.7" cy="750.1" r="5" fill="#fff" stroke="#000"><title>lift_east</title></circle>
+<circle id="lift_west_U" class="point lift" cx="944.5" cy="652.9" r="5" fill="#fff" stroke="#000"><title>lift_west</title></circle>
 <circle id="gate_1_stairs_U" class="point stairs" cx="224.9" cy="109.8" r="5" fill="#fff" stroke="#000"><title>gate_1_stairs</title></circle>
 <circle id="gate_2_stairs_U" class="point stairs" cx="513.4" cy="105.3" r="5" fill="#fff" stroke="#000"><title>gate_2_stairs</title></circle>
 <circle id="gate_6_stairs_U" class="point stairs" cx="1637.3" cy="405.9" r="5" fill="#fff" stroke="#000"><title>gate_6_stairs</title></circle>
@@ -35,10 +35,10 @@
 <circle id="gate_8_stairs_U" class="point stairs" cx="2184.4" cy="468.5" r="5" fill="#fff" stroke="#000"><title>gate_8_stairs</title></circle>
 <circle id="gate_9_stairs_U" class="point stairs" cx="2473.0" cy="461.9" r="5" fill="#fff" stroke="#000"><title>gate_9_stairs</title></circle>
 <circle id="gate_10_stairs_U" class="point stairs" cx="2761.5" cy="455.3" r="5" fill="#fff" stroke="#000"><title>gate_10_stairs</title></circle>
-<circle id="security_lane_1_arch" class="point security_lane" cx="1174.6" cy="448.1" r="5" fill="#fff" stroke="#000"><title>security_lane_1_arch</title></circle>
-<circle id="security_lane_2_arch" class="point security_lane" cx="1228.0" cy="465.5" r="5" fill="#fff" stroke="#000"><title>security_lane_2_arch</title></circle>
-<circle id="security_lane_3_arch" class="point security_lane" cx="1281.5" cy="482.9" r="5" fill="#fff" stroke="#000"><title>security_lane_3_arch</title></circle>
-<circle id="security_lane_4_arch" class="point security_lane" cx="1334.9" cy="500.3" r="5" fill="#fff" stroke="#000"><title>security_lane_4_arch</title></circle>
+<circle id="security_lane_1_arch" class="point security_lane" cx="1354.5" cy="567.9" r="5" fill="#fff" stroke="#000"><title>security_lane_1_arch</title></circle>
+<circle id="security_lane_2_arch" class="point security_lane" cx="1404.0" cy="584.0" r="5" fill="#fff" stroke="#000"><title>security_lane_2_arch</title></circle>
+<circle id="security_lane_3_arch" class="point security_lane" cx="1453.5" cy="600.2" r="5" fill="#fff" stroke="#000"><title>security_lane_3_arch</title></circle>
+<circle id="security_lane_4_arch" class="point security_lane" cx="1503.0" cy="616.3" r="5" fill="#fff" stroke="#000"><title>security_lane_4_arch</title></circle>
 <circle id="gate_1" class="point gate" cx="225.7" cy="163.7" r="5" fill="#fff" stroke="#000"><title>Poarta 1</title></circle>
 <circle id="gate_2" class="point gate" cx="514.3" cy="159.3" r="5" fill="#fff" stroke="#000"><title>Poarta 2</title></circle>
 <circle id="gate_3" class="point gate" cx="798.2" cy="185.3" r="5" fill="#fff" stroke="#000"><title>Poarta 3</title></circle>
@@ -49,8 +49,8 @@
 <circle id="gate_8" class="point gate" cx="2185.7" cy="522.5" r="5" fill="#fff" stroke="#000"><title>Poarta 8</title></circle>
 <circle id="gate_9" class="point gate" cx="2474.2" cy="515.9" r="5" fill="#fff" stroke="#000"><title>Poarta 9</title></circle>
 <circle id="gate_10" class="point gate" cx="2762.8" cy="509.3" r="5" fill="#fff" stroke="#000"><title>Poarta 10</title></circle>
-<circle id="fids_security_f1" class="point flight_screen" cx="1208.9" cy="554.9" r="5" fill="#fff" stroke="#000"><title>fids_security_f1</title></circle>
-<circle id="fids_security_f2" class="point flight_screen" cx="1221.1" cy="558.9" r="5" fill="#fff" stroke="#000"><title>fids_security_f2</title></circle>
+<circle id="fids_security_f1" class="point flight_screen" cx="1381.1" cy="705.6" r="5" fill="#fff" stroke="#000"><title>fids_security_f1</title></circle>
+<circle id="fids_security_f2" class="point flight_screen" cx="1393.3" cy="709.6" r="5" fill="#fff" stroke="#000"><title>fids_security_f2</title></circle>
 <circle id="fids_gates_3_f1" class="point flight_screen" cx="836.1" cy="230.1" r="5" fill="#fff" stroke="#000"><title>fids_gates_3_f1</title></circle>
 <circle id="fids_gates_3_b1" class="point flight_screen" cx="855.3" cy="172.0" r="5" fill="#fff" stroke="#000"><title>fids_gates_3_b1</title></circle>
 <circle id="fids_gates_8_f1" class="point flight_screen" cx="2236.4" cy="551.9" r="5" fill="#fff" stroke="#000"><title>fids_gates_8_f1</title></circle>

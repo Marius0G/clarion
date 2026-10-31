@@ -37,21 +37,21 @@ Tipul decide culoarea (`zones.json` -> `kinds`). Steaua înseamnă că zona nu a
 
 | Cod | Id | Nume | Tip | Parte | m² | Valori de afișat |
 |---|---|---|---|---|---|---|
-| G1 | `G_CHECKIN_DESKS` | Ghișee check-in + bag drop | service | landside | 143 | câți oameni sunt în zonă, timp de servire median, câți trec în 15 min, ghișee deschise |
-| G2 | `G_CHECKIN_QUEUE` | Cozi check-in + bag drop | queue | landside | 288 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
-| G3 | `G_ARRIVALS_EXIT` | Ieșire sosiri (din bagaje) | circulation | landside | 45 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
-| G4 | `G_INFO` | Informații | service | landside | 116 | câți oameni sunt în zonă, oameni / m² |
-| G5 | `G_ESCALATOR` | Scări + escalator spre securitate | stairs | landside | 123 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
-| G6 | `G_STAIRS_WEST` | Scări vest | stairs | landside | 61 | câți oameni sunt în zonă, oameni / m² |
-| G7 | `G_WC` | Toalete * | wc | landside | 12 | câți oameni sunt în zonă, oameni / m² |
-| G8 | `G_CAFE` | Gourmet Bar (capăt est) | shops | landside | 198 | câți oameni sunt în zonă, oameni / m² |
-| G9 | `G_DEPARTURES` | Intrare plecări + self check-in | circulation | landside | 536 | câți oameni sunt în zonă, oameni / m² |
-| G10 | `G_CENTER` | Hol central | circulation | landside | 733 | câți oameni sunt în zonă, oameni / m² |
-| G11 | `G_MEETING` | Zonă de așteptare sosiri | waiting | landside | 685 | câți oameni sunt în zonă, oameni / m² |
-| G12 | `G_WEST` | Hol vest (închirieri auto, Lost & Found) | circulation | landside | 727 | câți oameni sunt în zonă, oameni / m² |
-| G13 | `G_RECLAIM_1` | Bagaje - banda 1 * | reclaim | airside | 641 | câți oameni sunt în zonă, oameni / m², așteptare bagaj mediană, așteptare bagaj p90 |
-| G14 | `G_RECLAIM_2` | Bagaje - banda 2 * | reclaim | airside | 651 | câți oameni sunt în zonă, oameni / m², așteptare bagaj mediană, așteptare bagaj p90 |
-| G15 | `G_ARRIVALS_PASSPORT` | Coridor sosiri + pașapoarte * | queue | airside | 105 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
+| G1 | `G_CHECKIN_DESKS` | Ghișee check-in + bag drop | service | landside | 149 | câți oameni sunt în zonă, timp de servire median, câți trec în 15 min, ghișee deschise |
+| G2 | `G_CHECKIN_QUEUE` | Cozi check-in + bag drop | queue | landside | 349 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
+| G3 | `G_ARRIVALS_EXIT` | Ieșire sosiri (din bagaje) | circulation | landside | 46 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
+| G4 | `G_INFO` | Informații | service | landside | 48 | câți oameni sunt în zonă, oameni / m² |
+| G5 | `G_ESCALATOR` | Scări + escalator spre securitate | stairs | landside | 80 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
+| G6 | `G_STAIRS_WEST` | Scări vest | stairs | landside | 38 | câți oameni sunt în zonă, oameni / m² |
+| G7 | `G_WC` | Toalete * | wc | landside | 10 | câți oameni sunt în zonă, oameni / m² |
+| G8 | `G_CAFE` | Gourmet Bar (capăt est) | shops | landside | 184 | câți oameni sunt în zonă, oameni / m² |
+| G9 | `G_DEPARTURES` | Intrare plecări + self check-in | circulation | landside | 1081 | câți oameni sunt în zonă, oameni / m² |
+| G10 | `G_CENTER` | Hol central | circulation | landside | 349 | câți oameni sunt în zonă, oameni / m² |
+| G11 | `G_MEETING` | Zonă de așteptare sosiri | waiting | landside | 336 | câți oameni sunt în zonă, oameni / m² |
+| G12 | `G_WEST` | Hol vest (închirieri auto, Lost & Found) | circulation | landside | 656 | câți oameni sunt în zonă, oameni / m² |
+| G13 | `G_RECLAIM_1` | Bagaje - banda 1 * | reclaim | airside | 900 | câți oameni sunt în zonă, oameni / m², așteptare bagaj mediană, așteptare bagaj p90 |
+| G14 | `G_RECLAIM_2` | Bagaje - banda 2 * | reclaim | airside | 874 | câți oameni sunt în zonă, oameni / m², așteptare bagaj mediană, așteptare bagaj p90 |
+| G15 | `G_ARRIVALS_PASSPORT` | Coridor sosiri + pașapoarte * | queue | airside | 114 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
 | G16 | `G_GATE_DOOR_1` | Ușă peron poarta 1 * | stairs | airside | 22 | câți trec în 15 min |
 | G17 | `G_GATE_DOOR_2` | Ușă peron poarta 2 * | stairs | airside | 22 | câți trec în 15 min |
 | G18 | `G_GATE_DOOR_6` | Ușă peron poarta 6 * | stairs | airside | 22 | câți trec în 15 min |
@@ -64,15 +64,15 @@ Tipul decide culoarea (`zones.json` -> `kinds`). Steaua înseamnă că zona nu a
 
 | Cod | Id | Nume | Tip | Parte | m² | Valori de afișat |
 |---|---|---|---|---|---|---|
-| U1 | `U_SECURITY_QUEUE` | Coadă securitate | queue | landside | 154 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
-| U2 | `U_SECURITY` | Control de securitate (benzi) * | service | landside | 365 | câți oameni sunt în zonă, timp de servire median, câți trec în 15 min, benzi deschise |
-| U9 | `U_ESCALATOR_TOP` | Capăt scări + escalator | stairs | landside | 39 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
-| U3 | `U_CONCOURSE` | Galerie landside | circulation | landside | 610 | câți oameni sunt în zonă, oameni / m² |
+| U1 | `U_SECURITY_QUEUE` | Coadă securitate | queue | landside | 129 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
+| U2 | `U_SECURITY` | Control de securitate (benzi) * | service | landside | 540 | câți oameni sunt în zonă, timp de servire median, câți trec în 15 min, benzi deschise |
+| U9 | `U_ESCALATOR_TOP` | Capăt scări + escalator | stairs | landside | 36 | câți oameni sunt în zonă, oameni / m², câți trec în 15 min |
+| U3 | `U_CONCOURSE` | Galerie landside | circulation | landside | 661 | câți oameni sunt în zonă, oameni / m² |
 | U4 | `U_PASSPORT_DEP` | Control pașapoarte plecări * | queue | airside | 164 | câți oameni sunt în zonă, oameni / m², lungimea cozii, timp de așteptare median, timp de așteptare p90, câți trec în 15 min |
 | U5 | `U_DUTY_FREE` | Duty free * | shops | airside | 180 | câți oameni sunt în zonă, oameni / m² |
 | U6 | `U_CAFE` | Cafenea airside * | shops | airside | 96 | câți oameni sunt în zonă, oameni / m² |
 | U7 | `U_WC` | Toalete airside * | wc | airside | 42 | câți oameni sunt în zonă, oameni / m² |
-| U8 | `U_CORRIDOR_EAST` | Coridor airside (peste check-in) * | circulation | airside | 618 | câți oameni sunt în zonă, oameni / m² |
+| U8 | `U_CORRIDOR_EAST` | Coridor airside (peste check-in) * | circulation | airside | 530 | câți oameni sunt în zonă, oameni / m² |
 | P1 | `U_GATE_1` | Poarta 1 (non-Schengen) * | gate | airside | 364 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 | P2 | `U_GATE_2` | Poarta 2 (non-Schengen) * | gate | airside | 363 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 | P3 | `U_GATE_3` | Poarta 3 (non-Schengen) * | gate | airside | 339 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
@@ -80,8 +80,8 @@ Tipul decide culoarea (`zones.json` -> `kinds`). Steaua înseamnă că zona nu a
 | P5 | `U_GATE_5` | Poarta 5 (Schengen) * | gate | airside | 184 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 | P6 | `U_GATE_6` | Poarta 6 (Schengen) * | gate | airside | 362 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 | P7 | `U_GATE_7` | Poarta 7 (Schengen) * | gate | airside | 268 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
-| P8 | `U_GATE_8` | Poarta 8 (Schengen) * | gate | airside | 318 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
-| P9 | `U_GATE_9` | Poarta 9 (Schengen) * | gate | airside | 361 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
+| P8 | `U_GATE_8` | Poarta 8 (Schengen) * | gate | airside | 309 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
+| P9 | `U_GATE_9` | Poarta 9 (Schengen) * | gate | airside | 353 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 | P10 | `U_GATE_10` | Poarta 10 (Schengen) * | gate | airside | 364 | câți oameni sunt în zonă, oameni / m², coadă la îmbarcare, timp de așteptare median |
 
 ### Exterior

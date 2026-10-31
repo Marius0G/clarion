@@ -40,7 +40,7 @@ describe('D26 real map contract', () => {
     for (const e of plan.edges) {
       expect(e.walkSec).toBeGreaterThan(0);
       const a = plan.nodes.find(n => n.id === e.from)!, b = plan.nodes.find(n => n.id === e.to)!;
-      const dz = a.level !== b.level && a.level !== 'X' && b.level !== 'X' ? 5.4 : 0;
+      const dz = a.level !== b.level && a.level !== 'X' && b.level !== 'X' ? frames.etaj1.floor_height_m! - frames.parter.floor_height_m! : 0;
       expect(e.walkSec).toBeCloseTo(Math.max(0.01, Math.hypot(a.x - b.x, a.y - b.y, dz) / 1.34), 8);
       if (a.level !== b.level && a.level !== 'X' && b.level !== 'X') {
         expect(a.id.replace(/_[GU]$/, '')).toBe(b.id.replace(/_[GU]$/, ''));
