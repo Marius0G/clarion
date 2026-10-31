@@ -607,6 +607,9 @@ export class Engine {
       case "sim.status":
         this.sim.status(data);
         return;
+      case "flow.report":
+        this.sim.flow(data);
+        return;
       case "agent.batch": {
         const updates = this.sim.batch(data);
         const registered = new Map(this.agents.map(a => [a.agentId, a]));

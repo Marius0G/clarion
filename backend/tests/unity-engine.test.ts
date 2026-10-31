@@ -62,4 +62,49 @@ describe('Unity shared engine', () => {
     await e.handle(event('agent.batch', { updates: [{ ...row(0), phone: 'acting', thought: 'same place' }] }), 'twin');
     expect(emit.mock.calls.filter(c => c[0] === 'state')).toHaveLength(0);
   });
+  describe('flow.report', () => {
+    const zone = (zone: string, waiting: number, extra = {}) => ({ zone, waiting, capacity: null, waitMin: null, ...extra });
+    const flow = (e: Engine) => (e.sim.snapshot(false, {}) as any).flow;
+    it('stores a valid report in the snapshot without persisting or broadcasting state', async () => {
+      const write = vi.spyOn(engineRuntime, 'write').mockImplementation(() => {});
+      try {
+        const emit = vi.fn(); const e = new Engine({ emit });
+        expect(flow(e)).toEqual({});
+        write.mockClear();
+        await e.handle(event('flow.report', { zones: [zone('taxi_rank', 30, { capacity: 24, waitMin: 12.5 }), zone('security', 80)] }), 'twin');
+        expect(flow(e)).toMatchObject({ taxi_rank: { waiting: 30, capacity: 24, waitMin: 12.5, peak: 30 }, security: { waiting: 80, capacity: null, waitMin: null, peak: 80 } });
+        expect(Date.parse(flow(e).security.updatedAt)).not.toBeNaN();
+        expect(write).not.toHaveBeenCalled(); expect(emit).not.toHaveBeenCalled();
+      } finally { write.mockRestore(); }
+    });
+    it('rejects the whole report on any invalid entry', async () => {
+      const e = new Engine();
+      for (const zones of [[zone('security', 1), zone('gate', 1)], [zone('security', 1), zone('kerb', -1)], [zone('security', 1), zone('security', 2)],
+        [zone('kerb', 1.5)], [zone('kerb', 1, { capacity: 0 })], [zone('kerb', 1, { waitMin: -1 })], [], Array.from({ length: 7 }, () => zone('kerb', 1))])
+        await expect(e.handle(event('flow.report', { zones }), 'twin')).rejects.toThrow();
+      expect(flow(e)).toEqual({});
+    });
+    it('keeps zones missing from a partial report', async () => {
+      const e = new Engine();
+      await e.handle(event('flow.report', { zones: [zone('kerb', 5, { capacity: 12 }), zone('security', 40)] }), 'twin');
+      await e.handle(event('flow.report', { zones: [zone('security', 10)] }), 'twin');
+      expect(flow(e)).toMatchObject({ kerb: { waiting: 5, capacity: 12 }, security: { waiting: 10, peak: 40 } });
+    });
+    it('computes peak over the last 30 sim minutes', async () => {
+      const e = new Engine();
+      const at = (simTime: number) => e.handle(event('sim.status', { running: true, scenario: 'S2', arm: 'B', coverage: .5, seed: 42, speed: 60, simTime, agents: 0 }), 'twin');
+      const report = (waiting: number) => e.handle(event('flow.report', { zones: [zone('arrivals_hall', waiting)] }), 'twin');
+      await at(0); await report(90);
+      await at(600); await report(20);
+      expect(flow(e).arrivals_hall).toMatchObject({ waiting: 20, peak: 90 });
+      await at(1801); await report(30);
+      expect(flow(e).arrivals_hall).toMatchObject({ waiting: 30, peak: 30 });
+    });
+    it('only accepts reports from the twin client', async () => {
+      const e = new Engine();
+      for (const client of ['console', 'viewer'] as const)
+        await expect(e.handle(event('flow.report', { zones: [zone('kerb', 1)] }), client)).rejects.toThrow('Client cannot issue');
+      expect(flow(e)).toEqual({});
+    });
+  });
 });

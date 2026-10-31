@@ -40,6 +40,13 @@ describe('Worker Unity integration', () => {
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).simTime).toBe(100);
     const sim = await (await request('/api/sim')).json() as any;
     expect(sim).toMatchObject({ connected: true, run: { scenario: 'S2', arm: 'B', coverage: .5, seed: 42 }, counts: { taxi: { road: 400 } }, phones: { read: 400 }, actions: { wait: 400 } });
+    expect(sim.flow).toEqual({});
+    twin.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'taxi_rank', waiting: 30, capacity: 24, waitMin: 12 }, { zone: 'taxi_rank', waiting: 1, capacity: 24, waitMin: 1 }] })));
+    await expect.poll(() => twin.messages.filter(m => m.type === 'error').length).toBe(1);
+    twin.messages.splice(twin.messages.findIndex(m => m.type === 'error'), 1);
+    twin.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'taxi_rank', waiting: 30, capacity: 24, waitMin: 12 }, { zone: 'security', waiting: 80, capacity: null, waitMin: null }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).flow.taxi_rank?.waiting).toBe(30);
+    expect((await (await request('/api/sim')).json() as any).flow).toMatchObject({ taxi_rank: { waiting: 30, capacity: 24, waitMin: 12, peak: 30 }, security: { waiting: 80, capacity: null, waitMin: null, peak: 80 } });
     expect(await (await request('/api/sim/agents?role=taxi&location=road&action=wait')).json()).toHaveLength(400);
     expect(await (await request('/api/sim/agents?location=home')).json()).toEqual([]);
     expect((await request('/api/sim/command', { action: 'start', arm: 'Z' })).status).toBe(400);

@@ -9,6 +9,11 @@ export interface SimAgent {
 const object = (v: any) => v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: any, max: number) => typeof v === 'string' && v.length <= max;
 const finite = (v: any, min: number, max = Infinity) => Number.isFinite(v) && v >= min && v <= max;
+export const flowZones = ['check_in', 'bag_drop', 'security', 'arrivals_hall', 'taxi_rank', 'kerb'] as const;
+export type FlowZone = typeof flowZones[number];
+export interface FlowRow { waiting: number; capacity: number | null; waitMin: number | null; peak: number; updatedAt: string }
+/** Peak window: 30 minutes, in sim seconds when sim.status has given a simTime, else wall-clock seconds. */
+const PEAK_WINDOW_S = 1800, HISTORY_MAX = 4000;
 function runFields(d: any, required: boolean) {
   for (const [key, valid] of Object.entries({
     scenario: (v: any) => text(v, 100), arm: (v: any) => ['A', 'B'].includes(v),
@@ -28,6 +33,8 @@ export class SimStore {
   private simTime: number | null = null;
   private speed: number | null = null;
   private lastSeen: string | null = null;
+  private flowRows = new Map<FlowZone, FlowRow>();
+  private flowHistory = new Map<FlowZone, { t: number; waiting: number }[]>();
   status(d: any) {
     if (!object(d)) throw new Error('Invalid sim status');
     runFields(d, true);
@@ -52,6 +59,27 @@ export class SimStore {
     this.lastSeen = new Date().toISOString();
     return updates;
   }
+  flow(d: any) {
+    if (!object(d) || !Array.isArray(d.zones) || d.zones.length < 1 || d.zones.length > flowZones.length) throw new Error('zones[] required (1-6)');
+    const seen = new Set<string>();
+    // Validate the complete report before applying any zone.
+    const zones = d.zones.map((z: any) => object(z) ? { ...z, capacity: z.capacity ?? null, waitMin: z.waitMin ?? null } : z);
+    for (const z of zones) {
+      if (!object(z) || !flowZones.includes(z.zone) || seen.has(z.zone) || !Number.isSafeInteger(z.waiting) || z.waiting < 0 ||
+        (z.capacity !== null && (!Number.isSafeInteger(z.capacity) || z.capacity <= 0)) ||
+        (z.waitMin !== null && !finite(z.waitMin, 0))) throw new Error('Invalid flow zone');
+      seen.add(z.zone);
+    }
+    const t = this.simTime ?? Date.now() / 1000, updatedAt = new Date().toISOString();
+    for (const z of zones as { zone: FlowZone; waiting: number; capacity: number | null; waitMin: number | null }[]) {
+      // Entries newer than t mean the sim clock restarted; drop them with the expired ones.
+      const history = (this.flowHistory.get(z.zone) ?? []).filter(h => h.t <= t && h.t > t - PEAK_WINDOW_S).slice(-HISTORY_MAX + 1);
+      history.push({ t, waiting: z.waiting });
+      this.flowHistory.set(z.zone, history);
+      this.flowRows.set(z.zone, { waiting: z.waiting, capacity: z.capacity, waitMin: z.waitMin, peak: Math.max(...history.map(h => h.waiting)), updatedAt });
+    }
+    this.lastSeen = updatedAt;
+  }
   agents(filters: URLSearchParams) {
     return [...this.rows.values()].filter(r => ['role', 'location', 'action'].every(k => !filters.get(k) || filters.get(k) === (r as any)[k]));
   }
@@ -62,6 +90,6 @@ export class SimStore {
       const role = counts[row.role] ??= { home: 0, road: 0, terminal: 0, kerb: 0 };
       role[row.location] = (role[row.location] ?? 0) + 1; actions[row.action] = (actions[row.action] ?? 0) + 1; phoneCounts[row.phone]++;
     }
-    return { connected, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed, counts, actions, phones: phoneCounts, metrics };
+    return { connected, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed, counts, actions, phones: phoneCounts, metrics, flow: Object.fromEntries(this.flowRows) };
   }
 }
