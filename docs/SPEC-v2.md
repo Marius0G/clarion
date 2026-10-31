@@ -169,7 +169,7 @@ Lanțul: camere → oameni detectați → poziții pe podea → număr și flux 
 - Coada: L(t+Δ) = max(0, L(t) + (λ − μ × linii) × Δ), iar W(t) = L ÷ (μ × linii). Un zbor întârziat își mută curba, unul anulat iese din calculul pentru securitate, iar o linie deschisă de admin schimbă capacitatea imediat.
 - O corecție ML pe fiecare orizont învață eroarea sistematică a modelului.
 
-**A6. Când să vii și etapa pasagerului.** Ora la intrare T = închiderea porții − (check-in la ora la care ajunge acolo, dacă are bagaj + securitatea la ora la care ajunge acolo + mersul până la poartă + marjă). T depinde de prognoza de la ora T, deci se calculează în 2–3 iterații. Marja crește cu incertitudinea prognozei. Etapa (înainte de securitate, după, la poartă) e probabilitatea dată de aceeași curbă de prezentare și de așteptările prognozate.
+**A6. Când să vii și etapa pasagerului.** Ora la intrare T = închiderea porții − (check-in la ora la care ajunge acolo, dacă are bagaj + securitatea la ora la care ajunge acolo + mersul până la poartă + marjă). T depinde de prognoza de la ora T, deci se calculează în 2–3 iterații. Marja crește cu incertitudinea prognozei. Etapa (înainte de securitate, după, la poartă) e probabilitatea dată de aceeași curbă de prezentare și de așteptările prognozate. A6 rulează în backend (Bogdan), pe fiecare pasager, din `forecast` și din orar: formula e a lui Marius, datele pasagerului rămân în backend.
 
 **A7. Sfatul pentru linii.** Pe fiecare zonă: cel mai mic număr de linii care ține așteptarea prognozată sub țintă în următoarea oră (implicit 10 min la securitate, 15 la check-in), și ora până la care trebuie deschisă linia (momentul depășirii minus timpul în care se deschide o linie). Iese în `advice`.
 
