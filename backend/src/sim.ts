@@ -1,6 +1,7 @@
 import { isNodeId } from './mapIds.js';
 import { isRole, type Role } from './types.js';
 import { initialLanes } from './terminal.js';
+import { laneKey } from './mapIds.js';
 export const locations = ['home', 'road', 'terminal', 'kerb'] as const;
 export type LegacyLocation = typeof locations[number];
 const phones = ['unknown', 'notified', 'read', 'acting'] as const;
@@ -226,8 +227,14 @@ export class SimStore {
     this.truthRows = { zones, at: this.lastSeen = new Date(now).toISOString() };
     return true;
   }
+  /** Counters under their canonical keys, plus the zone id for shared ones (`U_SECURITY_QUEUE`) so any reader finds them. */
+  private laneSnapshot(): Record<string, number> {
+    const out = Object.fromEntries(this.laneRows);
+    if (this.laneRows.has('security')) out.U_SECURITY_QUEUE = this.laneRows.get('security')!;
+    return out;
+  }
   /** Open lanes / desks for a zone (D12); null when the backend has never had a number for it. */
-  lanes(zone: string): number | null { return this.laneRows.get(zone) ?? null; }
+  lanes(zone: string): number | null { return this.laneRows.get(laneKey(zone)) ?? null; }
   /** D14: the full schedule, replaced on every message. */
   flights(d: any) {
     if (!object(d) || !Array.isArray(d.flights) || d.flights.length > FLIGHTS_MAX) throw new Error(`flights[] required (max ${FLIGHTS_MAX})`);
@@ -272,7 +279,8 @@ export class SimStore {
     if (command.type === 'close') this.blockedZones.add(command.zone);
     if (command.type === 'open') this.blockedZones.delete(command.zone);
     if (command.type === 'staff')
-      this.laneRows.set(command.zone, Math.min(LANES_MAX, Math.max(0, (this.laneRows.get(command.zone) ?? 0) + command.delta)));
+      // Same counter whatever id the dashboard used (U_SECURITY_QUEUE, security, check_in:W6, check_in:1).
+      this.laneRows.set(laneKey(command.zone), Math.min(LANES_MAX, Math.max(0, (this.laneRows.get(laneKey(command.zone)) ?? 0) + command.delta)));
     const record: OpsRecord = { ...command, id: crypto.randomUUID(), status: 'sent', sentAt: new Date().toISOString(), ackedAt: null };
     this.ops = [...this.ops, record].slice(-OPS_KEPT);
     return record;
@@ -299,7 +307,7 @@ export class SimStore {
       connected, vision, lastSeen: this.lastSeen, run: this.run ?? { scenario: null, arm: null, coverage: null, seed: null }, simTime: this.simTime, speed: this.speed,
       counts, actions, phones: phoneCounts, metrics,
       flow: Object.fromEntries([...this.flowRows].map(([zone, { at, ...row }]): [string, FlowRow] => [zone, { ...row, stale: now - at > FLOW_STALE_MS }])),
-      blocked: [...this.blockedZones], lanes: Object.fromEntries(this.laneRows), truth: this.truthRows,
+      blocked: [...this.blockedZones], lanes: this.laneSnapshot(), truth: this.truthRows,
       flights: this.flightRows, flightsAt: this.flightsAt, positions: this.people, ops: [...this.ops].reverse(),
     };
   }

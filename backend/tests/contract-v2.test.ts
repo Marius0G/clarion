@@ -102,15 +102,22 @@ describe('lanes (D12)', () => {
   it('start from the provisional plan and change with staff commands, never below 0', () => {
     const s = new SimStore();
     const lanes = () => (s.snapshot(true, {}) as any).lanes;
-    expect(lanes()).toEqual(initialLanes);
+    expect(lanes()).toEqual({ ...initialLanes, U_SECURITY_QUEUE: initialLanes.security })
+    expect(initialLanes).toEqual({ security: 2, 'check_in:1': 3, 'check_in:2': 3, 'check_in:3': 3 })
     s.sent(opsCommand({ type: 'staff', zone: 'security', delta: 1 }));
     expect(s.lanes('security')).toBe(initialLanes.security! + 1);
+    // Marius's report: the dashboard sends the zone id; it is the same counter, 3 -> 4, not 0 -> 1.
+    s.sent(opsCommand({ type: 'staff', zone: 'U_SECURITY_QUEUE', delta: 1 }));
+    expect(lanes().security).toBe(initialLanes.security! + 2);
+    expect(lanes().U_SECURITY_QUEUE).toBe(initialLanes.security! + 2);
+    s.sent(opsCommand({ type: 'staff', zone: 'check_in:W6', delta: 1 }));
+    expect(lanes()['check_in:1']).toBe(4);
     s.sent(opsCommand({ type: 'staff', zone: 'bag_drop:2', delta: -5 }));
     expect(s.lanes('bag_drop:2')).toBe(0);
     s.sent(opsCommand({ type: 'staff', zone: 'gate_9', delta: 2 }));
     expect(lanes().gate_9).toBe(2);
     s.sent(opsCommand({ type: 'close', zone: 'security' }));
-    expect(s.lanes('security')).toBe(initialLanes.security! + 1);
+    expect(s.lanes('security')).toBe(initialLanes.security! + 2);
     expect(s.lanes('nowhere')).toBeNull();
   });
 });

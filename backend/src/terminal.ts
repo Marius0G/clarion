@@ -1,7 +1,8 @@
 import zoneData from '../../docs/contract/map/zones.json' with { type: 'json' };
 import pointData from '../../docs/contract/map/points.json' with { type: 'json' };
+import navData from '../../docs/contract/terminal.json' with { type: 'json' };
 import { deskGroups, logicalKind, type ZoneKind } from './mapIds.js';
-export { deskGroups, desksForAirline, mapNodeId, logicalKind } from './mapIds.js';
+export { deskGroups, desksForAirline, desksForGroup, laneKey, mapNodeId, logicalKind } from './mapIds.js';
 export type { ZoneKind } from './mapIds.js';
 export type Level = 'G' | 'U' | 'X';
 type XY = [number, number];
@@ -116,5 +117,6 @@ export function buildPlan(): TerminalPlan {
 export const plan = buildPlan();
 export const terminalGraph = plan;
 export const zoneAreas: Readonly<Record<string, number>> = Object.fromEntries(zones.map(z => [z.id, z.area_m2]));
-// Export does not specify initial staffing. Keep legacy defaults; real-zone staffing is unknown.
-export const initialLanes: Readonly<Record<string, number>> = { 'check_in:1': 2, 'bag_drop:1': 1, 'check_in:2': 2, 'bag_drop:2': 1, security: 2 };
+/** Lanes open at start, from Marius's terminal.json (`lanes`): security 2, each desk group 3. One key per counter. */
+export const initialLanes: Readonly<Record<string, number>> = Object.fromEntries(
+  Object.entries(navData.lanes as Record<string, { initial: number }>).map(([key, lane]) => [key, lane.initial]));
