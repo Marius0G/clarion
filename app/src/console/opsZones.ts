@@ -1,5 +1,5 @@
-import type { Advice, FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
-import { flowState, type FlowState } from './flow'
+import type { FlowRow, OpsCommand, Person, SimSnapshot } from '../backend/sim'
+import type { FlowState } from './flow'
 import { staffedKinds, type TerminalPlan, type ZoneKind } from './terminal'
 
 export interface ZoneStat {
@@ -9,27 +9,69 @@ export interface ZoneStat {
   /** Lanes / desks open, held by the backend (D12); null when it has no number for the zone. */
   lanes: number | null
   waitMin: number | null; state: FlowState | null
-  /** A7 lane advice, formatted; null when vision gave none. */
-  advice: string | null
+  line: ZoneLine
 }
 
-/** Load colour from the camera wait: under 10 min Normal, 10–20 Aproape, 20+ Plin. Legacy Unity rows fall back to capacity. */
-export const WAIT_NEAR_MIN = 10, WAIT_FULL_MIN = 20
-export function loadState(row: Pick<FlowRow, 'waiting' | 'waitMin' | 'capacity'>): FlowState | null {
-  if (row.waitMin != null) return row.waitMin >= WAIT_FULL_MIN ? 'full' : row.waitMin >= WAIT_NEAR_MIN ? 'near' : 'normal'
-  return flowState(row.waiting, row.capacity ?? null)
+/** D20 / A7 queue wait targets, in minutes. */
+export const WAIT_TARGETS = { security: 10, check_in: 15, bag_drop: 15 } as const
+export const zoneStateLabels = { normal: 'Normal', near: 'Ocupat', full: 'Plin' } as const
+const targetFor = (id: string): number | null => {
+  const kind = id.split(':')[0]
+  return Object.hasOwn(WAIT_TARGETS, kind) ? WAIT_TARGETS[kind as keyof typeof WAIT_TARGETS] : null
+}
+const measured = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n >= 0
+const observed = (row: FlowRow | null): row is FlowRow => row != null && !row.stale && row.coverage !== 0
+const nextHour = (row: FlowRow) => (row.forecast ?? []).filter(p => measured(p.inMin) && p.inMin <= 60 && measured(p.waitMin))
+
+/** D20: no capacity fallback; forecast alone can make a queue busy, never full. */
+export function loadState(id: string, row: FlowRow | null): FlowState | null {
+  if (!observed(row)) return null
+  const target = targetFor(id)
+  if (target != null) {
+    if (!measured(row.waitMin)) return null
+    if (row.waitMin >= 2 * target) return 'full'
+    return row.waitMin > target || nextHour(row).some(p => p.waitMin > target) ? 'near' : 'normal'
+  }
+  if (!measured(row.density)) return null
+  return row.density > 2 ? 'full' : row.density >= 1 ? 'near' : 'normal'
 }
 
-/** Camera data counts only while a feed (vision, or a legacy Unity) is online, and only fresh rows. */
+export interface ZoneLine { numbers: string; action: { label: string; delta: number } | null }
+
+/** One numeric line plus the exact staff delta its action sends. All clocks use simulation time. */
+export function zoneLine(id: string, row: FlowRow | null, lanes: number | null, simTime: number | null): ZoneLine {
+  const state = loadState(id, row)
+  if (state == null || !row) return { numbers: 'Necunoscut', action: null }
+  const target = targetFor(id)
+  if (target == null) return { numbers: `${row.density} oameni/m²`, action: null }
+  const wait = row.waitMin!
+  const peak = nextHour(row).filter(p => p.waitMin > target).sort((a, b) => b.waitMin - a.waitMin || a.inMin - b.inMin)[0]
+  const forecastOnly = wait <= target && peak != null
+  const at = forecastOnly && measured(simTime) ? simClock(simTime + peak.inMin * 60).slice(0, 5) : null
+  const numbers = forecastOnly
+    ? `${Math.round(wait)} min → ${Math.round(peak.waitMin)} min ${at ? `la ${at}` : `în ${peak.inMin} min`}`
+    : `${Math.round(wait)} min · țintă ${target}`
+  if (state === 'normal') return { numbers, action: null }
+  const advice = typeof row.advice === 'object' ? row.advice : null
+  const fallback = Math.max(1, Math.ceil((lanes ?? 0) * (forecastOnly ? peak.waitMin : wait) / target) - (lanes ?? 0))
+  // A7 lanes is the total required, whereas D12 staff.delta is the extra lanes.
+  const delta = measured(advice?.lanes) && measured(lanes) ? Math.max(1, Math.ceil(advice.lanes - lanes)) : fallback
+  const by = advice?.by
+  const deadline = typeof by === 'number' && measured(by) ? simClock(by).slice(0, 5)
+    : typeof by === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(by) ? by.slice(0, 5) : null
+  return { numbers, action: { label: `Deschide ${delta} ${delta === 1 ? 'linie' : 'linii'}${deadline ? ` până la ${deadline}` : ''}`, delta } }
+}
+
+/** D0: only fresh camera data while vision is online; Unity connectivity is independent. */
 export function liveRow(sim: SimSnapshot | null, zone: string): FlowRow | null {
-  if (!sim || !(sim.vision || sim.connected)) return null
-  const row = sim.flow?.[zone]
-  return row && !row.stale ? row : null
+  if (!sim || !sim.vision) return null
+  const row = sim.flow?.[zone] ?? null
+  return observed(row) ? row : null
 }
 
 /** Dots from the cameras (crowd.positions) while a feed is online. */
 export function liveDots(sim: SimSnapshot | null): Person[] {
-  return sim && (sim.vision || sim.connected) ? sim.positions?.people ?? [] : []
+  return sim && sim.vision ? sim.positions?.people ?? [] : []
 }
 
 export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat[] {
@@ -38,30 +80,10 @@ export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat
     return {
       id: zone.id, name: zone.name, kind: zone.kind, closed: sim?.blocked?.includes(zone.id) ?? false, staffed: staffedKinds.includes(zone.kind),
       people: row ? row.waiting : null, lanes: sim?.lanes?.[zone.id] ?? null,
-      waitMin: row?.waitMin ?? null, state: row ? loadState(row) : null,
-      advice: row?.advice == null ? null : adviceText(row.advice, sim?.lanes?.[zone.id] ?? null),
+      waitMin: row?.waitMin ?? null, state: loadState(zone.id, row),
+      line: zoneLine(zone.id, row, sim?.lanes?.[zone.id] ?? null, sim?.simTime ?? null),
     }
   })
-}
-
-/** Sim time as HH:MM: seconds become a clock, a string is shown as sent. */
-const hhmm = (by: number | string) => typeof by === 'number' ? simClock(by).slice(0, 5) : by
-const lanesWord = (n: number) => n === 1 ? 'o linie' : `${n} linii`
-
-/**
- * A7 advice as one line. A sentence from vision is shown as given; `{ lanes, by, waitMinIfNot }` becomes
- * „Deschide o linie până la 14:05, altfel 18 min”, with missing parts left out.
- */
-export function adviceText(advice: Advice, lanesNow: number | null): string | null {
-  if (typeof advice === 'string') return advice.trim() || null
-  if (!advice || typeof advice !== 'object') return null
-  const target = Number.isFinite(advice.lanes) ? advice.lanes! : null
-  const wait = [advice.waitMinIfNot, advice.waitMin].find(v => typeof v === 'number' && Number.isFinite(v)) ?? null
-  const by = typeof advice.by === 'number' && Number.isFinite(advice.by) || (typeof advice.by === 'string' && advice.by) ? advice.by! : null
-  const extra = target != null && lanesNow != null ? target - lanesNow : null
-  const head = extra != null && extra > 0 ? `Deschide ${lanesWord(extra)}` : target != null ? `${target} ${target === 1 ? 'linie' : 'linii'}` : 'Deschide o linie'
-  const parts = [`${head}${by != null ? ` până la ${hhmm(by)}` : ''}`, wait != null ? `altfel ${Math.round(wait)} min` : null]
-  return parts.filter(Boolean).join(', ')
 }
 
 export type CommandStatus = 'sent' | 'acked' | 'offline' | 'auth' | 'invalid' | 'network'

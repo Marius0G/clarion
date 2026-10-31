@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSim, type OpsCommand } from '../backend/sim'
 import { sendOps } from '../backend/ops'
 import { useReports } from '../backend/reports'
-import { flowStateLabels } from './flow'
-import { accuracyRows, commandLabel, commandStatusLabels, commandTouchesZone, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
+import { zoneStateLabels, accuracyRows, commandLabel, commandStatusLabels, commandTouchesZone, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
 import { plan } from './terminal'
 import './ops.css'
 
@@ -88,7 +87,7 @@ export function OpsDashboard() {
             const b = box(zone.polygon)
             const small = b.h < 8
             const on = active === zone.id
-            const unknown = stat.people == null && zone.kind !== 'exit'
+            const unknown = stat.state == null && zone.kind !== 'exit'
             return <g key={zone.id} className={`ops-zone ops-${stat.state ?? (unknown ? 'unknown' : 'none')} ops-kind-${zone.kind}${on ? ' ops-selected' : ''}${stat.closed ? ' ops-closed' : ''}`}
               role="button" tabIndex={0} aria-pressed={on} aria-label={zone.name} data-testid={`zone-${zone.id}`}
               onClick={() => openZone(zone.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openZone(zone.id) } }}>
@@ -112,7 +111,7 @@ export function OpsDashboard() {
         </svg>
         <ul className="ops-legend" aria-label="Legendă">
           <li><i className="ops-sw ops-normal" />Normal</li>
-          <li><i className="ops-sw ops-near" />Aproape</li>
+          <li><i className="ops-sw ops-near" />Ocupat</li>
           <li><i className="ops-sw ops-full" />Plin</li>
           <li><i className="ops-sw ops-unknown" />Necunoscut</li>
           <li><i className="ops-sw ops-closed" />Închis</li>
@@ -124,7 +123,6 @@ export function OpsDashboard() {
         {zone && <section ref={panel} className="ops-panel" aria-label={`Decizii ${zone.name}`} data-testid="zone-panel">
           <div className="ops-panel-head"><h2>{zone.name}</h2><button className="ops-ghost" aria-label="Închide panoul" onClick={() => setActive(null)}>×</button></div>
           <p className="ops-note">{zone.closed ? 'Închis' : 'Deschis'}{zone.staffed ? ` · Linii: ${number(zone.lanes)}` : ''}</p>
-          {zone.advice && <p className="ops-advice" data-testid="advice">{zone.advice}</p>}
           <div className="ops-panel-actions">
             {zone.staffed && <>
               <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: zone.id, delta: -1 })}>−1 linie</button>
@@ -156,12 +154,16 @@ export function OpsDashboard() {
           <li className="ops-zones-head" aria-hidden="true"><span>Zonă</span><span>Oameni</span><span>Linii</span><span>Așteptare</span></li>
           {stats.filter(s => s.kind !== 'exit').map(s => <li key={s.id} data-testid={`row-${s.id}`} className={active === s.id ? 'ops-selected' : undefined}>
             <button className="ops-zone-label" aria-pressed={active === s.id} onClick={() => openZone(s.id)}>
-              <i className={`ops-sw ops-${s.closed ? 'closed' : s.state ?? (s.people == null ? 'unknown' : 'none')}`} title={s.closed ? 'Închis' : s.state ? flowStateLabels[s.state] : s.people == null ? 'Necunoscut' : ''} />
-              <b>{s.name}</b>
+              <i className={`ops-sw ops-${s.closed ? 'closed' : s.state ?? 'unknown'}`} title={s.closed ? 'Închis' : s.state ? zoneStateLabels[s.state] : 'Necunoscut'} />
+              <b>{s.name}</b><span className="ops-state" data-testid="state">{s.state ? zoneStateLabels[s.state] : 'Necunoscut'}</span>
             </button>
             <span data-testid="people" className={s.people == null ? 'ops-unknown-text' : undefined}>{s.people == null ? UNKNOWN : number(s.people)}</span>
             <span data-testid="lanes">{s.staffed ? number(s.lanes) : ''}</span>
             <span data-testid="wait">{minutes(s.waitMin)}</span>
+            <div className="ops-zone-line" data-testid="zone-line">
+              <span>{s.line.numbers}</span>
+              {s.line.action && <><span aria-hidden="true"> · </span><button disabled={busy || s.closed} onClick={() => send({ type: 'staff', zone: s.id, delta: s.line.action!.delta })}>{s.line.action.label}</button></>}
+            </div>
           </li>)}
         </ol>
         {accuracy.length > 0 && <section className="ops-accuracy" aria-label="Acuratețe" data-testid="accuracy">

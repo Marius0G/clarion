@@ -20,8 +20,8 @@ function crowd(counts: Record<string, number>) {
 const live = {
   ...empty, connected: true, vision: true, simTime: 13 * 3600 + 42 * 60 + 10, run: { scenario: 'terminal', arm: 'B', coverage: 0.5, seed: 1 },
   flow: {
-    'check_in:1': row(46, 22), 'check_in:2': row(12, 4), 'bag_drop:2': row(5, 2, { stale: true }),
-    security: row(88, 14, { advice: { lanes: 3, by: 50700, waitMinIfNot: 18 } }), gate_1: row(32, null),
+    'check_in:1': row(46, 30), 'check_in:2': row(12, 4), 'bag_drop:2': row(5, 2, { stale: true }),
+    security: row(88, 6, { forecast: [{ inMin: 48, waitMin: 18 }], advice: { lanes: 3, by: 50700, waitMinIfNot: 18 } }), gate_1: row(32, null, { density: 1 }), gate_2: row(10, null, { density: 2.1 }), gate_3: row(5, null, { density: 0.5 }),
   },
   positions: { at: '2026-10-31T12:00:00Z', people: crowd({ 'check_in:1': 46, 'check_in:2': 12, security: 88, gate_1: 32 }) },
   truth: { at: '2026-10-31T12:00:00Z', zones: { security: { waiting: 93, waitMin: 15.5 }, 'check_in:1': { waiting: 44, waitMin: 20 }, 'bag_drop:1': { waiting: 9, waitMin: 4 } } },
@@ -99,9 +99,10 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   const security = page.getByTestId('row-security')
   await expect(security.getByTestId('people')).toHaveText('88')
   await expect(security.getByTestId('lanes')).toHaveText('2')
-  await expect(security.getByTestId('wait')).toHaveText('14 min')
+  await expect(security.getByTestId('wait')).toHaveText('6 min')
   await page.getByTestId('zone-security').click()
-  await expect(page.getByTestId('zone-panel').getByTestId('advice')).toHaveText('Deschide o linie până la 14:05, altfel 18 min')
+  await expect(security.getByTestId('state')).toHaveText('Ocupat')
+  await expect(security.getByTestId('zone-line')).toHaveText('6 min → 18 min la 14:30 · Deschide 1 linie până la 14:05')
   await expect(page.getByTestId('zone-security')).toHaveClass(/ops-near/)
   await expect(page.getByTestId('zone-check_in:1')).toHaveClass(/ops-full/)
   await expect(page.getByTestId('zone-check_in:2')).toHaveClass(/ops-normal/)
@@ -115,12 +116,22 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   await expect(page.locator('.ops-dots circle')).toHaveCount(live.positions.people.length)
   const accuracy = page.getByTestId('accuracy')
   await expect(accuracy.getByRole('heading')).toHaveText('Acuratețe')
-  await expect(page.getByTestId('accuracy-security').locator('td')).toHaveText(['88 / 93', '14 min / 16 min'])
+  await expect(page.getByTestId('accuracy-security').locator('td')).toHaveText(['88 / 93', '6 min / 16 min'])
   await expect(page.getByTestId('accuracy-bag_drop:1').locator('td')).toHaveText(['— / 9', '— / 4 min'])
   await expect(page.getByTestId('report-pin')).toHaveCount(1)
   await expect(page.getByTestId('report-pin')).toHaveAttribute('aria-label', 'Raport: Bagaj abandonat la poarta 3')
-  await page.screenshot({ path: join(shots, 'v2-desktop.png') })
+  await expect(page.getByTestId('zone-gate_1')).toHaveClass(/ops-near/)
+  await expect(page.getByTestId('zone-gate_2')).toHaveClass(/ops-full/)
+  await expect(page.getByTestId('zone-gate_3')).toHaveClass(/ops-normal/)
+  await expect(page.getByTestId('row-gate_1').getByTestId('zone-line')).toHaveText('1 oameni/m²')
+  await page.screenshot({ path: join(shots, 'zone-states-desktop.png') })
+  await security.getByRole('button', { name: 'Deschide 1 linie până la 14:05', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'staff', zone: 'security', delta: 1 })
+  await expect(security.getByTestId('lanes')).toHaveText('3')
+  await expect(page.getByTestId('zone-panel')).toContainText('Trimis')
 
+  await page.getByTestId('row-check_in:1').getByRole('button', { name: 'Deschide 2 linii', exact: true }).click()
+  await expect.poll(() => posted.at(-1)).toEqual({ type: 'staff', zone: 'check_in:1', delta: 2 })
   await page.getByTestId('row-check_in:2').getByRole('button').click()
   await expect(page.getByTestId('zone-panel')).toHaveCount(1)
   await page.getByRole('button', { name: '+1 linie', exact: true }).click()
@@ -167,9 +178,11 @@ test('live cameras, lanes, advice, accuracy, report pins, decisions and acknowle
   await page.screenshot({ path: join(shots, 'zone-panel-desktop.png') })
 
   // Cameras gone: numbers turn unknown, lanes stay.
-  sim = { ...sim, vision: false, connected: false }
+  sim = { ...sim, vision: false, connected: true }
   await expect(security.getByTestId('people')).toHaveText('necunoscut')
-  await expect(security.getByTestId('lanes')).toHaveText('2')
+  await expect(security.getByTestId('lanes')).toHaveText('3')
+  await expect(security.getByTestId('zone-line')).toHaveText('Necunoscut')
+  await expect(security.getByTestId('zone-line').getByRole('button')).toHaveCount(0)
   await expect(page.locator('.ops-dots circle')).toHaveCount(0)
   expect(errors).toEqual([])
 })
@@ -186,7 +199,7 @@ test('fits a phone screen without horizontal scroll', async ({ page }) => {
   expect(width[0]).toBeLessThanOrEqual(width[1]!)
   await page.screenshot({ path: join(shots, 'zone-panel-phone.png') })
   await page.locator('.ops').evaluate(el => el.scrollTo(0, el.scrollHeight))
-  await page.screenshot({ path: join(shots, 'v2-phone-list.png') })
+  await page.screenshot({ path: join(shots, 'zone-states-phone.png') })
 })
 
 test('rejected decisions stay visible in the zone panel without closing the zone', async ({ page }) => {

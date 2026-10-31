@@ -4,7 +4,7 @@
   --o-text: #111111; --o-muted: #6b7280; --o-faint: #9ca3af;
   --o-border: #e5e7eb; --o-border-strong: #d1d5db;
   --o-accent: #2563eb; --o-accent-soft: #eff6ff;
-  --o-normal: #dcfce7; --o-normal-line: #16a34a;
+  --o-normal: #edf2ee; --o-normal-line: #738778;
   --o-near: #fef3c7; --o-near-line: #d97706;
   --o-full: #fee2e2; --o-full-line: #dc2626;
   --o-font: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -90,7 +90,6 @@
 .ops-cmd-offline, .ops-cmd-auth, .ops-cmd-invalid, .ops-cmd-network { color: var(--o-full-line); }
 .ops-empty { color: var(--o-faint); font-size: 13px; }
 .ops-unknown-text { color: var(--o-faint); font-style: italic; font-size: 12px; }
-.ops-advice { grid-column: 1 / -1; margin: 0; padding: 4px 8px; font-size: 12px; color: #92400e; background: var(--o-near); border-radius: 6px; }
 .ops-accuracy h2 { font-size: 12px; font-weight: 600; color: var(--o-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
 .ops-accuracy table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ops-accuracy th, .ops-accuracy td { padding: 4px 0; border-bottom: 1px solid var(--o-surface-2); text-align: right; font-weight: 400; }
@@ -125,3 +124,12 @@
 .ops button.ops-zone-label { border: 0; padding: 4px 0; background: transparent; text-align: left; }
 .ops-dots { pointer-events: none; }
 .ops-panel button { min-height: 36px; }
+
+.ops-zones .ops-zone-label { grid-column: 1; grid-row: 1 / 3; flex-wrap: wrap; }
+.ops-zones .ops-state { flex-basis: 100%; margin-left: 20px; }
+.ops-zones li > [data-testid="people"] { grid-column: 2; grid-row: 2; }
+.ops-zones li > [data-testid="lanes"] { grid-column: 3; grid-row: 2; }
+.ops-zones li > [data-testid="wait"] { grid-column: 4; grid-row: 2; }
+.ops-state { margin-left: auto; color: var(--o-muted); font-size: 12px; }
+.ops-zone-line { grid-column: 1 / -1; grid-row: 3; color: var(--o-muted); font-size: 12px; }
+.ops-zone-line button { white-space: normal; text-align: left; padding: 2px 4px; font-size: 12px; color: var(--o-text); }

@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest'
-import { accuracyRows, adviceText, commandLabel, commandTouchesZone, redirectTargets, liveDots, loadState, simClock, zoneStats } from '../src/console/opsZones'
+import { accuracyRows, zoneLine, WAIT_TARGETS, commandLabel, commandTouchesZone, redirectTargets, liveDots, loadState, simClock, zoneStats } from '../src/console/opsZones'
 import { inside, plan } from '../src/console/terminal'
 import { openReports } from '../src/backend/reports'
 import type { SimSnapshot } from '../src/backend/sim'
@@ -38,28 +38,54 @@ it('takes people and wait from the cameras and lanes from the backend', () => {
   }))
   const z = (id: string) => stats.find(s => s.id === id)!
   expect(z('security')).toMatchObject({ people: 90, lanes: 3, waitMin: 21.6, state: 'full', staffed: true })
-  expect(z('check_in:2')).toMatchObject({ people: 31, lanes: 0, state: 'near' })
+  expect(z('check_in:2')).toMatchObject({ people: 31, lanes: 0, state: 'normal' })
   expect(z('bag_drop:1')).toMatchObject({ people: null, lanes: null })
-  // A legacy Unity (no vision) still counts as a feed.
-  expect(zoneStats(plan, sim({ vision: false, connected: true, flow: { security: row(5) } })).find(s => s.id === 'security')!.people).toBe(5)
+  // Unity online cannot replace an explicitly offline camera feed.
+  expect(zoneStats(plan, sim({ vision: false, connected: true, flow: { security: row(5) } })).find(s => s.id === 'security')!.people).toBeNull()
 })
 
-it('colours load by camera wait, falling back to legacy capacity', () => {
-  expect(loadState({ waiting: 1, waitMin: 9.9, capacity: null })).toBe('normal')
-  expect(loadState({ waiting: 1, waitMin: 10, capacity: null })).toBe('near')
-  expect(loadState({ waiting: 1, waitMin: 20, capacity: null })).toBe('full')
-  expect(loadState({ waiting: 31, waitMin: null, capacity: 30 })).toBe('full')
-  expect(loadState({ waiting: 31, waitMin: null, capacity: null })).toBeNull()
+it.each(['security', 'check_in:2', 'bag_drop:3'])('derives %s queue state at target boundaries', id => {
+  const target = WAIT_TARGETS[id.split(':')[0] as keyof typeof WAIT_TARGETS]
+  expect(loadState(id, row(1000, { waitMin: target, capacity: 1 }))).toBe('normal')
+  expect(loadState(id, row(1, { waitMin: target + 0.01 }))).toBe('near')
+  expect(loadState(id, row(1, { waitMin: 2 * target - 0.01 }))).toBe('near')
+  expect(loadState(id, row(1, { waitMin: 2 * target }))).toBe('full')
+  expect(loadState(id, row(1, { capacity: 1 }))).toBeNull()
 })
 
-it('formats A7 advice as one short line, defensively', () => {
-  expect(adviceText('Deschide o linie până la 14:05, altfel 18 min la 14:30', 2)).toBe('Deschide o linie până la 14:05, altfel 18 min la 14:30')
-  expect(adviceText({ lanes: 3, by: 50700, waitMinIfNot: 18.4 }, 2)).toBe('Deschide o linie până la 14:05, altfel 18 min')
-  expect(adviceText({ lanes: 4, by: '14:05', waitMin: 9 }, 2)).toBe('Deschide 2 linii până la 14:05, altfel 9 min')
-  expect(adviceText({ lanes: 3 }, null)).toBe('3 linii')
-  expect(adviceText({ waitMinIfNot: 12 }, 1)).toBe('Deschide o linie, altfel 12 min')
-  expect(adviceText('  ', 1)).toBeNull()
-  expect(adviceText({ lanes: Number.NaN, by: null, waitMinIfNot: Number.POSITIVE_INFINITY }, 1)).toBe('Deschide o linie')
+it('uses the inclusive next hour, and forecast crossings never imply full', () => {
+  for (const inMin of [0, 30, 60, 61]) {
+    expect(loadState('security', row(1, { waitMin: 6, forecast: [{ inMin, waitMin: 30 }] }))).toBe(inMin <= 60 ? 'near' : 'normal')
+  }
+  expect(loadState('security', row(1, { waitMin: 10, forecast: [{ inMin: 60, waitMin: 10 }] }))).toBe('normal')
+  expect(loadState('security', row(1, { waitMin: 6, forecast: [{ inMin: -1, waitMin: 30 }] }))).toBe('normal')
+})
+
+it.each([[0, 'normal'], [0.99, 'normal'], [1, 'near'], [2, 'near'], [2.01, 'full']])('uses density %s for non-queue zones', (density, state) => {
+  expect(loadState('gate_1', row(1, { density, waitMin: 99, capacity: 1 }))).toBe(state)
+})
+
+it('keeps missing, stale, uncovered and invalid measurements unknown', () => {
+  expect(loadState('security', null)).toBeNull()
+  for (const extra of [{ stale: true }, { coverage: 0 }, { waitMin: Number.NaN }, { waitMin: -1 }]) {
+    expect(loadState('security', row(1, { waitMin: 6, ...extra }))).toBeNull()
+    expect(zoneLine('security', row(1, { waitMin: 6, ...extra }), 2, 0).action).toBeNull()
+  }
+  for (const density of [null, undefined, Number.NaN, -1]) expect(loadState('gate_1', row(1, { density }))).toBeNull()
+})
+
+it('formats the numeric line and an actionable lane delta, using A7 totals and deadlines', () => {
+  expect(zoneLine('security', row(1, { waitMin: 6 }), 2, 0)).toEqual({ numbers: '6 min · țintă 10', action: null })
+  expect(zoneLine('security', row(1, { waitMin: 22 }), 1, 0)).toEqual({ numbers: '22 min · țintă 10', action: { label: 'Deschide 2 linii', delta: 2 } })
+  const forecast = row(1, { waitMin: 6, forecast: [{ inMin: 30, waitMin: 18 }, { inMin: 61, waitMin: 100 }], advice: { lanes: 3, by: 50700 } })
+  expect(zoneLine('security', forecast, 2, 14 * 3600)).toEqual({ numbers: '6 min → 18 min la 14:30', action: { label: 'Deschide 1 linie până la 14:05', delta: 1 } })
+  expect(zoneLine('security', { ...forecast, advice: null }, 2, 14 * 3600).action).toEqual({ label: 'Deschide 2 linii', delta: 2 })
+  expect(zoneLine('security', { ...forecast, advice: { lanes: 4, by: '14:05:00' } }, 2, 14 * 3600).action).toEqual({ label: 'Deschide 2 linii până la 14:05', delta: 2 })
+  expect(zoneLine('security', { ...forecast, advice: null }, 0, 0).action?.delta).toBe(1)
+  expect(zoneLine('security', { ...forecast, advice: 'legacy prose' }, null, null)).toEqual({ numbers: '6 min → 18 min în 30 min', action: { label: 'Deschide 1 linie', delta: 1 } })
+  expect(zoneLine('security', forecast, 2, 23.75 * 3600).numbers).toBe('6 min → 18 min la 00:15')
+  expect(zoneLine('gate_1', row(1, { density: 2 }), null, null)).toEqual({ numbers: '2 oameni/m²', action: null })
+  expect(zoneLine('gate_1', row(1), null, null)).toEqual({ numbers: 'Necunoscut', action: null })
 })
 
 it('puts camera estimates next to Unity truth, only for zones the truth covers', () => {
