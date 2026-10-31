@@ -119,15 +119,35 @@ Alb, cu puține accente, fără tab-uri. Pe ecran:
 - Rapoartele angajaților apar ca pini pe hartă (D11).
 Fără previzualizarea efectului (`ops.preview`) și fără grafice în plus. Orice element nou trebuie să-și câștige locul.
 
+## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
+
+Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `flow.report`, `metric.report`, `sim.command`) rămân valabile. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
+
+**Unity → backend**
+| Mesaj | Formă | Stare |
+|---|---|---|
+| `sim.status` | ca acum; `simTime` în secunde, `speed` = `SIM_SPEED` | există |
+| `flow.report` | `{ zones: [{ zone, waiting, staff, capacity, waitMin, forecast: [{ inMin, waitMin }] }] }`, cel mult 1/s. `zone` din `terminal.json`, inclusiv `check_in:<IATA>` și `bag_drop:<IATA>`. `staff` și `forecast` sunt noi, opționale până le trimite Unity | extins |
+| `flight.update` | D14 | nou |
+| `crowd.positions` | `{ people: [{ x, y, kind: "pax" \| "staff" }] }`, metri în cadrul din `terminal.json`, cel mult 1/s, maxim 2.000 de puncte (eșantion dacă sunt mai mulți) | nou |
+| `agent.batch` | ca acum, pentru agenții cu telefon. `location` = id de nod din `terminal.json`; câmp nou `stage`: `public` \| `airside` \| `gate` | extins |
+| `ops.ack` | `{ id }`, imediat după `ops.command` | nou |
+
+**Backend → Unity**
+| Mesaj | Formă | Stare |
+|---|---|---|
+| `ops.command` | D12: `{ id, type: "staff" \| "redirect" \| "evacuate" \| "close" \| "open", ... }` | nou |
+| `agent.route` | `{ agentId, nodes: [nodeId, ...], reason: "gate" \| "check_in" \| "evacuate" \| "redirect" }`; agentul merge pe traseu | nou |
+| `agent.notified` | ca acum: agentul cu telefon a primit sau a citit mesajul | există |
+
+**Fișier comun:** `docs/contract/terminal.json` (D7), făcut de Marius. Până apare, backend-ul folosește un plan provizoriu cu aceleași id-uri de zone.
+
 ## Pentru Marius: de completat de Claude-ul lui
 
-Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu formele exacte și exemple JSON reale exportate din Unity, apoi face push. Ce e scris mai sus e contractul minim, iar Marius îl poate extinde fără să-l rupă. Ce trebuie completat:
+Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu formele exacte și exemple JSON reale exportate din Unity, apoi face push. Ce e scris mai sus e contractul minim, iar Marius îl poate extinde fără să-l rupă. Ce trebuie completat, acum (restul mai târziu):
 
-1. **`terminal.json` (D7):** schema exactă și fișierul în `docs/contract/terminal.json`. Id-uri stabile pentru zone, noduri (intrări, ghișee pe companie, securitate, bag drop, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`. Coordonate în metri, văzut de sus, cu originea precizată.
-2. **`flow.report` (D8, D5b, D16):** câmpul `staff` (câți angajați lucrează acum în zonă), zonele pe companie (`check_in:<IATA>`, `bag_drop:<IATA>`), lista companiilor din orar și câmpul `forecast: [{ inMin, waitMin }]` cu orizonturile 30, 60, 90, 120. Cum e calculată prognoza, pe scurt.
-3. **`flight.update` (D14):** un exemplu complet cu orarul folosit în demo.
-4. **`ops.command` / `ops.ack` (D12):** ce efect are fiecare din cele patru comenzi în simulare. Pentru `staff`: câți pasageri/minut procesează un om, pe zonă. Pentru `redirect`: ce procent e mutat. Pentru `evacuate`: cum primesc agenții ruta din backend.
-5. **Agenții cu telefon (D9):** mesajul cu etapa (`public`, `airside`, `gate`) și nodul curent, legat de `agentId` și de telefonul din WhatsApp. Ritmul de trimitere.
-6. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` folosită în demo.
-7. **Rutele către Unity (D7):** forma mesajului prin care backend-ul îi trimite unui agent ruta (listă de noduri).
-8. **Pozițiile pentru hartă (D16):** punctele cu oamenii (x, y în metri, rol pasager sau angajat), cel mult o dată pe secundă. Un eșantion e suficient, dacă nu încap toți.
+1. **`terminal.json` (D7):** fișierul în `docs/contract/terminal.json`. Id-uri stabile pentru zone, noduri (intrări, ghișee pe companie, bag drop, securitate, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`. Coordonate în metri, văzut de sus, cu originea precizată.
+2. **`flight.update` (D14):** un exemplu complet cu orarul din demo și lista companiilor.
+3. **`flow.report`:** confirmă câmpurile `staff` și `forecast` și cum e calculată prognoza, pe scurt.
+4. **Efectul comenzilor (D12):** câți pasageri/minut procesează un angajat pe zonă, ce procent mută `redirect` și cum urmează agenții `agent.route` la `evacuate`.
+5. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` din demo.
