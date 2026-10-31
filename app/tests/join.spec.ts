@@ -191,3 +191,40 @@ test('language switch drives join and demo requests and all success copy', async
   expect(request).toEqual({ flight: 'W6 3412', lang: 'en' });
   await expect(page.getByRole('button', { name: 'Add to Google Wallet' })).toBeVisible();
 });
+
+
+test('sign-in buttons stay readable through login, hover and disabled states', async ({ page }) => {
+  await page.route('**/api/state', route => route.fulfill({ json: state }));
+  await page.route('**/api/auth/otp', route => route.fulfill({ json: { sent: true } }));
+  await page.route('**/api/auth/verify', route => route.fulfill({ json: { session: 'test-session' } }));
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { phone: '+40712345678', role: 'passenger' } }));
+  let finishLogout!: () => void;
+  const logout = new Promise<void>(resolve => { finishLogout = resolve; });
+  await page.route('**/api/auth/logout', async route => { await logout; await route.fulfill({ json: {} }); });
+  await page.goto('/join');
+  const auth = page.getByRole('region', { name: 'Conectare', exact: true });
+  const receive = auth.getByRole('button', { name: 'Primește cod' });
+  await expect(receive).toHaveCSS('background-color', 'rgb(31, 41, 55)');
+  await expect(receive).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await receive.hover();
+  await expect(receive).toHaveCSS('background-color', 'rgb(15, 23, 42)');
+  await expect(receive).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await auth.getByLabel('Telefon').fill('0712345678');
+  await receive.click();
+  await expect(auth.getByRole('button', { name: 'Alt număr' })).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await auth.getByLabel('Cod', { exact: true }).fill('123456');
+  await auth.getByRole('button', { name: 'Verifică' }).click();
+  const disconnect = auth.getByRole('button', { name: 'Deconectare' });
+  await expect(disconnect).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await disconnect.click();
+  await expect(disconnect).toBeDisabled();
+  await expect(disconnect).toHaveCSS('background-color', 'rgb(226, 232, 240)');
+  await expect(disconnect).toHaveCSS('color', 'rgb(71, 85, 105)');
+  await expect(disconnect).toHaveCSS('opacity', '1');
+  finishLogout();
+  await expect(receive).toBeVisible();
+  await page.route('**/api/auth/login-code', route => route.fulfill({ json: { code: '123456', waLink: 'https://wa.me/15556318672', pollToken: 'test' } }));
+  await page.route('**/api/auth/login-code/test', route => route.fulfill({ json: { status: 'pending' } }));
+  await auth.getByRole('button', { name: 'Conectează-te cu WhatsApp' }).click();
+  await expect(auth.getByRole('button', { name: 'Anulare', exact: true })).toHaveCSS('color', 'rgb(255, 255, 255)');
+});
