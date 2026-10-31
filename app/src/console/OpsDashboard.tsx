@@ -4,7 +4,7 @@ import { sendOps } from '../backend/ops'
 import { useReports } from '../backend/reports'
 import { zoneStateLabels, accuracyRows, commandLabel, commandStatusLabels, commandTouchesZone, laneKey, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
 import { realPlan, type TerminalPlan, type ZoneKind } from './terminal'
-import { mapNodeId } from '../../../backend/src/mapIds'
+import { desksForGroup, mapNodeId } from '../../../backend/src/mapIds'
 import type { SimSnapshot } from '../backend/sim'
 import { TerminalMap, type ZoneView } from '../map/t2/TerminalMap'
 import { levelNames, levels, points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
@@ -19,9 +19,11 @@ const minutes = (value: number | null) => value == null ? '—' : `${Math.round(
 const GROUP = /^(check_in|bag_drop):(.+)$/
 const groupZone = (id: string) => GROUP.exec(id)?.[1] === 'bag_drop' ? 'G_CHECKIN_DESKS' : 'G_CHECKIN_QUEUE'
 function groupName(id: string) {
-  const [, kind, group] = GROUP.exec(id)!
-  const airline = mapNodeId(`check_in:${group}`).split(':')[1] ?? group
-  return `${kind === 'check_in' ? 'Check-in' : 'Bagaje'} ${airline === 'OTHER' ? 'alte companii' : airline}`
+  const [, kind] = GROUP.exec(id)!
+  // Groups are physical desks assigned per flight (D26), so name them by desk numbers, not airline.
+  const desks = desksForGroup(id).map(d => d.replace('checkin_', ''))
+  const range = desks.length ? `ghișee ${desks[0]}–${desks.at(-1)}` : id.split(':')[1]
+  return `${kind === 'check_in' ? 'Check-in' : 'Bagaje'} ${range}`
 }
 /** Real T2 zones plus whatever desk groups the backend or the cameras know about. */
 function dashboardPlan(sim: SimSnapshot | null): TerminalPlan {
@@ -96,82 +98,52 @@ export function OpsDashboard() {
   const history = [...server, ...local.filter(l => !known.has(l.key))].sort((a, b) => b.at - a.at)
   const commands = history.slice(0, 5)
 
-  return <div className="ops">
-    <header className="ops-top">
-      <div className="ops-brand"><b>Clarion</b><span aria-hidden="true">·</span><span>LRCV</span></div>
-      <div className="ops-clock" title="Ora simulării (Unity)"><span>Ora simulării</span><time data-testid="sim-clock">{unity ? simClock(sim?.simTime) : '—'}</time></div>
-      <span className={`ops-link ${sim == null ? 'down' : cameras ? 'up' : 'off'}`} role="status" data-testid="vision-status">
-        <i aria-hidden="true" />{cameras ? 'Camere' : 'Camere offline'}
-      </span>
-      <span className={`ops-link ${sim == null ? 'down' : unity ? 'up' : 'off'}`} role="status" data-testid="unity-status">
-        <i aria-hidden="true" />{sim == null ? 'Backend offline' : unity ? 'Unity conectat' : 'Unity offline'}
-      </span>
-    </header>
-    <main className="ops-main">
-      <section className="ops-map" aria-label="Terminal">
-        <div className="ops-floors" role="group" aria-label="Etaj">
-          {levels.map(l => <button key={l} aria-pressed={floor === l} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
-            {levelNames[l].ro}{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
-          </button>)}
-        </div>
-        <div data-testid="terminal-map">
-          <TerminalMap level={floor} views={views} selected={mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
-            markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
-        </div>
-        <ul className="ops-legend" aria-label="Legendă">
-          <li><i className="ops-sw ops-normal" />Normal</li>
-          <li><i className="ops-sw ops-near" />Ocupat</li>
-          <li><i className="ops-sw ops-full" />Plin</li>
-          <li><i className="ops-sw ops-unknown" />Necunoscut</li>
-          <li><i className="ops-sw ops-closed" />Închis</li>
-          {pins.length > 0 && <li><i className="ops-sw ops-sw-pin" />Raport</li>}
-          <li className="ops-plan">Linie punctată: poziție aproximativă</li>
-        </ul>
-      </section>
-      <aside className="ops-side">
-        {zone && <section ref={panel} className="ops-panel" aria-label={`Decizii ${zone.name}`} data-testid="zone-panel">
-          <div className="ops-panel-head"><h2>{zone.name}</h2><button className="ops-ghost" aria-label="Închide panoul" onClick={() => setActive(null)}>×</button></div>
-          <p className="ops-note">{zone.closed ? 'Închis' : 'Deschis'}{zone.staffed ? ` · Linii: ${number(zone.lanes)}` : ''}</p>
-          <div className="ops-panel-actions">
-            {zone.staffed && <>
-              <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: -1 })}>−1 linie</button>
-              <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: 1 })}>+1 linie</button>
-            </>}
-            <button disabled={busy} onClick={() => send({ type: zone.closed ? 'open' : 'close', zone: zone.id })}>{zone.closed ? 'Deschide' : 'Închide'}</button>
-            <button className="ops-danger" disabled={busy} onClick={() => send({ type: 'evacuate', zones: [zone.id] })}>Evacuează</button>
-          </div>
-          <div className="ops-panel-actions">
-            <select aria-label="Destinație" value={destination} disabled={!targets.length || busy} onChange={e => setTarget(e.target.value)}>
-              {targets.length ? targets.map(z => <option key={z.id} value={z.id}>{z.name}</option>) : <option value="">Fără altă zonă de același tip</option>}
-            </select>
-            <button disabled={busy || !destination} onClick={() => send({ type: 'redirect', from: zone.id, to: destination })}>Mută</button>
-          </div>
-          <label className="ops-zone-label"><input type="checkbox" checked={selected.includes(zone.id)} onChange={() => toggle(zone.id)} />Adaugă la evacuare</label>
-          <div className="ops-panel-status" aria-live="polite">
-            {history.filter(c => commandTouchesZone(c.command, zone.id)).slice(0, 5).map(c => <p key={c.key}><span>{c.label}</span> <b className={`ops-cmd ops-cmd-${c.status}`}>{commandStatusLabels[c.status]}</b></p>)}
-          </div>
-        </section>}
+  const floorShort: Record<Level, string> = { G: 'P', U: '1', X: 'Ext' }
+  const ranked = [...shown].sort((a, b) => (b.state ? rank[b.state] : 0) - (a.state ? rank[a.state] : 0))
 
-        <div className="ops-evac">
-          <button className="ops-danger" disabled={!selected.length || busy} onClick={() => send({ type: 'evacuate', zones: selected })}>
-            Evacuare{selected.length ? ` · ${selected.length}` : ''}
-          </button>
-          <span className="ops-hint">{selected.length ? selected.map(id => byId.get(id)?.name ?? id).join(', ') : 'Adaugă zone din panou'}</span>
-          {selected.length > 0 && <button className="ops-ghost" onClick={() => setSelected([])}>Anulează</button>}
+  return <div className="ops">
+    <main className={`ops-stage${zone ? ' has-panel' : ''}`}>
+      <div className="ops-canvas" data-testid="terminal-map">
+        <TerminalMap level={floor} views={views} selected={mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
+          markers={pins.filter(p => p.level === floor).map(p => ({ id: p.id, at: p.at, label: p.text }))} />
+      </div>
+
+      <header className="ops-top">
+        <div className="ops-brand"><b>Clarion</b><span>Aeroportul Craiova, T2</span></div>
+        <div className="ops-clock" title="Ora din simulare"><time data-testid="sim-clock">{unity ? simClock(sim?.simTime) : '—'}</time></div>
+        <div className="ops-links">
+          <span className={`ops-link ${sim == null ? 'down' : cameras ? 'up' : 'off'}`} role="status" data-testid="vision-status">
+            <i aria-hidden="true" />{cameras ? 'Camere' : 'Camere offline'}
+          </span>
+          <span className={`ops-link ${sim == null ? 'down' : unity ? 'up' : 'off'}`} role="status" data-testid="unity-status">
+            <i aria-hidden="true" />{sim == null ? 'Backend offline' : unity ? 'Unity conectat' : 'Unity offline'}
+          </span>
         </div>
+      </header>
+
+      <nav className="ops-floors" aria-label="Etaj">
+        {levels.map(l => <button key={l} aria-pressed={floor === l} aria-label={levelNames[l].ro} title={levelNames[l].ro} className={floor === l ? 'on' : undefined} onClick={() => setFloor(l)} data-testid={`floor-${l}`}>
+          <span>{floorShort[l]}</span>{perFloor(l) > 0 && <b className="ops-floor-pins" aria-label={`${perFloor(l)} rapoarte`}>{perFloor(l)}</b>}
+        </button>)}
+      </nav>
+
+      <aside className="ops-queues" aria-label="Cozi și zone">
+        <h2>Cozi</h2>
         <ol className="ops-zones" aria-label="Zone">
-          <li className="ops-zones-head" aria-hidden="true"><span>Zonă</span><span>Oameni</span><span>Linii</span><span>Așteptare</span></li>
-          {shown.map(s => <li key={s.id} data-testid={`row-${s.id}`} className={active === s.id ? 'ops-selected' : undefined}>
+          {ranked.map(s => <li key={s.id} data-testid={`row-${s.id}`} className={`ops-row is-${s.closed ? 'closed' : s.state ?? 'unknown'}${active === s.id ? ' ops-selected' : ''}`}>
             <button className="ops-zone-label" aria-pressed={active === s.id} onClick={() => openZone(s.id)}>
-              <i className={`ops-sw ops-${s.closed ? 'closed' : s.state ?? 'unknown'}`} title={s.closed ? 'Închis' : s.state ? zoneStateLabels[s.state] : 'Necunoscut'} />
-              <b>{s.name}</b><span className="ops-state" data-testid="state">{s.state ? zoneStateLabels[s.state] : 'Necunoscut'}</span>
+              <i className={`ops-sw ops-${s.closed ? 'closed' : s.state ?? 'unknown'}`} aria-hidden="true" />
+              <b>{s.name}</b>
+              <span className="ops-state" data-testid="state">{s.state ? zoneStateLabels[s.state] : 'Necunoscut'}</span>
             </button>
-            <span data-testid="people" className={s.people == null ? 'ops-unknown-text' : undefined}>{s.people == null ? UNKNOWN : number(s.people)}</span>
-            <span data-testid="lanes">{s.staffed ? number(s.lanes) : ''}</span>
-            <span data-testid="wait">{minutes(s.waitMin)}</span>
+            <dl className="ops-figures">
+              <div><dt>Oameni</dt><dd data-testid="people" className={s.people == null ? 'ops-unknown-text' : undefined}>{s.people == null ? UNKNOWN : number(s.people)}</dd></div>
+              <div><dt>Linii</dt><dd data-testid="lanes">{s.staffed ? number(s.lanes) : ''}</dd></div>
+              <div><dt>Așteptare</dt><dd data-testid="wait">{minutes(s.waitMin)}</dd></div>
+            </dl>
             <div className="ops-zone-line" data-testid="zone-line">
               <span>{s.line.numbers}</span>
-              {s.line.action && <><span aria-hidden="true"> · </span><button disabled={busy || s.closed} onClick={() => send({ type: 'staff', zone: laneKey(sim, s.id), delta: s.line.action!.delta })}>{s.line.action.label}</button></>}
+              {s.line.action && <button className="ops-advice" disabled={busy || s.closed} onClick={() => send({ type: 'staff', zone: laneKey(sim, s.id), delta: s.line.action!.delta })}>{s.line.action.label}</button>}
             </div>
           </li>)}
         </ol>
@@ -185,15 +157,57 @@ export function OpsDashboard() {
               <td>{minutes(a.camWait)} / {minutes(a.trueWait)}</td>
             </tr>)}</tbody>
           </table>
-          <p className="ops-note">camere / real</p>
+          <p className="ops-note">Camere față de simulare</p>
         </section>}
+      </aside>
+
+      {zone && <section ref={panel} className={`ops-panel is-${zone.closed ? 'closed' : zone.state ?? 'unknown'}`} aria-label={`Decizii ${zone.name}`} data-testid="zone-panel">
+        <div className="ops-panel-head">
+          <div><h2>{zone.name}</h2>
+            <p className="ops-note">{zone.closed ? 'Închis' : 'Deschis'}{zone.staffed && <span className="ops-lanes">Linii deschise <b>{number(zone.lanes)}</b></span>}</p></div>
+          <button className="ops-ghost" aria-label="Închide panoul" onClick={() => setActive(null)}>×</button>
+        </div>
+        {zone.staffed && <div className="ops-stepper" role="group" aria-label="Linii">
+          <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: -1 })}>−1 linie</button>
+          <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: 1 })}>+1 linie</button>
+        </div>}
+        <div className="ops-panel-actions">
+          <select aria-label="Destinație" value={destination} disabled={!targets.length || busy} onChange={e => setTarget(e.target.value)}>
+            {targets.length ? targets.map(z => <option key={z.id} value={z.id}>{z.name}</option>) : <option value="">Fără altă zonă de același tip</option>}
+          </select>
+          <button disabled={busy || !destination} onClick={() => send({ type: 'redirect', from: zone.id, to: destination })}>Mută</button>
+        </div>
+        <div className="ops-panel-actions">
+          <button disabled={busy} onClick={() => send({ type: zone.closed ? 'open' : 'close', zone: zone.id })}>{zone.closed ? 'Deschide' : 'Închide'}</button>
+          <button className="ops-danger" disabled={busy} onClick={() => send({ type: 'evacuate', zones: [zone.id] })}>Evacuează</button>
+        </div>
+        <label className="ops-check"><input type="checkbox" checked={selected.includes(zone.id)} onChange={() => toggle(zone.id)} />Adaugă la evacuare</label>
+        <div className="ops-panel-status" aria-live="polite">
+          {history.filter(c => commandTouchesZone(c.command, zone.id)).slice(0, 5).map(c => <p key={c.key}><span>{c.label}</span> <b className={`ops-cmd ops-cmd-${c.status}`}>{commandStatusLabels[c.status]}</b></p>)}
+        </div>
+      </section>}
+
+      <footer className="ops-dock">
+        <div className={`ops-evac${selected.length ? ' armed' : ''}`}>
+          <button className="ops-danger" disabled={!selected.length || busy} onClick={() => send({ type: 'evacuate', zones: selected })}>
+            {selected.length ? `Evacuează ${selected.length} ${selected.length === 1 ? 'zonă' : 'zone'}` : 'Evacuare'}
+          </button>
+          <span className="ops-hint">{selected.length ? selected.map(id => byId.get(id)?.name ?? id).join(', ') : 'Alege zonele din panou'}</span>
+          {selected.length > 0 && <button className="ops-ghost" onClick={() => setSelected([])}>Anulează</button>}
+        </div>
         <section className="ops-commands" aria-label="Comenzi">
-          <h2>Comenzi</h2>
-          {commands.length ? <ol>{commands.map(c => <li key={c.key} data-testid="command">
+          {commands.length ? <ol>{commands.slice(0, 3).map(c => <li key={c.key} data-testid="command">
             <span>{c.label}</span><b className={`ops-cmd ops-cmd-${c.status}`}>{commandStatusLabels[c.status]}</b>
           </li>)}</ol> : <p className="ops-empty">Nicio comandă</p>}
         </section>
-      </aside>
+        <ul className="ops-legend" aria-label="Legendă">
+          <li><i className="ops-sw ops-normal" />Normal</li>
+          <li><i className="ops-sw ops-near" />Ocupat</li>
+          <li><i className="ops-sw ops-full" />Plin</li>
+          <li><i className="ops-sw ops-unknown" />Necunoscut</li>
+          {pins.length > 0 && <li><i className="ops-sw ops-sw-pin" />Raport</li>}
+        </ul>
+      </footer>
     </main>
   </div>
 }

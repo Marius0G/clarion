@@ -275,7 +275,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       {end && <circle cx={end[0]} cy={end[1]} r={1.1 * m} className="end" />}
     </g>}
     <g className="t2-dots" aria-hidden="true">
-      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} cx={fmt(x)} cy={fmt(y)} r={fmt(Math.max(0.6 * m, 2.6))} /> })}
+      {dots.filter(d => d.level === level).map((d, i) => { const [x, y] = worldToPx(d.x, d.z, level); return <circle key={i} r={fmt(Math.max(0.6 * m, 2.6))} style={{ transform: `translate(${fmt(x)}px, ${fmt(y)}px)` }} /> })}
     </g>
     <g className="t2-labels">{labels}</g>
     <g className="t2-pins">

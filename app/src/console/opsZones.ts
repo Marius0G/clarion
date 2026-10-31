@@ -125,7 +125,7 @@ export function accuracyRows(plan: TerminalPlan, sim: SimSnapshot | null): Accur
     .sort(([a], [b]) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9) || a.localeCompare(b))
     .map(([id, t]) => {
       const row = liveRow(sim, id)
-      return { id, name: plan.zones.find(z => z.id === id)?.name ?? id, camPeople: row?.waiting ?? null, truePeople: t.waiting, camWait: row?.waitMin ?? null, trueWait: t.waitMin }
+      return { id, name: (plan.zones.find(z => z.id === id) ?? plan.zones.find(z => z.id === mapNodeId(id)))?.name ?? id, camPeople: row?.waiting ?? null, truePeople: t.waiting, camWait: row?.waitMin ?? null, trueWait: t.waitMin }
     })
 }
 
