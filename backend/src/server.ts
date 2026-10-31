@@ -15,7 +15,7 @@ import { webpush } from "./channels/webpush.js";
 import { Wallet } from "./channels/wallet.js";
 import { wazeFeed } from "./channels/waze.js";
 import { aircraftNearLrcv, FidsAdapter } from "./data/flights.js";
-import type { Envelope } from "./types.js";
+import type { Client, Envelope } from "./types.js";
 function numberEnv(name: string, fallback: number, min = 0, max = Infinity) {
   const n = Number(process.env[name] ?? fallback);
   if (!Number.isFinite(n) || n < min || n > max)
@@ -60,7 +60,7 @@ export function createControlTower() {
     noServer: true,
     maxPayload: 1024 * 1024,
   });
-  const clients = new Map<WebSocket, "twin" | "console" | "viewer">();
+  const clients = new Map<WebSocket, Client>();
   const emit = (type: string, data: any) => {
     const packet = JSON.stringify({ type, ts: new Date().toISOString(), data });
     for (const [ws, kind] of clients)
@@ -136,13 +136,14 @@ export function createControlTower() {
       if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/agent/route"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
-      const twins = () => [...clients].filter(([ws, kind]) => kind === "twin" && ws.readyState === WebSocket.OPEN);
+      const open = (client: Client) => [...clients].filter(([ws, kind]) => kind === client && ws.readyState === WebSocket.OPEN);
+      const twins = () => open("twin");
       if (req.method === 'POST' && url.pathname === '/api/wallet/pass') {
         const body = await jsonBody(req);
         res.end(JSON.stringify(await ordered(() => wallet.pass(engine, body?.subscriptionId)))); return;
       }
       if (req.method === "GET" && url.pathname === "/api/sim") {
-        res.end(JSON.stringify(engine.sim.snapshot(twins().length > 0, engine.state.metrics))); return;
+        res.end(JSON.stringify(engine.sim.snapshot(twins().length > 0, engine.state.metrics, open("vision").length > 0))); return;
       }
       if (req.method === "GET" && url.pathname === "/api/sim/agents") {
         res.end(JSON.stringify(engine.sim.agents(url.searchParams))); return;
@@ -156,10 +157,11 @@ export function createControlTower() {
       if (req.method === "POST" && url.pathname === "/api/ops/command") {
         // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.
         const command = opsCommand(await jsonBody(req));
-        const open = twins();
+        const open = twins(), visions = () => [...clients].filter(([ws, kind]) => kind === "vision" && ws.readyState === WebSocket.OPEN);
         if (!open.length) { res.writeHead(409); res.end(JSON.stringify({ connected: false })); return; }
         const record = engine.sim.sent(command);
-        for (const [ws] of open) ws.send(JSON.stringify({ type: "ops.command", ts: new Date().toISOString(), data: opsWire(record) }));
+        // Vision gets every command too, to know the open lanes and blocked zones (contract v2).
+        for (const [ws] of [...open, ...visions()]) ws.send(JSON.stringify({ type: "ops.command", ts: new Date().toISOString(), data: opsWire(record) }));
         res.writeHead(202); res.end(JSON.stringify({ connected: true, command: record })); return;
       }
       if (req.method === "POST" && url.pathname === "/api/agent/route") {
@@ -258,7 +260,7 @@ export function createControlTower() {
     const kind = url.searchParams.get("client");
     if (
       url.pathname !== "/ws" ||
-      !["twin", "console", "viewer"].includes(kind ?? "")
+      !["twin", "vision", "console", "viewer"].includes(kind ?? "")
     ) {
       socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
       return;
@@ -267,7 +269,9 @@ export function createControlTower() {
       socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n"); return;
     }
     sockets.handleUpgrade(req, socket, head, (ws) => {
-      clients.set(ws, kind as "twin" | "console" | "viewer");
+      // Exactly one camera service: a new vision connection replaces the old one.
+      if (kind === "vision") for (const [old, k] of clients) if (k === "vision") { clients.delete(old); old.close(4001, "Replaced by a newer vision client"); }
+      clients.set(ws, kind as Client);
       ws.send(
         JSON.stringify({
           type: "state",

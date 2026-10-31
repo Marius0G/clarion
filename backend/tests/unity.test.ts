@@ -95,4 +95,27 @@ describe('Node Unity integration', () => {
     expect(twin.messages.filter(m => m.type === 'error')).toEqual([]);
     twin.ws.close();
   });
+  it('client=vision: one at a time, sends camera flow, reads lanes and receives every ops.command', async () => {
+    expect((await unauthorized('/ws?client=vision')).status).toBe(401);
+    const first = await connect('vision');
+    const closed = new Promise<number>(r => first.ws.on('close', code => r(code)));
+    const vision = await connect('vision');
+    expect(await closed).toBe(4001);
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).vision).toBe(true);
+    vision.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'check_in:2', waiting: 14, waitMin: 6, coverage: 0.7, forecast: [{ inMin: 30, waitMin: 8 }] }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).flow['check_in:2']).toMatchObject({ waiting: 14, coverage: 0.7, source: 'vision', stale: false });
+    vision.ws.send(JSON.stringify(envelope('sim.status', { running: true })));
+    await expect.poll(() => vision.messages.find(m => m.type === 'error')?.data.message).toBe('Client cannot issue this event');
+    const twin = await connect('twin');
+    const before = (await (await request('/api/sim')).json() as any).lanes.security;
+    const res = await request('/api/ops/command', { type: 'staff', zone: 'security', delta: 1 });
+    expect(res.status).toBe(202);
+    const { command } = await res.json() as any;
+    expect((await (await request('/api/sim')).json() as any).lanes.security).toBe(before + 1);
+    for (const client of [twin, vision]) await expect.poll(() => client.messages.find(m => m.type === 'ops.command')?.data).toEqual({ type: 'staff', zone: 'security', delta: 1, id: command.id });
+    twin.ws.send(JSON.stringify(envelope('truth.report', { zones: [{ zone: 'check_in:2', waiting: 15, waitMin: 7 }] })));
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).truth?.zones['check_in:2']).toEqual({ waiting: 15, waitMin: 7 });
+    twin.ws.close(); vision.ws.close();
+    await expect.poll(async () => (await (await request('/api/sim')).json() as any).vision).toBe(false);
+  });
 });
