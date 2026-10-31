@@ -165,7 +165,7 @@ test('unknown flight shows a Romanian error and lets the passenger retry', async
   await expect(page.getByRole('button', { name: 'Continuă în WhatsApp' })).toBeEnabled();
 });
 
-test('language switch drives join and boarding pass requests and all success copy', async ({ page }) => {
+test('language switch drives join and demo requests and all success copy', async ({ page }) => {
   await page.route('**/api/state', route => route.fulfill({ json: state }));
   let request: unknown;
   await page.route('**/api/join', route => {

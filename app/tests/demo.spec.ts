@@ -4,7 +4,7 @@ const pass = demoBoardingPass({ flight: 'W6 3751', destination: 'LTN', localDepa
 const result = { bcbp: pass.bcbp, token: 'a'.repeat(48), waLink: 'https://wa.me/15556318672?text=START',
   walletUrl: 'https://pay.google.com/gp/v/save/test-jwt' };
 test.use({ viewport: { width: 390, height: 844 } });
-test('boarding pass draws a readable PDF417 and the scanner uses it in the normal join flow', async ({ page }) => {
+test('demo draws a readable PDF417 and the scanner uses it in the normal join flow', async ({ page }) => {
   await page.route('**/api/state', route => route.fulfill({ json: { flights: [] } }));
   let demoBody: unknown;
   await page.route('**/api/join/demo', route => {
@@ -39,7 +39,7 @@ test('boarding pass draws a readable PDF417 and the scanner uses it in the norma
   expect(joinBody).toEqual({ flight: 'W6 3751', lang: 'ro' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
-test('boarding pass request failure allows retry and rejects unsafe links', async ({ page }) => {
+test('demo request failure allows retry and rejects unsafe links', async ({ page }) => {
   await page.route('**/api/state', route => route.fulfill({ json: { flights: [] } }));
   let attempts = 0;
   await page.route('**/api/join/demo', route => route.fulfill(++attempts === 1

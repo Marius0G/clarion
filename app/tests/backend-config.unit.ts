@@ -58,7 +58,7 @@ describe('operator token in the address bar', () => {
       expect(String(replaceState.mock.calls[0]?.[2])).toBe('https://x.pages.dev/console?backend=api.example')
     } finally { vi.unstubAllGlobals(); vi.resetModules() }
   })
-  it('uses the build-time authentication token when none is given', () => {
+  it('uses the build-time demo token when none is given', () => {
     const storage = { getItem: () => null, setItem: () => {} }
     const result = backendConfig({ protocol: 'https:', search: '' }, { VITE_BACKEND_HTTP: 'https://api.example', VITE_DEMO_TOKEN: 'demo' }, storage)
     expect(result.token).toBe('demo')

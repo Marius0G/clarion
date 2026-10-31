@@ -3,7 +3,7 @@ import { fixture } from '../src/me/fixture'
 
 test.use({ viewport: { width: 360, height: 800 } })
 
-test('personal page uses fallback data, polls, and displays evacuation and latest alerts', async ({ page }) => {
+test('personal page falls back to demo, polls, and displays evacuation and latest alerts', async ({ page }) => {
   await page.clock.install()
   let live = false
   await page.route('**/api/me?token=demo', route => {
