@@ -83,3 +83,47 @@ evacuation, command history, agents, receipts, metrics and all sim telemetry. La
 to the provisional plan; clearing Unity flights restores the provisional passenger schedule.
 Connected Unity receives `sim.command { reset: true }`. Connections stay open.
 There is no dashboard button. The Node backend mirrors reset for the state it owns.
+
+## WhatsApp and web end-to-end checks
+
+From `worker/`, run `npm run e2e:wa` with Node 22+. The script reads
+`DEMO_TOKEN` and `WHATSAPP_APP_SECRET` from the environment or gitignored
+`.dev.vars`; values, boarding passes and bearer links are never printed.
+`CLARION_URL` and `CLARION_WEB_URL` override the production backend and web defaults.
+
+Each numbered step reports PASS, FAIL with a reason, or SKIP with its missing
+prerequisite. Full runs exit 1 on failures and 2 on incomplete coverage. Against
+production before these lab hooks are deployed, run `npm run e2e:wa -- --available`:
+this checks the deployed web bundle, demo BCBP/Wallet/START response, webhook
+security, a signed fake-number turn, Meta's delivery result, and cleanup. Expected
+Meta error 131030 is a passing outbound attempt, not proof of delivery. Dry runs,
+missing attempts and other delivery errors fail. Available-only runs exit 0 when
+all applicable checks pass and explicitly retain SKIP for unavailable coverage.
+
+A full run requires no connected twin/camera and no existing passenger subscribers.
+It adds a unique test flight, uses the issued START token in the captured lab,
+checks `/api/me?token=…` and `/m/…`, then sends a gate closure through the real ops
+API. Named `lab-e2e-<UUID>` passengers are persisted only when `keep: true` and
+`texts` are supplied to `/lab/run`. Their automatic sends are captured as `lab-out`
+events before Graph. Ordinary lab scripts retain isolated storage. The issued
+join token is consumed exactly once; it is no longer replaced with a hardcoded flight.
+
+Authenticated lab hooks:
+
+- `GET /lab/capabilities`: hook version and whether mutation is currently safe.
+- `POST /lab/alert-ready { phone }`: clears only a kept fake passenger's nonurgent
+  cooldown, so the ops step does not wait 15 minutes after START. Real passengers
+  keep D22's existing cooldown, including admin closures/redirects.
+- `POST /lab/cleanup { phone }`: removes only that fake passenger's profile,
+  subscription, page token, context, message history and kept lab snapshot.
+
+The signed webhook uses a deliberately invalid +999 country-code number, never a
+real passenger. Cleanup sends it `delete my data`, removes the lab profile, reopens
+the test gate, restores flights, and verifies lanes/gates match the snapshot.
+Diagnostic events, webhook deduplication IDs and ops audit records remain; no global
+demo reset is performed. The runner refuses to alter a gate that was already closed.
+
+`npm test` also executes the runner as a child process against isolated workerd,
+with mocked Graph/Wallet networking and a fixture web shell, and checks persisted
+cleanup. `app/tests/passenger.spec.ts` tests the browser join/Wallet flow and
+passenger flight/gate/queue rendering against mocked backend responses.
