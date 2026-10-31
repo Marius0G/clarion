@@ -24,8 +24,8 @@ const api = (path: string, body?: unknown, token = 'op') => mf.dispatchFetch(`ht
   method: body === undefined ? 'GET' : 'POST', body: body === undefined ? undefined : JSON.stringify(body),
   headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
 });
-async function twin() {
-  const r = await mf.dispatchFetch('https://worker.example/ws?client=twin&token=op', { headers: { Upgrade: 'websocket' } });
+async function twin(client = 'twin') {
+  const r = await mf.dispatchFetch(`https://worker.example/ws?client=${client}&token=op`, { headers: { Upgrade: 'websocket' } });
   const ws = r.webSocket!; const messages: any[] = [];
   ws.addEventListener('message', e => messages.push(JSON.parse(String(e.data)))); ws.accept(); sockets.push(ws);
   await expect.poll(() => messages.some(m => m.type === 'state')).toBe(true);
@@ -79,7 +79,12 @@ describe('passenger messaging in the Tower', () => {
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['check_in:2'] })).status).toBe(202);
     await expect.poll(() => u.of('ops.command').length, { timeout: 10000 }).toBeGreaterThan(0);
     const command = u.of('ops.command').at(-1);
-    u.ws.send(envelope('evac.plan', { id: command.id, blocked: ['check_in:2'], clearSec: 120, exits: [{ exit: 'exit_1', people: 10, clearSec: 60 }],
+    // The plan comes from the vision service, which also receives every ops.command.
+    const v = await twin('vision');
+    await expect.poll(() => v.of('ops.command').length).toBe(0);
+    expect((await api('/api/ops/command', { type: 'staff', zone: 'security', delta: 1 })).status).toBe(202);
+    await expect.poll(() => v.of('ops.command').at(-1)?.type).toBe('staff');
+    v.ws.send(envelope('evac.plan', { id: command.id, blocked: ['check_in:2'], clearSec: 120, exits: [{ exit: 'exit_1', people: 10, clearSec: 60 }],
       routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] }));
     await expect.poll(() => u.of('agent.route')).toEqual([{ agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' }]);
     await expect.poll(() => texts().filter(t => t.includes('Ieși pe Ieșirea 1')).length, { timeout: 10000 }).toBe(1); // one phone (passenger turned staff)
