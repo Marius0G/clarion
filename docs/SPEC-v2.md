@@ -1,10 +1,10 @@
 # Clarion v2: crowd control pentru aeroport
 
-Status: în lucru, deciziile se adaugă pe măsură ce le stabilim (grill 31 oct). Când e gata, înlocuiește `docs/SPEC.md`.
+Status: în vigoare din 31 oct și înlocuiește `docs/SPEC.md` (pivot confirmat de Marius). Deciziile noi se adaugă aici.
 
 ## Produsul
 
-Nu știi niciodată cu cât timp înainte să pleci spre aeroport. Clarion măsoară aglomerația din aeroport (camere + vision model; în demo, simularea Unity) și o transformă în:
+Nu știi niciodată cu cât timp înainte să pleci spre aeroport. Clarion măsoară aglomerația din aeroport (camere + vision model; în demo, camerele virtuale din Unity, vezi D0) și o transformă în:
 
 - **Pasageri, pe WhatsApp:** când să plece spre aeroport, cât durează check-in, securitate, drumul până la poartă și bagajele, întârzieri și anulări, iar în criză ruta de ieșire după locul în care se află.
 - **Angajați:** semnalează probleme și văd în orice moment în cât timp ajung autoritățile la ei.
@@ -12,10 +12,20 @@ Nu știi niciodată cu cât timp înainte să pleci spre aeroport. Clarion măso
 
 ## Owneri
 
-- **Marius:** algoritmi, Unity, simulare.
+- **Marius:** algoritmii (vision pe camere, cozi, prognoză, evacuare), Unity ca mediu simulat, evaluarea (A/B și acuratețe), video-ul.
 - **Bogdan:** backend, dashboard, WhatsApp, Wallet, login.
+- **Diana:** business și pitch.
+
+Cristiana nu mai e în echipă. Numărătorul T2, `app/public/panou.html` și `sim/personas.json` ies din demo.
 
 ## Decizii
+
+### D0. Unity e doar mediul, Clarion vede doar camerele
+Clarion lucrează ca în realitate. Intrările lui sunt doar camerele, orarul de zboruri (în realitate din sistemul aeroportului, în demo din Unity, D14) și deciziile adminului (liniile deschise, D12). Unity e mediul: oamenii, terminalul, camerele virtuale și felul în care oamenii reacționează la mesaje și decizii. Datele exacte din Unity servesc doar ca să măsurăm cât de corectă și de eficientă e soluția și s-o îmbunătățim.
+- Serviciul de vision al lui Marius (Python, pe PC-ul lui) citește camerele virtuale din Unity, numără oamenii pe zone, calculează timpul de așteptare și prognoza și le trimite backend-ului ca un client separat, `client=vision` (`flow.report`, `crowd.positions`). Unity nu mai trimite `flow.report`.
+- Live: YOLO pe 2–4 camere de ansamblu (coada de securitate, check-in, porți). Dacă nu merge live, Unity calculează ce vede fiecare cameră și adaugă zgomot calibrat pe rulările YOLO offline (detector simulat). Contractul cu backend-ul e același în ambele cazuri.
+- O zonă pe care nu o vede nicio cameră nu primește o valoare inventată: apare ca „necunoscut”.
+- Adevărul din Unity (cozile și timpii reali, etapa fiecărui agent) ajunge în backend doar prin `truth.report`. Backend-ul îl păstrează separat și îl arată doar în panoul de acuratețe (D16) și în A/B (D19). Nu intră în decizii, rute sau mesaje.
 
 ### D1. Pivot, nu rewrite
 Păstrăm Worker-ul cu Durable Object, WebSocket-ul pentru Unity, `flow.report` (check_in, bag_drop, security, arrivals_hall, taxi_rank, kerb), dashboard-ul pe zone și deploy-ul. Construim ce lipsește. Ies din demo: valurile, Telegram și numărătorile T2.
@@ -52,11 +62,11 @@ WhatsApp nu poate afișa o hartă interactivă. Mesajul conține o imagine stati
 - Pe WhatsApp se poate și vorbi cu agentul (D2), iar web-ul arată hărțile și timpii.
 - Mulțimea din terminal e simulată de Marius în Unity.
 
-### D5b. Prognoza (implicit, de confirmat cu Marius)
-Marius adaugă în `flow.report`, pe fiecare zonă, `forecast: [{ inMin: 30|60|90|120, waitMin }]`, calculat de algoritmul lui din orarul zborurilor. Backend-ul folosește ultima prognoză primită. Fără Unity, folosește media din istoric pentru aceeași oră.
+### D5b. Prognoza: o calculează serviciul de vision
+Serviciul de vision (D0) adaugă în `flow.report`, pe fiecare zonă, `forecast: [{ inMin: 30|60|90|120, waitMin }]`, din ce văd camerele, din orarul zborurilor (D14) și din liniile deschise (D12). Unity nu calculează prognoza. Backend-ul folosește ultima prognoză primită. Fără serviciul de vision, folosește media din istoric pentru aceeași oră.
 
-### D8. Check-in și bag drop pe companie aeriană
-Coada de check-in și cea de bag drop se raportează separat pentru fiecare companie, după codul IATA. Pasagerul vede doar coada companiei lui, iar dashboard-ul le arată pe toate. Asta schimbă `flow.report`: `zone` poate fi `check_in:<IATA>` / `bag_drop:<IATA>` (de exemplu `check_in:W6`). Lista companiilor vine din orarul de zboruri din Unity (vezi contractul).
+### D8. Check-in și bag drop pe grup de ghișee
+Ghișeele de la Craiova sunt comune și se alocă pe zbor, nu pe companie, iar aproape toate zborurile sunt Wizz Air. Unity le grupează deja așa (`checkin_group_N`). Coada se raportează pe grup: `zone` = `check_in:<grup>` / `bag_drop:<grup>` (de exemplu `check_in:2`), iar `flight.update` spune ce grup servește fiecare zbor. Pasagerul vede coada grupului zborului lui, iar dashboard-ul le arată pe toate.
 
 ### D7. Planul terminalului: îl face Marius, îl desenează Bogdan
 Doar interiorul terminalului. Exteriorul și drumul sunt treaba pasagerului (D5).
@@ -67,11 +77,11 @@ Doar interiorul terminalului. Exteriorul și drumul sunt treaba pasagerului (D5)
 ### D9. Locul pasagerului: dedus din etapă, nimic altceva
 - Pe `/join`, pasagerul scanează boarding pass-ul pe web (camera, PDF417/BCBP) sau îl încarcă. Din cod reiese zborul, data, compania, numele și locul. Poarta și ghișeul de check-in vin din orarul de zboruri (Unity), nu din boarding pass.
 - Clarion îi spune automat ghișeul companiei lui (D8) și poarta, cu ruta pe hartă (D7), fără ca pasagerul să întrebe.
-- Locul în terminal se deduce din etapă (înainte sau după securitate, la poartă). În lumea reală nu avem scanarea de la securitate a aeroportului, deci etapa se estimează din oră față de orarul zborului. În demo, Unity trimite etapa fiecărui agent cu telefon. Nu există butoane de locație, QR pe pereți sau GPS.
+- Locul în terminal se deduce din etapă (înainte sau după securitate, la poartă). În lumea reală nu avem scanarea de la securitate a aeroportului, deci backend-ul estimează etapa din oră față de orarul zborului, la fel pentru pasagerii reali și pentru cei simulați (D17). Etapa reală a agenților din Unity ajunge doar în `truth.report` (D0), ca să vedem cât de bine o estimăm. Nu există butoane de locație, QR pe pereți sau GPS.
 
 ### D10. Adminul ia decizii operaționale, nu „declară criza”
-Unity trimite date (cozi, poziții, etape) și nu propune nimic. Un buton „criză” fără efect nu există. Adminul vede datele și ia decizii concrete, care schimbă ce se întâmplă în terminal: suplimentează personalul la bag drop sau la securitate, deschide linii, redirecționează, evacuează. Fiecare decizie ajunge în Unity, iar simularea arată efectul (vezi contractul). Decizii posibile:
-- **Personal / linii:** suplimentează câți oameni lucrează la o zonă (check-in pe companie, bag drop, securitate); capacitatea crește, coada scade.
+Unity e mediul (D0) și nu propune nimic, iar datele despre cozi și oameni vin din camere. Un buton „criză” fără efect nu există. Adminul vede datele și ia decizii concrete, care schimbă ce se întâmplă în terminal: suplimentează personalul la bag drop sau la securitate, deschide linii, redirecționează, evacuează. Fiecare decizie ajunge în Unity, iar simularea arată efectul (vezi contractul). Decizii posibile:
+- **Linii / ghișee:** deschide sau închide linii la o zonă (grup de check-in, bag drop, securitate); capacitatea crește, coada scade.
 - **Evacuare:** marchează zonele blocate, iar fiecare pasager primește ruta spre cea mai apropiată ieșire liberă (D7, D9).
 - **Aglomerare:** redirecționează pasagerii către alt punct (altă linie de securitate, alt ghișeu).
 - **Zbor întârziat sau anulat:** mesaj doar pentru pasagerii acelui zbor.
@@ -81,11 +91,11 @@ Fluxul vechi cu drona și `ops.suspended` iese din proiect.
 - Rolul `staff` se setează la login. Angajatul scrie liber („bătaie la poarta 3”, „bagaj abandonat lângă check-in Wizz”), iar agentul AI extrage locul exact (nod din `terminal.json`) și tipul problemei, apoi o transmite în dashboard, pe hartă.
 - Angajatul primește confirmarea și timpul în care ajunge echipa internă de intervenție: rută de la postul echipei până la el, penalizată de aglomerație (D7). Fără autorități din exterior.
 - Adminul reacționează cu deciziile din D10.
-- În demo, angajatul e jucat de un om de pe scenă cu telefonul (implicit).
+- În demo, angajatul e jucat de Diana, cu telefonul ei (D18).
 
 ### D12. Contract: deciziile adminului către Unity
 Backend → Unity, pe WebSocket-ul existent: `ops.command { id, type, ... }`. Exact patru tipuri:
-- `staff { zone, delta }`: crește sau scade numărul de oameni la o zonă (`security`, `bag_drop:W6`, `check_in:W6`). Cât crește rata de procesare per om decide algoritmul lui Marius.
+- `staff { zone, delta }`: deschide sau închide linii la o zonă (`security`, `bag_drop:2`, `check_in:2`). `delta` se numără în linii de securitate sau ghișee, nu în oameni: +1 = încă o linie sau încă un ghișeu. Cât procesează o linie decide Unity, care e mediul. Cât e conectat la backend, Unity oprește deschiderea automată a liniilor (`autoSecurityLanes`), ca doar adminul să schimbe capacitatea.
 - `redirect { from, to }`: o parte din cei care ar merge la `from` sunt trimiși la `to`.
 - `evacuate { zones: [] }`: zonele devin blocate, agenții ies pe rutele calculate de backend (D7).
 - `close { zone }` / `open { zone }`.
@@ -96,9 +106,9 @@ Simularea rulează accelerat (`SIM_SPEED`), iar Unity e sursa orei, prin `simTim
 
 ### D14. Contract: orarul de zboruri din Unity
 Unity → backend: `flight.update { flights: [...] }`, trimis la conectare și apoi la fiecare schimbare. Orarul îl face Marius. Fiecare zbor are:
-`{ flight: "W6 3751", airline: "W6", destination, std, gate, checkInDesks: [], gateCloseAt, status, delayMin, pax }`
+`{ flight: "W6 3751", airline: "W6", destination, std, gate, checkIn: "check_in:2", checkInDesks: [], gateCloseAt, status, delayMin, pax }`
 - `status`: `scheduled` | `boarding` | `delayed` | `cancelled` | `departed`.
-- `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). Orele sunt în ora simulării (D13).
+- `gate` și `checkInDesks` sunt id-uri de noduri din `terminal.json` (D7). `checkIn` e zona grupului de ghișee care servește zborul (D8). Orele sunt în ora simulării (D13).
 - La `delayed` sau `cancelled`, backend-ul trimite automat mesaj pe WhatsApp pasagerilor acelui zbor (D10).
 
 ### D15. WhatsApp pentru pasageri: tool-urile agentului
@@ -113,31 +123,60 @@ Mesaje trimise automat: confirmarea după scanarea boarding pass-ului; „e timp
 
 ### D16. Dashboard-ul adminului: un singur ecran, foarte simplu
 Alb, cu puține accente, fără tab-uri. Pe ecran:
-- Harta terminalului cu oamenii (puncte din Unity), fiecare zonă colorată după aglomerare.
-- Pe fiecare zonă: câți oameni sunt, câți angajați lucrează acolo și timpul de așteptare.
-- Lângă zonă, decizia directă: „+1 angajat” / „−1”, plus „Evacuare” pe zonele selectate (D12).
+- Harta terminalului cu oamenii văzuți de camere (`crowd.positions` din serviciul de vision), fiecare zonă colorată după aglomerare. Zonele nevăzute de camere apar ca „necunoscut”.
+- Pe fiecare zonă: câți oameni sunt, câte linii sau ghișee sunt deschise și timpul de așteptare.
+- Lângă zonă, decizia directă: „+1 linie” / „−1”, plus „Evacuare” pe zonele selectate (D12).
 - Rapoartele angajaților apar ca pini pe hartă (D11).
+- Un panou mic de acuratețe: pe zonă, estimarea din camere lângă adevărul din Unity (`truth.report`, D0).
 Fără previzualizarea efectului (`ops.preview`) și fără grafice în plus. Orice element nou trebuie să-și câștige locul.
+
+### D17. Agenții simulați sunt și ei abonați
+- O parte din pasagerii din Unity au un „telefon virtual”. Unity îi înregistrează cu `agent.register` (`channel: "sim"` și `flight`), iar backend-ul le trimite aceleași mesaje ca pe WhatsApp, dar pe WebSocket, prin `agent.message`.
+- În Unity, mesajul apare ca bulă de chat deasupra agentului, apoi decizia lui Jev (ce face și de ce) în timp real. Juriul vede în mulțime cine primește mesajul și cum reacționează.
+- Telefoanele reale de pe scenă nu au avatar în Unity.
+- La evacuare, abonații simulați merg pe rutele din backend (`agent.route`), iar ceilalți pe ieșirile implicite din Unity.
+
+### D18. Demo-ul în patru momente, în ordinea de lucru
+1. Un telefon se abonează și primește „fii la intrare la 14:20”.
+2. Coada de la securitate crește, camerele o văd (panoul de acuratețe), adminul deschide o linie și coada scade.
+3. Un zbor e întârziat: mesajele pleacă, apar bulele în mulțime și deciziile Jev, live. Întârzierea o declanșează Marius din Unity (tastă sau `sim.command`), iar Unity trimite `flight.update`.
+4. Diana, ca angajat, raportează un bagaj abandonat. Adminul evacuează zona, rutele pleacă, mulțimea iese.
+
+Fiecare moment e o linie de tăiere: dacă nu ajungem la toate, demo-ul se oprește la ultimul terminat. Momentele 1–4 folosesc doar `staff` și `evacuate`; `redirect`, `close` și `open` vin după. Termenele le stabilește Marius.
+
+### D19. Dovada: același seed, cu și fără Clarion
+Unity rulează aceeași zi cu și fără Clarion. Pe slide:
+- așteptarea la securitate (medie și p90) și pasagerii care pierd îmbarcarea;
+- la evacuare, timpul până se golește zona (t90 și ultimul ieșit);
+- acuratețea camerelor: eroarea la numărare și la timpul de așteptare, pe coadă.
 
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
-Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `flow.report`, `metric.report`, `sim.command`) rămân valabile. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
+Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
 
-**Unity → backend**
+**Unity (`client=twin`) → backend**
 | Mesaj | Formă | Stare |
 |---|---|---|
 | `sim.status` | ca acum; `simTime` în secunde, `speed` = `SIM_SPEED` | există |
-| `flow.report` | `{ zones: [{ zone, waiting, staff, capacity, waitMin, forecast: [{ inMin, waitMin }] }] }`, cel mult 1/s. `zone` din `terminal.json`, inclusiv `check_in:<IATA>` și `bag_drop:<IATA>`. `staff` și `forecast` sunt noi, opționale până le trimite Unity | extins |
 | `flight.update` | D14 | nou |
-| `crowd.positions` | `{ people: [{ x, y, kind: "pax" \| "staff" }] }`, metri în cadrul din `terminal.json`, cel mult 1/s, maxim 2.000 de puncte (eșantion dacă sunt mai mulți) | nou |
-| `agent.batch` | ca acum, pentru agenții cu telefon. `location` = id de nod din `terminal.json`; câmp nou `stage`: `public` \| `airside` \| `gate` | extins |
+| `agent.register` | ca acum, plus abonații simulați (D17): `{ agentId, role, channel: "sim", flight }` | extins |
+| `agent.batch` | ca acum. E adevăr (D0): servește doar la afișarea agenților și la acuratețe, nu la decizii. `location` = id de nod din `terminal.json`; câmp nou `stage`: `public` \| `airside` \| `gate` | extins |
+| `truth.report` | `{ zones: [{ zone, waiting, waitMin }] }`, cel mult 1/s: cozile și timpii reali, doar pentru panoul de acuratețe și A/B (D0) | nou |
+| `metric.report` | ca acum, cu nume noi pentru A/B (D19): `securityWaitMean`, `securityWaitP90`, `missedBoarding`, `evacT90`, `evacLastOut` | extins |
 | `ops.ack` | `{ id }`, imediat după `ops.command` | nou |
+
+**Vision (`client=vision`) → backend**
+| Mesaj | Formă | Stare |
+|---|---|---|
+| `flow.report` | `{ zones: [{ zone, waiting, waitMin, coverage, forecast: [{ inMin, waitMin }] }] }`, cel mult 1/s. `zone` din `terminal.json`, inclusiv `check_in:<grup>` și `bag_drop:<grup>`. `waiting` = oamenii din coadă văzuți de camere, `coverage` = partea din coadă văzută (0–1), `waitMin` și `forecast` calculate de serviciu (D5b). Fără `staff` și `capacity`: liniile deschise le ține backend-ul (D12), iar vision le citește din `GET /api/sim`. O zonă nevăzută de camere nu se trimite | mutat de la Unity, schimbat |
+| `crowd.positions` | `{ people: [{ x, y }] }`: punctul de la picioare al fiecărui om detectat, în metri, în cadrul din `terminal.json`, cel mult 1/s, maxim 2.000 de puncte. Doar unde văd camerele | nou |
 
 **Backend → Unity**
 | Mesaj | Formă | Stare |
 |---|---|---|
-| `ops.command` | D12: `{ id, type: "staff" \| "redirect" \| "evacuate" \| "close" \| "open", ... }` | nou |
+| `ops.command` | D12: `{ id, type: "staff" \| "redirect" \| "evacuate" \| "close" \| "open", ... }`; la `staff`, `delta` e în linii sau ghișee | nou |
 | `agent.route` | `{ agentId, nodes: [nodeId, ...], reason: "gate" \| "check_in" \| "evacuate" \| "redirect" }`; agentul merge pe traseu | nou |
+| `agent.message` | `{ agentId, text, kind: "arrive" \| "flight" \| "route" \| "evacuate" \| "admin" }`: mesajul primit de un abonat simulat (D17); Unity îl arată ca bulă deasupra agentului | nou |
 | `agent.notified` | ca acum: agentul cu telefon a primit sau a citit mesajul | există |
 
 **Fișier comun:** `docs/contract/terminal.json` (D7), făcut de Marius. Până apare, backend-ul folosește un plan provizoriu cu aceleași id-uri de zone.
@@ -146,8 +185,8 @@ Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=t
 
 Claude-ul lui Marius completează secțiunea asta direct în acest fișier, cu formele exacte și exemple JSON reale exportate din Unity, apoi face push. Ce e scris mai sus e contractul minim, iar Marius îl poate extinde fără să-l rupă. Ce trebuie completat, acum (restul mai târziu):
 
-1. **`terminal.json` (D7):** fișierul în `docs/contract/terminal.json`. Id-uri stabile pentru zone, noduri (intrări, ghișee pe companie, bag drop, securitate, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`. Coordonate în metri, văzut de sus, cu originea precizată.
-2. **`flight.update` (D14):** un exemplu complet cu orarul din demo și lista companiilor.
-3. **`flow.report`:** confirmă câmpurile `staff` și `forecast` și cum e calculată prognoza, pe scurt.
-4. **Efectul comenzilor (D12):** câți pasageri/minut procesează un angajat pe zonă, ce procent mută `redirect` și cum urmează agenții `agent.route` la `evacuate`.
+1. **`terminal.json` (D7):** fișierul în `docs/contract/terminal.json`, din `t2_nav.json`. Id-uri stabile pentru zone, noduri (intrări, grupuri de ghișee, bag drop, securitate, porți, ieșiri de urgență, postul echipei de intervenție) și muchii cu `walkSec`, plus liniile deschise la început pe fiecare zonă. Coordonate în metri, văzut de sus, cu originea precizată.
+2. **`flight.update` (D14):** un exemplu complet cu orarul din demo, companiile și grupul de ghișee al fiecărui zbor.
+3. **`flow.report` din vision (D0, D5b):** confirmă câmpurile și descrie pe scurt cum se calculează numărarea, așteptarea și prognoza.
+4. **Efectul comenzilor (D12):** câți pasageri/minut procesează o linie sau un ghișeu, ce procent mută `redirect` și cum urmează agenții `agent.route` la `evacuate`.
 5. **Ceasul (D13):** confirmă că `simTime` e în secunde, cu originea, și valoarea `SIM_SPEED` din demo.
