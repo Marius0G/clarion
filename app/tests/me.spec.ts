@@ -52,3 +52,20 @@ test('network failure and incomplete live data render safely', async ({ page }) 
   await expect(page.locator('.me-arrival')).toContainText('durată necunoscută')
   await expect(page.getByText('date demo', { exact: true })).toHaveCount(0)
 })
+
+test('English passenger page translates conditions, labels, status and evacuation', async ({ page }) => {
+  await page.route('**/api/me?token=english', route => route.fulfill({ json: {
+    ...fixture, lang: 'en', flight: { ...fixture.flight, status: 'delayed', delayMin: 30 },
+    queues: [{ zone: 'security', label: 'Control de securitate', nowMin: 12, forecastMin: 20, forecastAt: '14:30', source: 'prognoză' }],
+    evacuation: { active: true, zones: ['security'] }, alerts: [],
+  } }));
+  await page.goto('/m/english');
+  await expect(page.getByRole('heading', { name: 'Terminal conditions' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('.me-arrival')).toContainText('Security: 12 min now, ~20 min at 14:30 (forecast)');
+  await expect(page.getByText('Delayed +30 min')).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Follow signs to the nearest exit');
+  await expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible();
+  await expect(page.getByText('No alerts.')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('Poartă');
+});

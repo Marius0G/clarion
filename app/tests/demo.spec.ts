@@ -22,7 +22,7 @@ test('demo draws a readable PDF417 and the scanner uses it in the normal join fl
   await page.getByRole('button', { name: 'Boarding pass demo', exact: true }).click();
   const barcode = page.getByRole('img', { name: 'Cod de bare PDF417 boarding pass demo' });
   await expect(barcode).toBeVisible();
-  expect(demoBody).toEqual({});
+  expect(demoBody).toEqual({ lang: 'ro' });
   await expect(page.getByRole('link', { name: 'Adaugă în Google Wallet' })).toHaveAttribute('href', result.walletUrl);
   await expect(page.getByRole('link', { name: 'Deschide WhatsApp' })).toHaveAttribute('href', result.waLink);
   await expect(page.getByText('POPESCU/ION')).toBeVisible();
@@ -36,7 +36,7 @@ test('demo draws a readable PDF417 and the scanner uses it in the normal join fl
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Continuă în WhatsApp' }).click();
   await expect(page.getByRole('heading', { name: 'Trimite mesajul în WhatsApp.' })).toBeVisible();
-  expect(joinBody).toEqual({ flight: 'W6 3751' });
+  expect(joinBody).toEqual({ flight: 'W6 3751', lang: 'ro' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 test('demo request failure allows retry and rejects unsafe links', async ({ page }) => {

@@ -1,4 +1,5 @@
 import type { PassengerData } from './types'
+import { pageText } from './texts'
 
 export function simTimeLabel(seconds: number | null | undefined): string {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return 'necunoscut'
@@ -6,15 +7,15 @@ export function simTimeLabel(seconds: number | null | undefined): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-export function statusLabel(status?: PassengerData['flight']['status'], delayMin?: number): string {
+export function statusLabel(status?: PassengerData['flight']['status'], delayMin?: number, lang: 'ro' | 'en' = 'ro'): string {
   switch (status) {
-    case 'scheduled': return 'Programat'
-    case 'boarding': return 'Îmbarcare'
+    case 'scheduled': return pageText('Programat', lang)
+    case 'boarding': return pageText('Îmbarcare', lang)
     case 'delayed': return typeof delayMin === 'number' && Number.isFinite(delayMin) && delayMin >= 0
-      ? `Întârziat +${Math.round(delayMin)} min` : 'Întârziat'
-    case 'cancelled': return 'Anulat'
-    case 'departed': return 'Plecat'
-    default: return 'necunoscut'
+      ? `${pageText('Întârziat', lang)} +${Math.round(delayMin)} min` : pageText('Întârziat', lang)
+    case 'cancelled': return pageText('Anulat', lang)
+    case 'departed': return pageText('Plecat', lang)
+    default: return pageText('necunoscut', lang)
   }
 }
 
@@ -33,32 +34,34 @@ export type PassengerViewData = Omit<PassengerData, 'flight'> & {
 
 export function normalizePassenger(value: unknown): PassengerViewData {
   const data = record(value)
+  const localText = (value: unknown) => pageText(text(value), data.lang === 'en' ? 'en' : 'ro')
   const flight = record(data.flight)
   const evacuation = record(data.evacuation)
   const statuses = ['scheduled', 'boarding', 'delayed', 'cancelled', 'departed']
   const kinds = ['arrive', 'flight', 'route', 'evacuate', 'admin']
   return {
+    lang: data.lang === 'en' ? 'en' : 'ro',
     simTime: nonnegative(data.simTime),
-    arriveBy: text(data.arriveBy),
+    arriveBy: localText(data.arriveBy),
     entranceToGateMin: nonnegative(data.entranceToGateMin),
     queues: (Array.isArray(data.queues) ? data.queues : []).map(value => {
       const queue = record(value)
-      return { zone: text(queue.zone), label: text(queue.label), nowMin: nonnegative(queue.nowMin),
-        forecastMin: nonnegative(queue.forecastMin), forecastAt: text(queue.forecastAt), source: text(queue.source) }
+      return { zone: localText(queue.zone), label: localText(queue.label), nowMin: nonnegative(queue.nowMin),
+        forecastMin: nonnegative(queue.forecastMin), forecastAt: localText(queue.forecastAt), source: localText(queue.source) }
     }),
     flight: {
-      flight: text(flight.flight), destination: text(flight.destination), std: text(flight.std),
-      gate: text(flight.gate), gateCloseAt: text(flight.gateCloseAt),
+      flight: localText(flight.flight), destination: localText(flight.destination), std: localText(flight.std),
+      gate: localText(flight.gate), gateCloseAt: localText(flight.gateCloseAt),
       status: (statuses.includes(String(flight.status)) ? flight.status : undefined) as PassengerData['flight']['status'] | undefined,
       delayMin: nonnegative(flight.delayMin) ?? undefined,
     },
     steps: (Array.isArray(data.steps) ? data.steps : []).map(value => {
       const step = record(value)
-      return { zone: text(step.zone), label: text(step.label), waitMin: nonnegative(step.waitMin) }
+      return { zone: localText(step.zone), label: localText(step.label), waitMin: nonnegative(step.waitMin) }
     }),
     alerts: (Array.isArray(data.alerts) ? data.alerts : []).map(value => {
       const alert = record(value)
-      return { at: text(alert.at), text: text(alert.text), kind: (kinds.includes(String(alert.kind)) ? alert.kind : 'admin') as PassengerData['alerts'][number]['kind'] }
+      return { at: localText(alert.at), text: localText(alert.text), kind: (kinds.includes(String(alert.kind)) ? alert.kind : 'admin') as PassengerData['alerts'][number]['kind'] }
     }),
     evacuation: {
       active: evacuation.active === true,

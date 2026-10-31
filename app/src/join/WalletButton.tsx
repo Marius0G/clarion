@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { backend } from '../backend/config';
 
-export interface WalletButtonProps { subscriptionId?: string; joinToken?: string }
+export interface WalletButtonProps { en?: boolean; subscriptionId?: string; joinToken?: string }
 
-export default function WalletButton({ subscriptionId, joinToken }: WalletButtonProps) {
+export default function WalletButton({ subscriptionId, joinToken, en = false }: WalletButtonProps) {
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +34,7 @@ export default function WalletButton({ subscriptionId, joinToken }: WalletButton
       else window.location.assign(url.href);
     } catch {
       tab?.close();
-      setError('Pass-ul nu a putut fi deschis. Încearcă din nou.');
+      setError(en ? 'The pass could not be opened. Try again.' : 'Pass-ul nu a putut fi deschis. Încearcă din nou.');
     } finally {
       busy.current = false;
       setPending(false);
@@ -57,10 +57,10 @@ export default function WalletButton({ subscriptionId, joinToken }: WalletButton
         <path d="M4 9h20v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z" fill="#fbbc04" />
         <path d="M4 9h7v14H7a3 3 0 0 1-3-3Z" fill="#ea4335" />
       </svg>
-      Adaugă în Google Wallet
+      {en ? 'Add to Google Wallet' : 'Adaugă în Google Wallet'}
     </button>
-    {pending && <p role="status">Se pregătește pass-ul…</p>}
-    {demo && <p role="status">Mod demo · Pass Clarion de simulare.</p>}
+    {pending && <p role="status">{en ? 'Preparing pass…' : 'Se pregătește pass-ul…'}</p>}
+    {demo && <p role="status">{en ? 'Demo · Simulated Clarion pass.' : 'Mod demo · Pass Clarion de simulare.'}</p>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

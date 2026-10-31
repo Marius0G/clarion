@@ -127,7 +127,7 @@ export default function Join() {
       {
         const response = await fetch(`${backend}/api/join`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ flight: flight.trim().toUpperCase() }),
+          body: JSON.stringify({ flight: flight.trim().toUpperCase(), lang: en ? "en" : "ro" }),
           signal: AbortSignal.timeout(12000),
         });
         if (response.status === 404) throw new Error("unknown-flight");
@@ -142,7 +142,7 @@ export default function Join() {
     } catch (cause) {
       setError(
         cause instanceof Error && cause.message === "unknown-flight"
-          ? "Zborul nu este în orarul de azi. Verifică numărul și încearcă din nou."
+          ? t("Zborul nu este în orarul de azi. Verifică numărul și încearcă din nou.", "Flight not in today’s schedule. Check the number and try again.")
           : en
           ? "Could not connect to the flight."
           : "Conectarea la zbor nu a reușit.",
@@ -188,10 +188,11 @@ export default function Join() {
           </a>
           <button
             type="button"
-            onClick={() => setEn(!en)}
+            onClick={() => { setEn(!en); setSuccess(null); setError(""); setShareStatus(""); setCopyText(""); }}
+            disabled={loading}
             aria-label={t("Switch to English", "Schimbă în română")}
           >
-            {en ? "RO" : "EN"}
+            {en ? "Română / English ✓" : "Română ✓ / English"}
           </button>
         </header>
         {window.location.pathname.replace(/\/$/, "") === "/join/qr" ? (
@@ -202,7 +203,7 @@ export default function Join() {
             <h1>{t("Trimite mesajul în WhatsApp.", "Send the message in WhatsApp.")}</h1>
             <p>{t("Apasă Trimite în WhatsApp pentru a activa alertele. Ne scrii primul, apoi putem răspunde în următoarele 24 h.", "Tap Send in WhatsApp to activate alerts. Message us first so we can reply over the next 24 hours.")}</p>
             <a className="join-primary" href={success.waLink} target="_blank" rel="noopener noreferrer">{t("Deschide WhatsApp", "Open WhatsApp")}</a>
-            {(success.subscriptionId || success.token) && <WalletButton subscriptionId={success.subscriptionId} joinToken={success.token} />}
+            {(success.subscriptionId || success.token) && <WalletButton en={en} subscriptionId={success.subscriptionId} joinToken={success.token} />}
             {role.startsWith("passenger") && (
               <button className="join-share" onClick={() => void share()}>
                 {t(
@@ -234,7 +235,7 @@ export default function Join() {
               <h1>
                 {t("Află la timp.", "Know in time.")}
                 <br />
-                {t("Ajungi când trebuie.", "Arrive when it matters.")}
+                {t("Situația și prognoza.", "Conditions and forecasts.")}
               </h1>
               <p>
                 {t(
@@ -243,7 +244,7 @@ export default function Join() {
                 )}
               </p>
             </section>
-            <DemoBoardingPass />
+            <DemoBoardingPass key={en ? "en" : "ro"} en={en} />
             <form onSubmit={(event) => void subscribe(event)}>
               <fieldset className="join-roles">
                 <legend>
@@ -347,8 +348,8 @@ export default function Join() {
                   WhatsApp.{" "}
                   <span>
                     {t(
-                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem doar zborul. Datele conexiunii se șterg la 48 h după zbor.",
-                      "The boarding pass is read on your device. Only the flight is sent for WhatsApp. Connection data is deleted 48 h after the flight.",
+                      "Boarding pass-ul este citit pe dispozitiv. Pentru WhatsApp trimitem zborul și limba aleasă. Datele conexiunii se șterg la 48 h după zbor.",
+                      "The boarding pass is read on your device. Your flight and chosen language are sent for WhatsApp. Connection data is deleted 48 h after the flight.",
                     )}
                   </span>
                 </span>

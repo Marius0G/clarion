@@ -36,3 +36,10 @@ describe('passenger formatting', () => {
     expect(normalizePassenger({ steps: {}, alerts: null }).steps).toEqual([])
   })
 })
+
+it('defaults absent/invalid language to Romanian and keeps missing English data in English', () => {
+  expect(normalizePassenger({}).lang).toBe('ro')
+  expect(normalizePassenger({ lang: 'fr' }).lang).toBe('ro')
+  expect(normalizePassenger({ lang: 'en' })).toMatchObject({ lang: 'en', flight: { gate: 'unknown' } })
+  expect(statusLabel('delayed', 15, 'en')).toBe('Delayed +15 min')
+})
