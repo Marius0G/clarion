@@ -1,0 +1,109 @@
+/* Detailed T2 map. Dark plan look so the Unity render underneath reads as a floor plan. */
+.t2map {
+  --t2-ground: #1b1f27; --t2-wall: #0b0d12; --t2-floor: rgba(226, 232, 240, .16);
+  --t2-ink: rgba(241, 245, 249, .78); --t2-ink-soft: rgba(241, 245, 249, .38); --t2-ink-faint: rgba(241, 245, 249, .16);
+  --t2-normal: rgba(34, 197, 94, .26); --t2-normal-line: #22c55e;
+  --t2-near: rgba(245, 158, 11, .36); --t2-near-line: #f59e0b;
+  --t2-full: rgba(239, 68, 68, .44); --t2-full-line: #ef4444;
+  --t2-none: rgba(148, 163, 184, .10); --t2-none-line: rgba(203, 213, 225, .55);
+  --t2-accent: #60a5fa;
+  display: block; width: 100%; height: auto; background: var(--t2-ground);
+  font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; user-select: none;
+}
+.t2-ground { fill: var(--t2-ground); }
+.t2-base { opacity: .62; }
+.t2-shell path { fill: none; stroke: var(--t2-wall); stroke-linejoin: round; }
+.t2-tiles path { opacity: .5; }
+.p-tile { fill: none; stroke: rgba(255, 255, 255, .07); stroke-width: 1; }
+.p-step { stroke: var(--t2-ink-soft); stroke-width: 1.4; }
+.p-seat { fill: rgba(148, 163, 184, .55); stroke: rgba(15, 23, 42, .6); stroke-width: .8; }
+.p-stall { fill: none; stroke: rgba(241, 245, 249, .42); stroke-width: 1; }
+.p-hatch { stroke: rgba(255, 255, 255, .06); stroke-width: 3; }
+
+/* Zones */
+.t2-zone .fill { fill: var(--t2-none); transition: fill .25s; }
+.t2-zone .edge { fill: none; stroke: var(--t2-none-line); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.t2-zone.s-normal .fill { fill: var(--t2-normal); } .t2-zone.s-normal .edge { stroke: var(--t2-normal-line); }
+.t2-zone.s-near .fill { fill: var(--t2-near); } .t2-zone.s-near .edge { stroke: var(--t2-near-line); stroke-width: 3; }
+.t2-zone.s-full .fill { fill: var(--t2-full); } .t2-zone.s-full .edge { stroke: var(--t2-full-line); stroke-width: 3.5; }
+.t2-zone.s-full .fill { animation: t2-pulse 1.6s ease-in-out infinite; }
+@keyframes t2-pulse { 50% { fill: rgba(239, 68, 68, .62); } }
+.t2-zone.approx .edge { stroke-dasharray: 9 6; }
+.t2-zone.click { cursor: pointer; }
+.t2-zone.click:hover .fill { filter: brightness(1.5); }
+.t2-zone.click:focus { outline: none; }
+.t2-zone.click:focus-visible .edge, .t2-zone.sel .edge { stroke: #fff; stroke-width: 5; stroke-dasharray: none; }
+.t2-zone.lit .edge { stroke: var(--t2-accent); stroke-width: 5; stroke-dasharray: none; }
+.t2-zone.lit .fill { fill: rgba(96, 165, 250, .28); }
+.t2-zone.closed .cross { fill: rgba(15, 23, 42, .55); stroke: none; }
+.t2-zone.closed .edge { stroke: #94a3b8; stroke-dasharray: 3 6; }
+.k-assembly .fill { fill: rgba(16, 185, 129, .16); }
+.k-assembly .edge { stroke: #10b981; }
+
+/* Furniture */
+.detail { pointer-events: none; }
+.d-belt { stroke: rgba(250, 204, 21, .75); stroke-width: 2; stroke-linecap: round; }
+.d-post { fill: rgba(250, 250, 250, .85); }
+.d-counter { fill: #cbd5e1; stroke: #0f172a; stroke-width: 1.5; }
+.d-belt-box { fill: #334155; stroke: #0f172a; stroke-width: 1; }
+.d-desk-no { fill: #0f172a; font-weight: 700; text-anchor: middle; }
+.d-wallband { fill: rgba(15, 23, 42, .55); }
+.d-table { fill: rgba(203, 213, 225, .7); stroke: rgba(15, 23, 42, .7); stroke-width: 1; }
+.d-chair { fill: rgba(148, 163, 184, .7); }
+.d-xray { fill: #475569; stroke: #0f172a; stroke-width: 1.5; }
+.d-arch { fill: none; stroke: #e2e8f0; stroke-width: 4; stroke-linecap: round; }
+.d-carousel { fill: #1e293b; stroke: #0f172a; stroke-width: 3; }
+.d-carousel-in { fill: rgba(203, 213, 225, .55); stroke: rgba(250, 204, 21, .5); stroke-width: 2; stroke-dasharray: 6 5; }
+.d-trolley { fill: none; stroke: var(--t2-ink-soft); stroke-width: 1.5; }
+.d-gate-door { stroke: #38bdf8; stroke-width: 6; stroke-linecap: round; }
+.d-watermark { fill: rgba(255, 255, 255, .08); font-weight: 800; text-anchor: middle; }
+.d-rail { stroke: var(--t2-ink); stroke-width: 2; }
+.d-escalator { fill: rgba(15, 23, 42, .65); stroke: var(--t2-ink-soft); stroke-width: 1.5; }
+.d-arrow { fill: none; stroke: #f8fafc; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.d-shelf { fill: rgba(167, 139, 250, .45); stroke: rgba(15, 23, 42, .6); stroke-width: 1; }
+.d-partition { stroke: var(--t2-ink-soft); stroke-width: 1.5; }
+.d-shelter { fill: rgba(148, 163, 184, .45); stroke: var(--t2-ink-soft); stroke-width: 1.5; }
+.d-vehicle { fill: rgba(203, 213, 225, .55); stroke: rgba(15, 23, 42, .8); stroke-width: 1; }
+.d-taxi { fill: rgba(250, 204, 21, .75); stroke: rgba(15, 23, 42, .8); stroke-width: 1; }
+.d-kerb { stroke: #e2e8f0; stroke-width: 3; }
+.d-lane { stroke: rgba(241, 245, 249, .55); stroke-width: 2; stroke-dasharray: 14 12; }
+.d-assembly { fill: rgba(16, 185, 129, .22); stroke: #10b981; stroke-width: 3; }
+.d-assembly-a { fill: none; stroke: #ecfdf5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Point icons */
+.t2-points text { text-anchor: middle; font-weight: 700; }
+.i-door rect { fill: #f8fafc; stroke: #0f172a; stroke-width: 1.5; }
+.i-door path { fill: none; stroke: #0f172a; stroke-width: 2; stroke-linecap: round; }
+.i-exit rect { fill: #16a34a; stroke: #052e16; stroke-width: 1.5; }
+.i-exit path { fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.i-vert circle { fill: #a855f7; stroke: #1e1b4b; stroke-width: 1.5; }
+.i-vert path { fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.i-vert path.fill { fill: #fff; stroke: none; }
+.i-info circle { fill: #2563eb; stroke: #0b1220; stroke-width: 1.5; } .i-info text { fill: #fff; font-family: Georgia, serif; }
+.i-tag rect { fill: #f1f5f9; stroke: #0f172a; stroke-width: 1.2; } .i-tag text { fill: #0f172a; }
+.i-pill circle { fill: #f8fafc; } .i-pill text { fill: var(--t2-ink); text-anchor: start; font-weight: 600; paint-order: stroke; stroke: rgba(11, 13, 18, .85); stroke-width: 3px; }
+.i-kiosk rect { fill: #38bdf8; stroke: #0c4a6e; stroke-width: 1.2; }
+.i-fids rect { fill: #0f172a; stroke: #38bdf8; stroke-width: 1; }
+.i-booth rect { fill: #475569; stroke: #e2e8f0; stroke-width: 1.2; }
+.i-gate circle { fill: #0d9488; stroke: #f0fdfa; stroke-width: 2; } .i-gate text { fill: #fff; }
+.i-cam circle { fill: #facc15; } .i-cam .cone { fill: rgba(250, 204, 21, .14); stroke: rgba(250, 204, 21, .5); stroke-width: 1; }
+
+/* Labels */
+.t2-labels text { text-anchor: middle; paint-order: stroke; stroke: rgba(11, 13, 18, .9); stroke-linejoin: round; }
+.t2-label .badge { fill: rgba(11, 13, 18, .88); stroke: var(--t2-none-line); stroke-width: 1.5; }
+.t2-label.s-normal .badge { stroke: var(--t2-normal-line); }
+.t2-label.s-near .badge { stroke: var(--t2-near-line); fill: #78350f; }
+.t2-label.s-full .badge { stroke: var(--t2-full-line); fill: #7f1d1d; }
+.t2-label .code { fill: #fff; font-weight: 800; stroke-width: 0; }
+.t2-label .name { fill: #f1f5f9; font-weight: 600; stroke-width: 4px; }
+.t2-label .nums { fill: #fde68a; font-weight: 700; stroke-width: 4px; }
+
+/* Route, dots, chrome */
+.t2-route .halo { fill: none; stroke: rgba(96, 165, 250, .3); stroke-linecap: round; stroke-linejoin: round; }
+.t2-route .line { fill: none; stroke: #60a5fa; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2 14; animation: t2-march 1s linear infinite; }
+@keyframes t2-march { to { stroke-dashoffset: -16; } }
+.t2-route .end { fill: #60a5fa; stroke: #fff; stroke-width: 3; }
+.t2-dots circle { fill: #fbbf24; stroke: rgba(11, 13, 18, .8); stroke-width: 1; }
+.t2-north path { fill: #f8fafc; } .t2-north text { fill: #f8fafc; text-anchor: middle; font-weight: 700; }
+.t2-scale path { stroke: #f8fafc; stroke-width: 3; fill: none; } .t2-scale text { fill: #f8fafc; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .t2-zone.s-full .fill, .t2-route .line { animation: none; } }

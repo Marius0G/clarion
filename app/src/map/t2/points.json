@@ -1,0 +1,2190 @@
+{
+ "about": "Doors, exits, stairs, lifts, services and CCTV cameras. level: G parter, U etaj 1, X exterior.",
+ "frames": {
+  "parter": {
+   "level": "G",
+   "title": "T2 - Parter (Ground floor)",
+   "floor_height_m": 192.21,
+   "x0": 6160.0,
+   "x1": 6460.0,
+   "z0": -545.0,
+   "z1": -440.0,
+   "pixels_per_metre": 10.0,
+   "width_px": 3000,
+   "height_px": 1050,
+   "base_image": "base_parter.png",
+   "world_to_pixel": "px = (x - x0) * ppm; py = (z1 - z) * ppm"
+  },
+  "etaj1": {
+   "level": "U",
+   "title": "T2 - Etaj 1 (Upper floor)",
+   "floor_height_m": 197.61,
+   "x0": 6160.0,
+   "x1": 6460.0,
+   "z0": -545.0,
+   "z1": -440.0,
+   "pixels_per_metre": 10.0,
+   "width_px": 3000,
+   "height_px": 1050,
+   "base_image": "base_etaj1.png",
+   "world_to_pixel": "px = (x - x0) * ppm; py = (z1 - z) * ppm"
+  },
+  "exterior": {
+   "level": "X",
+   "title": "Exterior T2 (landside + apron)",
+   "floor_height_m": null,
+   "x0": 6110.0,
+   "x1": 6640.0,
+   "z0": -700.0,
+   "z1": -380.0,
+   "pixels_per_metre": 4.0,
+   "width_px": 2120,
+   "height_px": 1280,
+   "base_image": "base_exterior.png",
+   "world_to_pixel": "px = (x - x0) * ppm; py = (z1 - z) * ppm"
+  }
+ },
+ "points": [
+  {
+   "id": "door_exit_west",
+   "type": "door",
+   "name": "Sosiri / Arrivals side",
+   "level": "G",
+   "x": 6253.83,
+   "z": -511.72,
+   "width_m": 5.0,
+   "approx": false,
+   "evacuation_exit": true,
+   "px": [
+    938.3,
+    717.2
+   ]
+  },
+  {
+   "id": "door_exit_mid",
+   "type": "door",
+   "name": "P exit",
+   "level": "G",
+   "x": 6299.63,
+   "z": -526.63,
+   "width_m": 5.0,
+   "approx": false,
+   "evacuation_exit": true,
+   "px": [
+    1396.3,
+    866.3
+   ]
+  },
+  {
+   "id": "door_arrivals_east",
+   "type": "door",
+   "name": "door_arrivals_east",
+   "level": "G",
+   "x": 6338.1,
+   "z": -531.28,
+   "width_m": 5.0,
+   "approx": false,
+   "evacuation_exit": true,
+   "px": [
+    1781.0,
+    912.8
+   ]
+  },
+  {
+   "id": "door_departures",
+   "type": "door",
+   "name": "Plecări / Departures",
+   "level": "G",
+   "x": 6369.4,
+   "z": -531.12,
+   "width_m": 5.0,
+   "approx": false,
+   "evacuation_exit": true,
+   "px": [
+    2094.0,
+    911.2
+   ]
+  },
+  {
+   "id": "door_apron_gate_1",
+   "type": "door",
+   "name": "Poarta 1 / Gate 1 (apron)",
+   "level": "G",
+   "x": 6182.49,
+   "z": -451.38,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    224.9,
+    113.8
+   ]
+  },
+  {
+   "id": "door_apron_gate_2",
+   "type": "door",
+   "name": "Poarta 2 / Gate 2 (apron)",
+   "level": "G",
+   "x": 6211.35,
+   "z": -450.93,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    513.5,
+    109.3
+   ]
+  },
+  {
+   "id": "door_apron_gate_6",
+   "type": "door",
+   "name": "Poarta 6 / Gate 6 (apron)",
+   "level": "G",
+   "x": 6323.6,
+   "z": -480.97,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    1636.0,
+    409.7
+   ]
+  },
+  {
+   "id": "door_apron_gate_7",
+   "type": "door",
+   "name": "Poarta 7 / Gate 7 (apron)",
+   "level": "G",
+   "x": 6349.6,
+   "z": -487.91,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    1896.0,
+    479.1
+   ]
+  },
+  {
+   "id": "door_apron_gate_8",
+   "type": "door",
+   "name": "Poarta 8 / Gate 8 (apron)",
+   "level": "G",
+   "x": 6378.45,
+   "z": -487.25,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    2184.5,
+    472.5
+   ]
+  },
+  {
+   "id": "door_apron_gate_9",
+   "type": "door",
+   "name": "Poarta 9 / Gate 9 (apron)",
+   "level": "G",
+   "x": 6407.31,
+   "z": -486.59,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    2473.1,
+    465.9
+   ]
+  },
+  {
+   "id": "door_apron_gate_10",
+   "type": "door",
+   "name": "Poarta 10 / Gate 10 (apron)",
+   "level": "G",
+   "x": 6436.16,
+   "z": -485.93,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    2761.6,
+    459.3
+   ]
+  },
+  {
+   "id": "door_emergency_west",
+   "type": "emergency_exit",
+   "name": "Ieșire de urgență / Emergency exit",
+   "level": "G",
+   "x": 6227.53,
+   "z": -500.11,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    675.3,
+    601.1
+   ]
+  },
+  {
+   "id": "door_emergency_east",
+   "type": "emergency_exit",
+   "name": "Ieșire de urgență / Emergency exit",
+   "level": "G",
+   "x": 6412.96,
+   "z": -527.01,
+   "width_m": 1.8,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    2529.6,
+    870.1
+   ]
+  },
+  {
+   "id": "door_arrivals_entry",
+   "type": "door",
+   "name": "Sosiri / Arrivals (from the apron)",
+   "level": "G",
+   "x": 6270.62,
+   "z": -463.34,
+   "width_m": 3.0,
+   "approx": true,
+   "evacuation_exit": true,
+   "px": [
+    1106.2,
+    233.4
+   ]
+  },
+  {
+   "id": "stairs_west_G",
+   "type": "stairs",
+   "name": "stairs_west",
+   "level": "G",
+   "x": 6243.92,
+   "z": -496.92,
+   "links_to": "U",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    839.2,
+    569.2
+   ]
+  },
+  {
+   "id": "stairs_west_U",
+   "type": "stairs",
+   "name": "stairs_west",
+   "level": "U",
+   "x": 6262.8,
+   "z": -500.02,
+   "links_to": "G",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    1028.0,
+    600.2
+   ]
+  },
+  {
+   "id": "stairs_east_G",
+   "type": "stairs",
+   "name": "stairs_east",
+   "level": "G",
+   "x": 6330.01,
+   "z": -523.42,
+   "links_to": "U",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    1700.1,
+    834.2
+   ]
+  },
+  {
+   "id": "stairs_east_U",
+   "type": "stairs",
+   "name": "stairs_east",
+   "level": "U",
+   "x": 6310.09,
+   "z": -521.73,
+   "links_to": "G",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    1500.9,
+    817.3
+   ]
+  },
+  {
+   "id": "escalator_east_G",
+   "type": "escalator",
+   "name": "escalator_east",
+   "level": "G",
+   "x": 6330.81,
+   "z": -520.31,
+   "links_to": "U",
+   "one_way": true,
+   "approx": false,
+   "px": [
+    1708.1,
+    803.1
+   ]
+  },
+  {
+   "id": "escalator_east_U",
+   "type": "escalator",
+   "name": "escalator_east",
+   "level": "U",
+   "x": 6313.39,
+   "z": -519.54,
+   "links_to": "G",
+   "one_way": true,
+   "approx": false,
+   "px": [
+    1533.9,
+    795.4
+   ]
+  },
+  {
+   "id": "lift_east_G",
+   "type": "lift",
+   "name": "lift_east",
+   "level": "G",
+   "x": 6303.26,
+   "z": -509.41,
+   "links_to": "U",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    1432.6,
+    694.1
+   ]
+  },
+  {
+   "id": "lift_east_U",
+   "type": "lift",
+   "name": "lift_east",
+   "level": "U",
+   "x": 6310.21,
+   "z": -502.73,
+   "links_to": "G",
+   "one_way": false,
+   "approx": false,
+   "px": [
+    1502.1,
+    627.3
+   ]
+  },
+  {
+   "id": "lift_west_G",
+   "type": "lift",
+   "name": "lift_west",
+   "level": "G",
+   "x": 6237.89,
+   "z": -484.55,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    778.9,
+    445.5
+   ]
+  },
+  {
+   "id": "lift_west_U",
+   "type": "lift",
+   "name": "lift_west",
+   "level": "U",
+   "x": 6264.03,
+   "z": -499.9,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    1040.3,
+    599.0
+   ]
+  },
+  {
+   "id": "gate_1_stairs_G",
+   "type": "stairs",
+   "name": "gate_1_stairs",
+   "level": "G",
+   "x": 6182.49,
+   "z": -451.38,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    224.9,
+    113.8
+   ]
+  },
+  {
+   "id": "gate_1_stairs_U",
+   "type": "stairs",
+   "name": "gate_1_stairs",
+   "level": "U",
+   "x": 6182.49,
+   "z": -450.98,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    224.9,
+    109.8
+   ]
+  },
+  {
+   "id": "gate_2_stairs_G",
+   "type": "stairs",
+   "name": "gate_2_stairs",
+   "level": "G",
+   "x": 6211.35,
+   "z": -450.93,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    513.5,
+    109.3
+   ]
+  },
+  {
+   "id": "gate_2_stairs_U",
+   "type": "stairs",
+   "name": "gate_2_stairs",
+   "level": "U",
+   "x": 6211.34,
+   "z": -450.53,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    513.4,
+    105.3
+   ]
+  },
+  {
+   "id": "gate_6_stairs_G",
+   "type": "stairs",
+   "name": "gate_6_stairs",
+   "level": "G",
+   "x": 6323.6,
+   "z": -480.97,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    1636.0,
+    409.7
+   ]
+  },
+  {
+   "id": "gate_6_stairs_U",
+   "type": "stairs",
+   "name": "gate_6_stairs",
+   "level": "U",
+   "x": 6323.73,
+   "z": -480.59,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    1637.3,
+    405.9
+   ]
+  },
+  {
+   "id": "gate_7_stairs_G",
+   "type": "stairs",
+   "name": "gate_7_stairs",
+   "level": "G",
+   "x": 6349.6,
+   "z": -487.91,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    1896.0,
+    479.1
+   ]
+  },
+  {
+   "id": "gate_7_stairs_U",
+   "type": "stairs",
+   "name": "gate_7_stairs",
+   "level": "U",
+   "x": 6349.59,
+   "z": -487.51,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    1895.9,
+    475.1
+   ]
+  },
+  {
+   "id": "gate_8_stairs_G",
+   "type": "stairs",
+   "name": "gate_8_stairs",
+   "level": "G",
+   "x": 6378.45,
+   "z": -487.25,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2184.5,
+    472.5
+   ]
+  },
+  {
+   "id": "gate_8_stairs_U",
+   "type": "stairs",
+   "name": "gate_8_stairs",
+   "level": "U",
+   "x": 6378.44,
+   "z": -486.85,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2184.4,
+    468.5
+   ]
+  },
+  {
+   "id": "gate_9_stairs_G",
+   "type": "stairs",
+   "name": "gate_9_stairs",
+   "level": "G",
+   "x": 6407.31,
+   "z": -486.59,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2473.1,
+    465.9
+   ]
+  },
+  {
+   "id": "gate_9_stairs_U",
+   "type": "stairs",
+   "name": "gate_9_stairs",
+   "level": "U",
+   "x": 6407.3,
+   "z": -486.19,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2473.0,
+    461.9
+   ]
+  },
+  {
+   "id": "gate_10_stairs_G",
+   "type": "stairs",
+   "name": "gate_10_stairs",
+   "level": "G",
+   "x": 6436.16,
+   "z": -485.93,
+   "links_to": "U",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2761.6,
+    459.3
+   ]
+  },
+  {
+   "id": "gate_10_stairs_U",
+   "type": "stairs",
+   "name": "gate_10_stairs",
+   "level": "U",
+   "x": 6436.15,
+   "z": -485.53,
+   "links_to": "G",
+   "one_way": false,
+   "approx": true,
+   "px": [
+    2761.5,
+    455.3
+   ]
+  },
+  {
+   "id": "checkin_1",
+   "type": "checkin_desk",
+   "name": "checkin_1",
+   "level": "G",
+   "x": 6373.58,
+   "z": -514.7,
+   "approx": false,
+   "px": [
+    2135.8,
+    747.0
+   ]
+  },
+  {
+   "id": "checkin_2",
+   "type": "checkin_desk",
+   "name": "checkin_2",
+   "level": "G",
+   "x": 6375.51,
+   "z": -514.69,
+   "approx": false,
+   "px": [
+    2155.1,
+    746.9
+   ]
+  },
+  {
+   "id": "checkin_3",
+   "type": "checkin_desk",
+   "name": "checkin_3",
+   "level": "G",
+   "x": 6378.38,
+   "z": -514.68,
+   "approx": false,
+   "px": [
+    2183.8,
+    746.8
+   ]
+  },
+  {
+   "id": "checkin_4",
+   "type": "checkin_desk",
+   "name": "checkin_4",
+   "level": "G",
+   "x": 6380.32,
+   "z": -514.67,
+   "approx": false,
+   "px": [
+    2203.2,
+    746.7
+   ]
+  },
+  {
+   "id": "checkin_5",
+   "type": "checkin_desk",
+   "name": "checkin_5",
+   "level": "G",
+   "x": 6385.51,
+   "z": -514.64,
+   "approx": false,
+   "px": [
+    2255.1,
+    746.4
+   ]
+  },
+  {
+   "id": "checkin_6",
+   "type": "checkin_desk",
+   "name": "checkin_6",
+   "level": "G",
+   "x": 6387.44,
+   "z": -514.63,
+   "approx": false,
+   "px": [
+    2274.4,
+    746.3
+   ]
+  },
+  {
+   "id": "checkin_7",
+   "type": "checkin_desk",
+   "name": "checkin_7",
+   "level": "G",
+   "x": 6390.31,
+   "z": -514.62,
+   "approx": false,
+   "px": [
+    2303.1,
+    746.2
+   ]
+  },
+  {
+   "id": "checkin_8",
+   "type": "checkin_desk",
+   "name": "checkin_8",
+   "level": "G",
+   "x": 6392.24,
+   "z": -514.61,
+   "approx": false,
+   "px": [
+    2322.4,
+    746.1
+   ]
+  },
+  {
+   "id": "checkin_9",
+   "type": "checkin_desk",
+   "name": "checkin_9",
+   "level": "G",
+   "x": 6397.43,
+   "z": -514.58,
+   "approx": false,
+   "px": [
+    2374.3,
+    745.8
+   ]
+  },
+  {
+   "id": "checkin_10",
+   "type": "checkin_desk",
+   "name": "checkin_10",
+   "level": "G",
+   "x": 6399.37,
+   "z": -514.57,
+   "approx": false,
+   "px": [
+    2393.7,
+    745.7
+   ]
+  },
+  {
+   "id": "checkin_11",
+   "type": "checkin_desk",
+   "name": "checkin_11",
+   "level": "G",
+   "x": 6402.24,
+   "z": -514.56,
+   "approx": false,
+   "px": [
+    2422.4,
+    745.6
+   ]
+  },
+  {
+   "id": "checkin_12",
+   "type": "checkin_desk",
+   "name": "checkin_12",
+   "level": "G",
+   "x": 6404.17,
+   "z": -514.55,
+   "approx": false,
+   "px": [
+    2441.7,
+    745.5
+   ]
+  },
+  {
+   "id": "kiosk_1",
+   "type": "self_checkin",
+   "name": "kiosk_1",
+   "level": "G",
+   "x": 6383.06,
+   "z": -526.4,
+   "approx": false,
+   "px": [
+    2230.6,
+    864.0
+   ]
+  },
+  {
+   "id": "kiosk_2",
+   "type": "self_checkin",
+   "name": "kiosk_2",
+   "level": "G",
+   "x": 6387.0,
+   "z": -526.38,
+   "approx": false,
+   "px": [
+    2270.0,
+    863.8
+   ]
+  },
+  {
+   "id": "kiosk_3",
+   "type": "self_checkin",
+   "name": "kiosk_3",
+   "level": "G",
+   "x": 6392.53,
+   "z": -522.56,
+   "approx": false,
+   "px": [
+    2325.3,
+    825.6
+   ]
+  },
+  {
+   "id": "kiosk_4",
+   "type": "self_checkin",
+   "name": "kiosk_4",
+   "level": "G",
+   "x": 6388.12,
+   "z": -522.58,
+   "approx": false,
+   "px": [
+    2281.2,
+    825.8
+   ]
+  },
+  {
+   "id": "kiosk_5",
+   "type": "self_checkin",
+   "name": "kiosk_5",
+   "level": "G",
+   "x": 6396.44,
+   "z": -522.54,
+   "approx": false,
+   "px": [
+    2364.4,
+    825.4
+   ]
+  },
+  {
+   "id": "kiosk_6",
+   "type": "self_checkin",
+   "name": "kiosk_6",
+   "level": "G",
+   "x": 6401.83,
+   "z": -522.51,
+   "approx": false,
+   "px": [
+    2418.3,
+    825.1
+   ]
+  },
+  {
+   "id": "security_lane_1_arch",
+   "type": "security_lane",
+   "name": "security_lane_1_arch",
+   "level": "U",
+   "x": 6277.46,
+   "z": -484.81,
+   "approx": true,
+   "px": [
+    1174.6,
+    448.1
+   ]
+  },
+  {
+   "id": "security_lane_2_arch",
+   "type": "security_lane",
+   "name": "security_lane_2_arch",
+   "level": "U",
+   "x": 6282.8,
+   "z": -486.55,
+   "approx": true,
+   "px": [
+    1228.0,
+    465.5
+   ]
+  },
+  {
+   "id": "security_lane_3_arch",
+   "type": "security_lane",
+   "name": "security_lane_3_arch",
+   "level": "U",
+   "x": 6288.15,
+   "z": -488.29,
+   "approx": true,
+   "px": [
+    1281.5,
+    482.9
+   ]
+  },
+  {
+   "id": "security_lane_4_arch",
+   "type": "security_lane",
+   "name": "security_lane_4_arch",
+   "level": "U",
+   "x": 6293.49,
+   "z": -490.03,
+   "approx": true,
+   "px": [
+    1334.9,
+    500.3
+   ]
+  },
+  {
+   "id": "info_desk",
+   "type": "information",
+   "name": "info_desk",
+   "level": "G",
+   "x": 6307.49,
+   "z": -521.41,
+   "approx": false,
+   "px": [
+    1474.9,
+    814.1
+   ]
+  },
+  {
+   "id": "gate_1",
+   "type": "gate",
+   "name": "Poarta 1",
+   "level": "U",
+   "x": 6182.57,
+   "z": -456.37,
+   "approx": true,
+   "px": [
+    225.7,
+    163.7
+   ]
+  },
+  {
+   "id": "gate_2",
+   "type": "gate",
+   "name": "Poarta 2",
+   "level": "U",
+   "x": 6211.43,
+   "z": -455.93,
+   "approx": true,
+   "px": [
+    514.3,
+    159.3
+   ]
+  },
+  {
+   "id": "gate_3",
+   "type": "gate",
+   "name": "Poarta 3",
+   "level": "U",
+   "x": 6239.82,
+   "z": -458.53,
+   "approx": true,
+   "px": [
+    798.2,
+    185.3
+   ]
+  },
+  {
+   "id": "gate_4",
+   "type": "gate",
+   "name": "Poarta 4",
+   "level": "U",
+   "x": 6267.22,
+   "z": -467.59,
+   "approx": true,
+   "px": [
+    1072.2,
+    275.9
+   ]
+  },
+  {
+   "id": "gate_5",
+   "type": "gate",
+   "name": "Poarta 5",
+   "level": "U",
+   "x": 6294.63,
+   "z": -476.66,
+   "approx": true,
+   "px": [
+    1346.3,
+    366.6
+   ]
+  },
+  {
+   "id": "gate_6",
+   "type": "gate",
+   "name": "Poarta 6",
+   "level": "U",
+   "x": 6322.03,
+   "z": -485.72,
+   "approx": true,
+   "px": [
+    1620.3,
+    457.2
+   ]
+  },
+  {
+   "id": "gate_7",
+   "type": "gate",
+   "name": "Poarta 7",
+   "level": "U",
+   "x": 6349.71,
+   "z": -492.91,
+   "approx": true,
+   "px": [
+    1897.1,
+    529.1
+   ]
+  },
+  {
+   "id": "gate_8",
+   "type": "gate",
+   "name": "Poarta 8",
+   "level": "U",
+   "x": 6378.57,
+   "z": -492.25,
+   "approx": true,
+   "px": [
+    2185.7,
+    522.5
+   ]
+  },
+  {
+   "id": "gate_9",
+   "type": "gate",
+   "name": "Poarta 9",
+   "level": "U",
+   "x": 6407.42,
+   "z": -491.59,
+   "approx": true,
+   "px": [
+    2474.2,
+    515.9
+   ]
+  },
+  {
+   "id": "gate_10",
+   "type": "gate",
+   "name": "Poarta 10",
+   "level": "U",
+   "x": 6436.28,
+   "z": -490.93,
+   "approx": true,
+   "px": [
+    2762.8,
+    509.3
+   ]
+  },
+  {
+   "id": "shop_pricecarz",
+   "type": "shop",
+   "name": "PriceCarz",
+   "level": "G",
+   "x": 6265.03,
+   "z": -502.85,
+   "approx": false,
+   "px": [
+    1050.3,
+    628.5
+   ]
+  },
+  {
+   "id": "shop_frosted",
+   "type": "shop",
+   "name": "frosted units",
+   "level": "G",
+   "x": 6269.88,
+   "z": -504.43,
+   "approx": false,
+   "px": [
+    1098.8,
+    644.3
+   ]
+  },
+  {
+   "id": "shop_sixt",
+   "type": "shop",
+   "name": "Sixt",
+   "level": "G",
+   "x": 6275.43,
+   "z": -506.24,
+   "approx": false,
+   "px": [
+    1154.3,
+    662.4
+   ]
+  },
+  {
+   "id": "shop_autonom",
+   "type": "shop",
+   "name": "Autonom",
+   "level": "G",
+   "x": 6282.37,
+   "z": -508.49,
+   "approx": false,
+   "px": [
+    1223.7,
+    684.9
+   ]
+  },
+  {
+   "id": "shop_offices",
+   "type": "shop",
+   "name": "offices",
+   "level": "G",
+   "x": 6297.16,
+   "z": -513.31,
+   "approx": false,
+   "px": [
+    1371.6,
+    733.1
+   ]
+  },
+  {
+   "id": "shop_glazed",
+   "type": "shop",
+   "name": "glazed office",
+   "level": "G",
+   "x": 6348.76,
+   "z": -519.32,
+   "approx": false,
+   "px": [
+    1887.6,
+    793.2
+   ]
+  },
+  {
+   "id": "cafe_east",
+   "type": "cafe",
+   "name": "Gourmet Bar",
+   "level": "G",
+   "x": 6406.18,
+   "z": -527.04,
+   "approx": false,
+   "px": [
+    2461.8,
+    870.4
+   ]
+  },
+  {
+   "id": "kiosk_west",
+   "type": "cafe",
+   "name": "kiosk with the green sign, wording unread",
+   "level": "G",
+   "x": 6235.4,
+   "z": -497.41,
+   "approx": false,
+   "px": [
+    754.0,
+    574.1
+   ]
+  },
+  {
+   "id": "atm_bcr",
+   "type": "atm",
+   "name": "BCR",
+   "level": "G",
+   "x": 6246.03,
+   "z": -510.13,
+   "approx": false,
+   "px": [
+    860.3,
+    701.3
+   ]
+  },
+  {
+   "id": "atm_euronet",
+   "type": "atm",
+   "name": "Euronet",
+   "level": "G",
+   "x": 6278.21,
+   "z": -520.5,
+   "approx": false,
+   "px": [
+    1182.1,
+    805.0
+   ]
+  },
+  {
+   "id": "vending_1",
+   "type": "vending",
+   "name": "vending_1",
+   "level": "G",
+   "x": 6343.11,
+   "z": -519.75,
+   "approx": false,
+   "px": [
+    1831.1,
+    797.5
+   ]
+  },
+  {
+   "id": "wc",
+   "type": "wc",
+   "name": "wc",
+   "level": "G",
+   "x": 6354.83,
+   "z": -514.29,
+   "approx": true,
+   "px": [
+    1948.3,
+    742.9
+   ]
+  },
+  {
+   "id": "fids_checkin_1_f1",
+   "type": "flight_screen",
+   "name": "fids_checkin_1_f1",
+   "level": "G",
+   "x": 6376.16,
+   "z": -523.28,
+   "approx": true,
+   "px": [
+    2161.6,
+    832.8
+   ]
+  },
+  {
+   "id": "fids_checkin_1_f2",
+   "type": "flight_screen",
+   "name": "fids_checkin_1_f2",
+   "level": "G",
+   "x": 6377.44,
+   "z": -523.27,
+   "approx": true,
+   "px": [
+    2174.4,
+    832.7
+   ]
+  },
+  {
+   "id": "fids_checkin_2_f1",
+   "type": "flight_screen",
+   "name": "fids_checkin_2_f1",
+   "level": "G",
+   "x": 6388.13,
+   "z": -523.22,
+   "approx": true,
+   "px": [
+    2281.3,
+    832.2
+   ]
+  },
+  {
+   "id": "fids_checkin_2_f2",
+   "type": "flight_screen",
+   "name": "fids_checkin_2_f2",
+   "level": "G",
+   "x": 6389.41,
+   "z": -523.21,
+   "approx": true,
+   "px": [
+    2294.1,
+    832.1
+   ]
+  },
+  {
+   "id": "fids_checkin_3_f1",
+   "type": "flight_screen",
+   "name": "fids_checkin_3_f1",
+   "level": "G",
+   "x": 6400.09,
+   "z": -523.16,
+   "approx": true,
+   "px": [
+    2400.9,
+    831.6
+   ]
+  },
+  {
+   "id": "fids_checkin_3_f2",
+   "type": "flight_screen",
+   "name": "fids_checkin_3_f2",
+   "level": "G",
+   "x": 6401.37,
+   "z": -523.16,
+   "approx": true,
+   "px": [
+    2413.7,
+    831.6
+   ]
+  },
+  {
+   "id": "fids_arr_schengen_f1",
+   "type": "flight_screen",
+   "name": "fids_arr_schengen_f1",
+   "level": "G",
+   "x": 6288.39,
+   "z": -515.15,
+   "approx": true,
+   "px": [
+    1283.9,
+    751.5
+   ]
+  },
+  {
+   "id": "fids_arr_schengen_f2",
+   "type": "flight_screen",
+   "name": "fids_arr_schengen_f2",
+   "level": "G",
+   "x": 6289.61,
+   "z": -515.54,
+   "approx": true,
+   "px": [
+    1296.1,
+    755.4
+   ]
+  },
+  {
+   "id": "fids_arr_schengen_b1",
+   "type": "flight_screen",
+   "name": "fids_arr_schengen_b1",
+   "level": "G",
+   "x": 6291.5,
+   "z": -509.72,
+   "approx": true,
+   "px": [
+    1315.0,
+    697.2
+   ]
+  },
+  {
+   "id": "fids_arr_schengen_b2",
+   "type": "flight_screen",
+   "name": "fids_arr_schengen_b2",
+   "level": "G",
+   "x": 6290.28,
+   "z": -509.32,
+   "approx": true,
+   "px": [
+    1302.8,
+    693.2
+   ]
+  },
+  {
+   "id": "fids_arr_west_f1",
+   "type": "flight_screen",
+   "name": "fids_arr_west_f1",
+   "level": "G",
+   "x": 6248.91,
+   "z": -504.4,
+   "approx": true,
+   "px": [
+    889.1,
+    644.0
+   ]
+  },
+  {
+   "id": "fids_arr_west_f2",
+   "type": "flight_screen",
+   "name": "fids_arr_west_f2",
+   "level": "G",
+   "x": 6250.13,
+   "z": -504.79,
+   "approx": true,
+   "px": [
+    901.3,
+    647.9
+   ]
+  },
+  {
+   "id": "fids_security_f1",
+   "type": "flight_screen",
+   "name": "fids_security_f1",
+   "level": "U",
+   "x": 6280.89,
+   "z": -495.49,
+   "approx": true,
+   "px": [
+    1208.9,
+    554.9
+   ]
+  },
+  {
+   "id": "fids_security_f2",
+   "type": "flight_screen",
+   "name": "fids_security_f2",
+   "level": "U",
+   "x": 6282.11,
+   "z": -495.89,
+   "approx": true,
+   "px": [
+    1221.1,
+    558.9
+   ]
+  },
+  {
+   "id": "fids_gates_3_f1",
+   "type": "flight_screen",
+   "name": "fids_gates_3_f1",
+   "level": "U",
+   "x": 6243.61,
+   "z": -463.01,
+   "approx": true,
+   "px": [
+    836.1,
+    230.1
+   ]
+  },
+  {
+   "id": "fids_gates_3_b1",
+   "type": "flight_screen",
+   "name": "fids_gates_3_b1",
+   "level": "U",
+   "x": 6245.53,
+   "z": -457.2,
+   "approx": true,
+   "px": [
+    855.3,
+    172.0
+   ]
+  },
+  {
+   "id": "fids_gates_8_f1",
+   "type": "flight_screen",
+   "name": "fids_gates_8_f1",
+   "level": "U",
+   "x": 6383.64,
+   "z": -495.19,
+   "approx": true,
+   "px": [
+    2236.4,
+    551.9
+   ]
+  },
+  {
+   "id": "fids_gates_8_b1",
+   "type": "flight_screen",
+   "name": "fids_gates_8_b1",
+   "level": "U",
+   "x": 6383.5,
+   "z": -489.07,
+   "approx": true,
+   "px": [
+    2235.0,
+    490.7
+   ]
+  },
+  {
+   "id": "passport_arr_1",
+   "type": "passport_booth",
+   "name": "passport_arr_1",
+   "level": "G",
+   "x": 6267.5,
+   "z": -470.0,
+   "approx": true,
+   "px": [
+    1075.0,
+    300.0
+   ]
+  },
+  {
+   "id": "passport_arr_2",
+   "type": "passport_booth",
+   "name": "passport_arr_2",
+   "level": "G",
+   "x": 6269.59,
+   "z": -470.68,
+   "approx": true,
+   "px": [
+    1095.9,
+    306.8
+   ]
+  },
+  {
+   "id": "passport_dep_1",
+   "type": "passport_booth",
+   "name": "passport_dep_1",
+   "level": "U",
+   "x": 6253.9,
+   "z": -461.92,
+   "approx": true,
+   "px": [
+    939.0,
+    219.2
+   ]
+  },
+  {
+   "id": "passport_dep_2",
+   "type": "passport_booth",
+   "name": "passport_dep_2",
+   "level": "U",
+   "x": 6253.14,
+   "z": -464.2,
+   "approx": true,
+   "px": [
+    931.4,
+    242.0
+   ]
+  },
+  {
+   "id": "cafe_air",
+   "type": "cafe",
+   "name": "café (airside)",
+   "level": "U",
+   "x": 6342.32,
+   "z": -492.64,
+   "approx": true,
+   "px": [
+    1823.2,
+    526.4
+   ]
+  },
+  {
+   "id": "duty_free",
+   "type": "shop",
+   "name": "duty free",
+   "level": "U",
+   "x": 6292.99,
+   "z": -476.33,
+   "approx": true,
+   "px": [
+    1329.9,
+    363.3
+   ]
+  },
+  {
+   "id": "wc_air",
+   "type": "wc",
+   "name": "Toalete / Toilets",
+   "level": "U",
+   "x": 6372.89,
+   "z": -497.13,
+   "approx": true,
+   "px": [
+    2128.9,
+    571.3
+   ]
+  },
+  {
+   "id": "lost_found",
+   "type": "office",
+   "name": "Bagaje pierdute / Lost & Found",
+   "level": "G",
+   "x": 6240.25,
+   "z": -494.57,
+   "approx": false,
+   "px": [
+    802.5,
+    545.7
+   ]
+  },
+  {
+   "id": "cctv_upper_1",
+   "type": "camera",
+   "name": "security queue",
+   "level": "U",
+   "x": 6270.394,
+   "z": -498.286,
+   "height_m": 202.34,
+   "yaw": 65.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "security queue",
+   "approx": true,
+   "px": [
+    1103.9,
+    582.9
+   ]
+  },
+  {
+   "id": "cctv_upper_2",
+   "type": "camera",
+   "name": "security queue",
+   "level": "U",
+   "x": 6284.25,
+   "z": -499.94,
+   "height_m": 202.2,
+   "yaw": 325.0,
+   "pitch": 40.0,
+   "hfov": 90.0,
+   "covers": "security queue",
+   "approx": true,
+   "px": [
+    1242.5,
+    599.4
+   ]
+  },
+  {
+   "id": "cctv_upper_3",
+   "type": "camera",
+   "name": "security queue",
+   "level": "U",
+   "x": 6291.439,
+   "z": -505.138,
+   "height_m": 202.34,
+   "yaw": 325.0,
+   "pitch": 30.0,
+   "hfov": 75.0,
+   "covers": "security queue",
+   "approx": true,
+   "px": [
+    1314.4,
+    651.4
+   ]
+  },
+  {
+   "id": "cctv_upper_4",
+   "type": "camera",
+   "name": "security queue",
+   "level": "U",
+   "x": 6306.6,
+   "z": -505.52,
+   "height_m": 202.2,
+   "yaw": 260.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "security queue",
+   "approx": true,
+   "px": [
+    1466.0,
+    655.2
+   ]
+  },
+  {
+   "id": "cctv_security_lane_1",
+   "type": "camera",
+   "name": "security control",
+   "level": "U",
+   "x": 6271.06,
+   "z": -487.89,
+   "height_m": 200.4,
+   "yaw": 70.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "security control",
+   "approx": true,
+   "px": [
+    1110.6,
+    478.9
+   ]
+  },
+  {
+   "id": "cctv_security_lane_2",
+   "type": "camera",
+   "name": "security control",
+   "level": "U",
+   "x": 6279.45,
+   "z": -494.64,
+   "height_m": 200.81,
+   "yaw": 0.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "security control",
+   "approx": true,
+   "px": [
+    1194.5,
+    546.4
+   ]
+  },
+  {
+   "id": "cctv_security_lane_3",
+   "type": "camera",
+   "name": "security control",
+   "level": "U",
+   "x": 6284.83,
+   "z": -495.39,
+   "height_m": 200.81,
+   "yaw": 0.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "security control",
+   "approx": true,
+   "px": [
+    1248.3,
+    553.9
+   ]
+  },
+  {
+   "id": "cctv_security_lane_4",
+   "type": "camera",
+   "name": "security control",
+   "level": "U",
+   "x": 6291.21,
+   "z": -495.15,
+   "height_m": 200.4,
+   "yaw": 355.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "security control",
+   "approx": true,
+   "px": [
+    1312.1,
+    551.5
+   ]
+  },
+  {
+   "id": "cctv_checkin_1",
+   "type": "camera",
+   "name": "check-in queue",
+   "level": "G",
+   "x": 6374.95,
+   "z": -525.2,
+   "height_m": 197.01,
+   "yaw": 5.0,
+   "pitch": 40.0,
+   "hfov": 90.0,
+   "covers": "check-in queue",
+   "approx": true,
+   "px": [
+    2149.5,
+    852.0
+   ]
+  },
+  {
+   "id": "cctv_checkin_2",
+   "type": "camera",
+   "name": "check-in queue",
+   "level": "G",
+   "x": 6385.93,
+   "z": -512.14,
+   "height_m": 195.96,
+   "yaw": 155.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "check-in queue",
+   "approx": true,
+   "px": [
+    2259.3,
+    721.4
+   ]
+  },
+  {
+   "id": "cctv_checkin_3",
+   "type": "camera",
+   "name": "check-in queue",
+   "level": "G",
+   "x": 6395.91,
+   "z": -513.08,
+   "height_m": 195.41,
+   "yaw": 140.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "check-in queue",
+   "approx": true,
+   "px": [
+    2359.1,
+    730.8
+   ]
+  },
+  {
+   "id": "cctv_door_exit_west",
+   "type": "camera",
+   "name": "door exit_west",
+   "level": "G",
+   "x": 6260.69,
+   "z": -508.78,
+   "height_m": 197.01,
+   "yaw": 240.0,
+   "pitch": 40.0,
+   "hfov": 90.0,
+   "covers": "door exit_west",
+   "approx": true,
+   "px": [
+    1006.9,
+    687.8
+   ]
+  },
+  {
+   "id": "cctv_door_exit_mid",
+   "type": "camera",
+   "name": "door exit_mid",
+   "level": "G",
+   "x": 6305.29,
+   "z": -522.62,
+   "height_m": 196.21,
+   "yaw": 235.0,
+   "pitch": 40.0,
+   "hfov": 90.0,
+   "covers": "door exit_mid",
+   "approx": true,
+   "px": [
+    1452.9,
+    826.2
+   ]
+  },
+  {
+   "id": "cctv_door_arrivals_east",
+   "type": "camera",
+   "name": "door arrivals_east",
+   "level": "G",
+   "x": 6341.84,
+   "z": -524.85,
+   "height_m": 196.21,
+   "yaw": 205.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "door arrivals_east",
+   "approx": true,
+   "px": [
+    1818.4,
+    848.5
+   ]
+  },
+  {
+   "id": "cctv_door_departures",
+   "type": "camera",
+   "name": "door departures",
+   "level": "G",
+   "x": 6376.01,
+   "z": -531.7,
+   "height_m": 195.41,
+   "yaw": 280.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "door departures",
+   "approx": true,
+   "px": [
+    2160.1,
+    917.0
+   ]
+  },
+  {
+   "id": "cctv_arrivals_exit",
+   "type": "camera",
+   "name": "arrivals exit Schengen",
+   "level": "G",
+   "x": 6293.32,
+   "z": -515.38,
+   "height_m": 195.41,
+   "yaw": 340.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "arrivals exit Schengen",
+   "approx": true,
+   "px": [
+    1333.2,
+    753.8
+   ]
+  },
+  {
+   "id": "cctv_info",
+   "type": "camera",
+   "name": "information",
+   "level": "G",
+   "x": 6302.51,
+   "z": -522.66,
+   "height_m": 195.71,
+   "yaw": 35.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "information",
+   "approx": true,
+   "px": [
+    1425.1,
+    826.6
+   ]
+  },
+  {
+   "id": "cctv_reclaim_1",
+   "type": "camera",
+   "name": "baggage reclaim",
+   "level": "G",
+   "x": 6273.19,
+   "z": -493.79,
+   "height_m": 196.38,
+   "yaw": 65.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "baggage reclaim",
+   "approx": true,
+   "px": [
+    1131.9,
+    537.9
+   ]
+  },
+  {
+   "id": "cctv_reclaim_2",
+   "type": "camera",
+   "name": "baggage reclaim",
+   "level": "G",
+   "x": 6295.89,
+   "z": -501.18,
+   "height_m": 196.38,
+   "yaw": 65.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "baggage reclaim",
+   "approx": true,
+   "px": [
+    1358.9,
+    611.8
+   ]
+  },
+  {
+   "id": "cctv_passport_arr",
+   "type": "camera",
+   "name": "arrivals corridor",
+   "level": "G",
+   "x": 6273.2,
+   "z": -466.18,
+   "height_m": 195.0,
+   "yaw": 275.0,
+   "pitch": 35.0,
+   "hfov": 90.0,
+   "covers": "arrivals corridor",
+   "approx": true,
+   "px": [
+    1132.0,
+    261.8
+   ]
+  },
+  {
+   "id": "cctv_passport_dep",
+   "type": "camera",
+   "name": "gate lounge",
+   "level": "U",
+   "x": 6259.7,
+   "z": -470.85,
+   "height_m": 200.81,
+   "yaw": 355.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "gate lounge",
+   "approx": true,
+   "px": [
+    997.0,
+    308.5
+   ]
+  },
+  {
+   "id": "cctv_hall_west",
+   "type": "camera",
+   "name": "hall (arrivals waiting)",
+   "level": "G",
+   "x": 6233.15,
+   "z": -506.04,
+   "height_m": 197.01,
+   "yaw": 75.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "hall (arrivals waiting)",
+   "approx": true,
+   "px": [
+    731.5,
+    660.4
+   ]
+  },
+  {
+   "id": "cctv_hall_east",
+   "type": "camera",
+   "name": "hall (check-in side)",
+   "level": "G",
+   "x": 6407.18,
+   "z": -531.82,
+   "height_m": 197.01,
+   "yaw": 310.0,
+   "pitch": 30.0,
+   "hfov": 90.0,
+   "covers": "hall (check-in side)",
+   "approx": true,
+   "px": [
+    2471.8,
+    918.2
+   ]
+  },
+  {
+   "id": "cctv_security_queue",
+   "type": "camera",
+   "name": "security queue (whole serpentine)",
+   "level": "U",
+   "x": 6297.5,
+   "z": -511.0,
+   "height_m": 202.26,
+   "yaw": 315.0,
+   "pitch": 15.0,
+   "hfov": 60.0,
+   "covers": "security queue (whole serpentine)",
+   "approx": true,
+   "px": [
+    1375.0,
+    710.0
+   ]
+  },
+  {
+   "id": "cctv_checkin_overview",
+   "type": "camera",
+   "name": "check-in queues 1-3 (whole)",
+   "level": "G",
+   "x": 6389.0,
+   "z": -533.5,
+   "height_m": 198.21,
+   "yaw": 310.0,
+   "pitch": 15.0,
+   "hfov": 60.0,
+   "covers": "check-in queues 1-3 (whole)",
+   "approx": true,
+   "px": [
+    2290.0,
+    935.0
+   ]
+  },
+  {
+   "id": "cctv_gates_west",
+   "type": "camera",
+   "name": "gate lounge west (gates 1-2)",
+   "level": "U",
+   "x": 6176.0,
+   "z": -452.5,
+   "height_m": 202.11,
+   "yaw": 98.0,
+   "pitch": 18.0,
+   "hfov": 80.0,
+   "covers": "gate lounge west (gates 1-2)",
+   "approx": true,
+   "px": [
+    160.0,
+    125.0
+   ]
+  },
+  {
+   "id": "cctv_gates_mid",
+   "type": "camera",
+   "name": "gate lounge (gates 6-7)",
+   "level": "U",
+   "x": 6318.0,
+   "z": -478.5,
+   "height_m": 202.11,
+   "yaw": 125.0,
+   "pitch": 20.0,
+   "hfov": 80.0,
+   "covers": "gate lounge (gates 6-7)",
+   "approx": true,
+   "px": [
+    1580.0,
+    385.0
+   ]
+  },
+  {
+   "id": "cctv_gates_east",
+   "type": "camera",
+   "name": "gate lounge east (gates 8-10)",
+   "level": "U",
+   "x": 6447.0,
+   "z": -484.5,
+   "height_m": 202.11,
+   "yaw": 266.0,
+   "pitch": 18.0,
+   "hfov": 80.0,
+   "covers": "gate lounge east (gates 8-10)",
+   "approx": true,
+   "px": [
+    2870.0,
+    445.0
+   ]
+  },
+  {
+   "id": "cctv_ext_dep_kerb",
+   "type": "camera",
+   "name": "departures kerb",
+   "level": "X",
+   "x": 6346.0,
+   "z": -541.5,
+   "height_m": 199.4,
+   "yaw": 95.0,
+   "pitch": 17.0,
+   "hfov": 75.0,
+   "covers": "departures kerb",
+   "approx": true,
+   "px": [
+    944.0,
+    646.0
+   ]
+  },
+  {
+   "id": "cctv_ext_arr_kerb",
+   "type": "camera",
+   "name": "arrivals kerb",
+   "level": "X",
+   "x": 6333.0,
+   "z": -542.0,
+   "height_m": 199.4,
+   "yaw": 263.0,
+   "pitch": 17.0,
+   "hfov": 75.0,
+   "covers": "arrivals kerb",
+   "approx": true,
+   "px": [
+    892.0,
+    648.0
+   ]
+  },
+  {
+   "id": "cctv_ext_forecourt",
+   "type": "camera",
+   "name": "forecourt and T2 front doors",
+   "level": "X",
+   "x": 6352.0,
+   "z": -560.0,
+   "height_m": 201.4,
+   "yaw": 352.0,
+   "pitch": 21.0,
+   "hfov": 85.0,
+   "covers": "forecourt and T2 front doors",
+   "approx": true,
+   "px": [
+    968.0,
+    720.0
+   ]
+  },
+  {
+   "id": "cctv_ext_bolt",
+   "type": "camera",
+   "name": "Bolt / ride-hail pick-up",
+   "level": "X",
+   "x": 6366.0,
+   "z": -545.5,
+   "height_m": 199.4,
+   "yaw": 112.0,
+   "pitch": 22.0,
+   "hfov": 70.0,
+   "covers": "Bolt / ride-hail pick-up",
+   "approx": true,
+   "px": [
+    1024.0,
+    662.0
+   ]
+  },
+  {
+   "id": "cctv_ext_taxi_rank",
+   "type": "camera",
+   "name": "taxi rank and west exit",
+   "level": "X",
+   "x": 6246.0,
+   "z": -531.0,
+   "height_m": 200.4,
+   "yaw": 302.0,
+   "pitch": 24.0,
+   "hfov": 80.0,
+   "covers": "taxi rank and west exit",
+   "approx": true,
+   "px": [
+    544.0,
+    604.0
+   ]
+  },
+  {
+   "id": "cctv_ext_carpark",
+   "type": "camera",
+   "name": "T2 car park",
+   "level": "X",
+   "x": 6300.0,
+   "z": -548.0,
+   "height_m": 201.4,
+   "yaw": 182.0,
+   "pitch": 18.0,
+   "hfov": 90.0,
+   "covers": "T2 car park",
+   "approx": true,
+   "px": [
+    760.0,
+    672.0
+   ]
+  },
+  {
+   "id": "cctv_ext_carpark_east",
+   "type": "camera",
+   "name": "T2 car park east aisles (entrance side, approx)",
+   "level": "X",
+   "x": 6392.0,
+   "z": -556.0,
+   "height_m": 200.4,
+   "yaw": 215.0,
+   "pitch": 22.0,
+   "hfov": 75.0,
+   "covers": "T2 car park east aisles (entrance side, approx)",
+   "approx": true,
+   "px": [
+    1128.0,
+    704.0
+   ]
+  },
+  {
+   "id": "cctv_ext_facade_west",
+   "type": "camera",
+   "name": "T2 west facade, exit doors",
+   "level": "X",
+   "x": 6268.0,
+   "z": -545.0,
+   "height_m": 201.4,
+   "yaw": 330.0,
+   "pitch": 16.0,
+   "hfov": 80.0,
+   "covers": "T2 west facade, exit doors",
+   "approx": true,
+   "px": [
+    632.0,
+    660.0
+   ]
+  }
+ ]
+}
