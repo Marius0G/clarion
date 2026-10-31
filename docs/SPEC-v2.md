@@ -203,6 +203,9 @@ Clarion nu îi spune pasagerului ce să facă („pleacă acum”, „fii la int
 ### D23. Limba o alege pasagerul
 Pe `/join` pasagerul alege limba (Română / English). Pe WhatsApp o poate schimba oricând („English” / „Română”), iar agentul răspunde în limba aleasă. Toate mesajele automate, inclusiv evacuarea, și pagina `/m/<token>` folosesc limba aleasă. Fără alegere: română. Principiul din D22 rămâne: punem toate datele la dispoziția pasagerului, el decide.
 
+### D24. Reset demo, fără buton vizibil
+`POST /api/demo/reset` (token de operator) golește pasagerii legați (reali și simulați), token-urile de join și de pagină, rapoartele, evacuarea, comenzile, liniile (înapoi la valorile din plan) și istoricul mesajelor, apoi trimite lui Unity `sim.command { reset: true }`. Nu apare pe dashboard; se rulează din terminal (`npm run demo:reset` în `worker/`). Runbook-ul pitch-ului se stabilește mai târziu.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
