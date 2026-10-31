@@ -169,3 +169,33 @@ h3 { font-size: var(--text-body); font-weight: 650; margin-bottom: 10px; }
 .topbar .sim output { font-family: var(--font-data); font-size: 15px; }
 .topbar .sim input { width: 180px; }
 @media print { .app:has(.topbar .sim) .main { margin-bottom: 0; } }
+
+/* Ground transport: compact controls, map-first layout. */
+.ground-control { display: grid; gap: 2px; font-size: 12px; color: var(--text-2); flex: 0 0 183px; }
+.ground-control select { text-transform: capitalize; padding: 5px 7px; font-size: 13px; }
+.weather-chip { position: relative; font-size: 13px; min-width: 165px; }
+.weather-chip summary { display: flex; flex-wrap: wrap; gap: 2px 8px; max-width: 240px; list-style: none; }
+.weather-chip small { color: var(--text-2); }
+.weather-detail { position: absolute; z-index: 30; top: 100%; left: 0; width: 360px; padding: 14px; background: var(--bg-1); border: 1px solid var(--line); box-shadow: 0 6px 20px #0008; }
+.weather-detail p { margin: 8px 0; overflow-wrap: anywhere; }
+.layer-control { position: absolute; top: 12px; left: 12px; z-index: 5; display: flex; align-items: center; gap: 8px; }
+.layer-trigger { box-shadow: 0 3px 12px #0008; }
+.runway-quick { display: flex; gap: 4px; align-items: center; background: var(--bg-1); padding: 6px; border-radius: 4px; font-size: 12px; }
+.layer-control .layers { top: 42px; bottom: auto; left: 0; max-height: calc(100dvh - 230px); }
+.layers[hidden] { display: none; }
+.rail.sim-form { display: flex; flex-direction: column; overflow: hidden; padding: 12px 14px; }
+.rail.sim-form > h2 { margin-bottom: 0; padding-bottom: 8px; flex-shrink: 0; }
+.rail.sim-form > label { flex-shrink: 0; margin-block: 8px; }
+.rail.sim-form .scenario-catalog { flex: 1 1 150px; min-height: 80px; max-height: none; margin-top: 0; }
+.scenario-selected { flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--bg-1); padding-top: 4px; }
+.scenario-selected h3 { margin-top: 8px; }
+.scenario-selected > p:first-of-type { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
+.scenario-selected > p { margin-bottom: 5px; }
+.scenario-selected > button { width: 100%; }
+.scenario-selected label { margin-block: 7px; }
+.ground-legend { position: absolute; bottom: 40px; left: 12px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: #121821ed; font-size: 13px; pointer-events: none; display: grid; gap: 3px; }
+.ground-legend b { text-transform: capitalize; color: var(--done); }
+.ground-legend small { color: #f0e442; }
+.ground-legend i { color: var(--accent); font-style: normal; }
+.ground-legend em { color: var(--sim); font-style: normal; }
+@media (max-width: 1300px) { .brand span { display: none; } .topbar { gap: 10px; } .clocks { gap: 10px; } }
