@@ -1,7 +1,7 @@
 import { afterEach,describe,expect,it,vi } from 'vitest';
 import { PROVISIONAL_FLIGHTS,fromSim,simSeconds,type Flight,type SimFlightRow } from '../src/wa/flights.js';
 import { WhatsAppAgent,parseStaff,type WaStore } from '../src/wa/index.js';
-import { Messaging,estimateStage,evacPlan,routeFor,splitRegister,type EvacPlan } from '../src/wa/messaging.js';
+import { Messaging,affectedByEvacuation,estimateStage,evacPlan,routeFor,splitRegister,type EvacPlan } from '../src/wa/messaging.js';
 import { classifyIssue,matchNode } from '../src/wa/reports.js';
 import { arrivalPlan,toolsFor,type AirportView,type Profile,type ZoneRow } from '../src/wa/tools.js';
 import { airportView } from '../src/wa/tower.js';
@@ -384,3 +384,22 @@ describe('urgent automatic delivery', () => {
     }
   });
 });
+
+ it('limits partial evacuation to estimated locations and remaining routes on both channels', async () => {
+    quiet();
+    const sim = fakeSim([row(), row({ flight: 'RO 1', gateCloseAt: hm(7, 10), gate: 'gate_3' })]);
+    const h = harness(sim.view);
+    await h.inbound('START W6 3751');
+    await h.inbound('START RO 1', '40799999999');
+    await h.m.registerSims([{ agentId: 'public', role: 'p', flight: 'W6 3751' }, { agentId: 'gate', role: 'p', flight: 'RO 1' }]);
+    h.graph.length = 0; h.unity.length = 0;
+    expect(await h.m.plan({ id: 'partial', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] })).toBe(2);
+    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
+    expect(h.unity.map(m => m.data.agentId)).toEqual(['public', 'public']);
+    const f = fromSim([row()])[0]!;
+    expect(affectedByEvacuation(['U_SECURITY_QUEUE'], f, hm(7, 0))).toBe(true);
+    expect(affectedByEvacuation(['check_in:1'], f, hm(7, 0))).toBe(false);
+    expect(affectedByEvacuation(['check_in:2'], f, hm(9, 0))).toBe(false);
+    expect(affectedByEvacuation(['gate_2'], f, hm(9, 0))).toBe(true);
+    expect(affectedByEvacuation(['security'], undefined, hm(7, 0))).toBe(false);
+ });

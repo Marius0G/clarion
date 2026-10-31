@@ -1,4 +1,6 @@
 import { Auth } from '../../../backend/src/auth.js';
+import { route } from '../../../backend/src/routing.js';
+import { terminalGraph } from '../../../backend/src/terminal.js';
 import { isNodeId, mapNodeId } from '../../../backend/src/mapIds.js';
 import { urgentBubbles } from './urgency.js';
 import { toBubbles } from './agent.js';
@@ -81,6 +83,19 @@ export function routeFor(plan: EvacPlan, f: Flight | undefined, now: number): Ev
   const candidates = stage === 'gate' ? [f?.gate, 'airside'] : stage === 'airside' ? ['airside', 'security'] : stage === 'public' ? [f?.checkIn, f?.checkIn?.replace('check_in:', 'bag_drop:'), 'G_CHECKIN_QUEUE', 'entrance', 'security'] : [];
   for (const c of candidates) { const r = c && (plan.routes.find(x => x.from === c) ?? plan.routes.find(x => mapNodeId(x.from) === mapNodeId(c))); if (r) return r; }
   return plan.routes[0]!;
+}
+
+/** D9: estimated current zone plus remaining normal journey, never agent.batch/truth. */
+export function affectedByEvacuation(blocked: readonly string[], f: Flight | undefined, now: number): boolean {
+  if (!blocked.length) return true;
+  const stage = estimateStage(f, now);
+  if (!stage || !f) return false;
+  const start = stage === 'gate' ? f.gate : stage === 'airside' ? 'airside' : f.checkIn ?? 'entrance';
+  const stops = stage === 'public' ? [start, 'security', f.gate] : [start, f.gate];
+  const nodes = [...stops];
+  for (let i = 1; i < stops.length; i++) nodes.push(...(route(terminalGraph, stops[i - 1]!, stops[i]!)?.nodes ?? []));
+  const closed = new Set(blocked.map(mapNodeId));
+  return nodes.some(id => closed.has(mapNodeId(id)));
 }
 
 export interface MessagingDeps {
@@ -396,6 +411,7 @@ export class Messaging {
       let sent = 0;
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
+        if (!affectedByEvacuation(p.blocked, f, now)) continue;
         const r = routeFor(p, f, now);
         const blocked = p.blocked.length ? copy.blockedAreas(s.lang, p) : '';
         const text = copy.evacuationRoute(s.lang, blocked, r);
