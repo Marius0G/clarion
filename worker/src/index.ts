@@ -12,6 +12,7 @@ import { createSms, createWallet, equalSecret, validWhatsAppSignature, type Secr
 import type { Wallet, WalletStore } from '../../backend/src/wallet.js';
 import { WhatsAppAgent, type WaEnv } from './wa/index.js';
 import { airportView } from './wa/tower.js';
+import { evacPlan, splitRegister } from './wa/messaging.js';
 
 export interface Env extends Secrets, WaEnv {
   TOWER: DurableObjectNamespace<Tower>;
@@ -89,7 +90,8 @@ export class Tower extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.telegram = new Telegram(env.TELEGRAM_BOT_TOKEN ?? '');
-    this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0));
+    this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0),
+      { toUnity: (type, data) => this.toTwins(type, data) });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
@@ -130,7 +132,17 @@ export class Tower extends DurableObject<Env> {
     this.nextFidsRefresh = now + 300000;
   }
   private async handle(event: Envelope, client: Client) {
+    // Passenger messaging (SPEC-v2 D14, D17, A10) hooks in before and after the engine; see wa/messaging.ts.
+    const msg = this.whatsapp.messaging;
+    if (event?.type === 'evac.plan' && client !== 'viewer') { this.ctx.waitUntil(msg.plan(evacPlan(event.data))); return; }
+    if (event?.type === 'agent.register' && client === 'twin') {
+      const { sims, rest } = splitRegister(event.data);
+      if (sims.length) this.ctx.waitUntil(msg.registerSims(sims));
+      if (!rest) return;
+      event = { ...event, data: rest };
+    }
     await this.wallet.handle(this.engine, event, client);
+    if (event.type === 'flight.update') this.ctx.waitUntil(msg.flightsChanged());
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
     if (event.type === 'console.reset') {
@@ -198,6 +210,7 @@ export class Tower extends DurableObject<Env> {
       const url = new URL(request.url);
       const path = url.pathname;
       try {
+        if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/agent/route'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
@@ -212,6 +225,8 @@ export class Tower extends DurableObject<Env> {
         }
         if (request.method === 'GET') {
           if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics));
+          // D11: staff reports for the dashboard pins.
+          if (path === '/api/reports') return json(await this.whatsapp.reports.list());
           if (path === '/api/sim/agents') return json(this.engine.sim.agents(url.searchParams));
           if (path === '/health') return json({ ok: true, service: 'clarion', telegram: this.telegram.enabled ? 'live' : 'dry-run' });
           if (path === '/api/state') return json(this.engine.snapshot());
@@ -284,6 +299,11 @@ export class Tower extends DurableObject<Env> {
               telegramLink: this.engine.telegramLink(sub, this.telegram.botUsername ?? this.env.TELEGRAM_BOT_USERNAME ?? 'ClarionDemoBot'),
             } : {}) }, 201);
           }
+          const close = /^\/api\/reports\/([A-Za-z0-9_-]{1,40})\/close$/.exec(path);
+          if (close) {
+            const report = await this.whatsapp.reports.close(close[1]!);
+            return report ? json(report) : json({ error: 'Unknown report' }, 404);
+          }
           if (path === '/api/sim/command') {
             const data = simCommand(JSON.parse(await bodyText(request)));
             const twins = this.twins();
@@ -296,6 +316,8 @@ export class Tower extends DurableObject<Env> {
             if (!this.twins().length) return json({ connected: false }, 409);
             const record = this.engine.sim.sent(command);
             this.toTwins('ops.command', opsWire(record));
+            // D10: passengers hear about it; vision's evac.plan brings the routes, else a generic message after 3 s.
+            if (record.type === 'evacuate') this.ctx.waitUntil(this.whatsapp.messaging.evacuate(record.zones, record.id));
             return json({ connected: true, command: record }, 202);
           }
           if (path === '/api/agent/route') {

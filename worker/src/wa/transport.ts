@@ -8,6 +8,8 @@ export interface WaEnv {
   WA_ALLOWLIST?: string;
   ANTHROPIC_API_KEY?: string;
   CLAUDE_MODEL?: string;
+  /** Code an employee sends as "STAFF <code>" to get the staff role (D11). Unset: DEFAULT_STAFF_CODE. */
+  STAFF_CODE?: string;
 }
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 

@@ -1,0 +1,228 @@
+// Outbound passenger messages (SPEC-v2 D10, D14, D15, D17): one fan-out for real phones (WhatsApp) and simulated
+// subscribers (Unity agents with a virtual phone, agent.message over the twin WebSocket).
+// Storage: wa:subs -> phones with a flight or the staff role   sim:subs -> { [agentId]: SimSubscriber }
+//          msg:flights -> { [flightKey]: "status:delayMin" } last change already announced (dedupe)
+import { clockLabel, clockText, closeAt, etd, findFlight, flightKey, gateName, type Flight } from './flights.js';
+import { arrivalPlan, nodeName, type AirportView, type Profile } from './tools.js';
+export { nodeName } from './tools.js';
+import { masked, type WhatsAppClient } from './transport.js';
+import type { WaStore } from './index.js';
+
+export const WINDOW_MS = 86400000;
+/** How long an evacuate waits for vision's evac.plan before the generic message goes out. */
+export const EVAC_WAIT_MS = 3000;
+export type NotifyKind = 'arrive' | 'flight' | 'route' | 'evacuate' | 'admin';
+export interface SimSubscriber { agentId: string; role: string; flight: string }
+export type Subscriber = { channel: 'whatsapp'; phone: string } | ({ channel: 'sim' } & SimSubscriber);
+export type Delivery = 'sent' | 'outside_window' | 'offline' | 'failed';
+const SIM_MAX = 5000;
+
+// ---- agent.register for simulated subscribers (D17).
+const text = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
+const isSim = (a: any) => a && typeof a === 'object' && a.channel === 'sim';
+/**
+ * Splits an agent.register payload: `{ agentId, role, channel: "sim", flight }` (one) or entries with channel "sim"
+ * inside `agents[]` are simulated subscribers; everything else stays for the engine (legacy shape, unchanged).
+ * Throws on an invalid sim entry. rest is null when nothing is left for the engine.
+ */
+export function splitRegister(data: any): { sims: SimSubscriber[]; rest: any | null } {
+  const single = data && typeof data === 'object' && !Array.isArray(data.agents) && isSim(data);
+  const entries: any[] = single ? [data] : Array.isArray(data?.agents) ? data.agents.filter(isSim) : [];
+  const sims = entries.map(a => {
+    if (!text(a.agentId, 100) || !text(a.role, 40) || !text(a.flight, 20)) throw new Error('Invalid sim agent');
+    return { agentId: a.agentId, role: a.role, flight: a.flight };
+  });
+  if (single) return { sims, rest: null };
+  if (!Array.isArray(data?.agents)) return { sims, rest: data };
+  if (!sims.length) return { sims, rest: data };
+  const others = data.agents.filter((a: any) => !isSim(a));
+  return { sims, rest: others.length ? { ...data, agents: others } : null };
+}
+
+// ---- evac.plan from vision (A9, A10).
+export interface EvacRoute { from: string; exit: string; nodes: string[] }
+export interface EvacPlan { id: string; blocked: string[]; clearSec: number; exits: { exit: string; people: number; clearSec: number }[]; routes: EvacRoute[] }
+const node = (v: unknown) => typeof v === 'string' && /^[a-z][a-z0-9_]{0,39}(:[A-Za-z0-9_-]{1,16})?$/.test(v);
+const secs = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+export function evacPlan(d: any): EvacPlan {
+  const ok = d && typeof d === 'object' && text(d.id, 100) && Array.isArray(d.blocked) && d.blocked.length <= 50 && d.blocked.every(node) && secs(d.clearSec) &&
+    Array.isArray(d.exits) && d.exits.length <= 50 && d.exits.every((e: any) => e && node(e.exit) && Number.isSafeInteger(e.people) && e.people >= 0 && secs(e.clearSec)) &&
+    Array.isArray(d.routes) && d.routes.length >= 1 && d.routes.length <= 500 &&
+    d.routes.every((r: any) => r && node(r.from) && node(r.exit) && Array.isArray(r.nodes) && r.nodes.length >= 1 && r.nodes.length <= 200 && r.nodes.every(node));
+  if (!ok) throw new Error('Invalid evac plan');
+  return {
+    id: d.id, blocked: [...d.blocked], clearSec: d.clearSec,
+    exits: d.exits.map((e: any) => ({ exit: e.exit, people: e.people, clearSec: e.clearSec })),
+    routes: d.routes.map((r: any) => ({ from: r.from, exit: r.exit, nodes: [...r.nodes] })),
+  };
+}
+
+/**
+ * D9: where the person probably is, from the clock against the flight only (no truth, no GPS).
+ * gate in the last 15 min before the gate closes, airside in the 45 before that, public otherwise.
+ */
+export function estimateStage(f: Flight | undefined, now: number): 'public' | 'airside' | 'gate' | null {
+  if (!f || f.status === 'cancelled' || f.status === 'departed') return null;
+  const left = closeAt(f) - now;
+  return left <= 15 * 60 ? 'gate' : left <= 60 * 60 ? 'airside' : 'public';
+}
+/** A representative node per stage, then the route that leaves from it; else the first route (vision's best exit). */
+export function routeFor(plan: EvacPlan, f: Flight | undefined, now: number): EvacRoute {
+  const stage = estimateStage(f, now);
+  const candidates = stage === 'gate' ? [f?.gate, 'airside'] : stage === 'airside' ? ['airside', 'security'] : stage === 'public' ? [f?.checkIn, f?.checkIn?.replace('check_in:', 'bag_drop:'), 'entrance', 'security'] : [];
+  for (const c of candidates) { const r = c && plan.routes.find(x => x.from === c); if (r) return r; }
+  return plan.routes[0]!;
+}
+
+export interface MessagingDeps {
+  store: WaStore; wa: WhatsAppClient; view: AirportView;
+  /** Backend -> Unity on the twin socket; false when Unity is offline. */
+  toUnity: (type: string, data: unknown) => boolean;
+  evacWaitMs?: number;
+  now?: () => number;
+}
+
+export class Messaging {
+  private chain: Promise<unknown> = Promise.resolve();
+  private planned = new Set<string>();
+  constructor(private deps: MessagingDeps) {}
+
+  /** Serialises fan-outs so two quick flight.updates cannot both announce one change. */
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(work);
+    this.chain = next.catch(e => console.error(JSON.stringify({ msg: 'fanout-failed', error: String((e as Error)?.message ?? e).slice(0, 200) })));
+    return next;
+  }
+
+  /** The one way out for a passenger message: WhatsApp inside the 24h window, or agent.message to Unity. */
+  async notify(sub: Subscriber, m: { kind: NotifyKind; text: string }): Promise<Delivery> {
+    if (sub.channel === 'sim')
+      return this.deps.toUnity('agent.message', { agentId: sub.agentId, text: m.text, kind: m.kind }) ? 'sent' : 'offline';
+    const last = await this.deps.store.get<number>(`wa:last:${sub.phone}`);
+    // Outside the window only approved templates may go; there is none for these yet (D2), so it is skipped and logged.
+    if (typeof last !== 'number' || (this.deps.now?.() ?? Date.now()) - last >= WINDOW_MS) {
+      console.log(JSON.stringify({ msg: 'skipped', reason: 'outside_window', kind: m.kind, to: masked(sub.phone) }));
+      return 'outside_window';
+    }
+    return (await this.deps.wa.sendText(sub.phone, m.text)).ok ? 'sent' : 'failed';
+  }
+
+  // ---- Subscribers.
+  async addPhone(phone: string) {
+    const list = (await this.deps.store.get<string[]>('wa:subs')) ?? [];
+    if (!list.includes(phone)) await this.deps.store.put('wa:subs', [...list, phone]);
+  }
+  async removePhone(phone: string) {
+    const list = (await this.deps.store.get<string[]>('wa:subs')) ?? [];
+    if (list.includes(phone)) await this.deps.store.put('wa:subs', list.filter(p => p !== phone));
+  }
+  private async sims() { return (await this.deps.store.get<Record<string, SimSubscriber>>('sim:subs')) ?? {}; }
+  /** Everyone, with the flight each one is bound to (undefined for staff without one). */
+  async subscribers(): Promise<{ sub: Subscriber; flight?: string; hasCheckedBag?: boolean }[]> {
+    const out: { sub: Subscriber; flight?: string; hasCheckedBag?: boolean }[] = [];
+    for (const phone of (await this.deps.store.get<string[]>('wa:subs')) ?? []) {
+      const p = await this.deps.store.get<Profile>(`wa:profile:${phone}`);
+      if (p) out.push({ sub: { channel: 'whatsapp', phone }, flight: p.flight, hasCheckedBag: p.hasCheckedBag });
+    }
+    for (const s of Object.values(await this.sims())) out.push({ sub: { channel: 'sim', ...s }, flight: s.flight });
+    return out;
+  }
+
+  /** "Fii la intrare la HH:MM" for one person, or the cancellation note. */
+  arriveText(f: Flight, hasCheckedBag?: boolean) {
+    const clock = this.deps.view.clock();
+    if (f.status === 'cancelled') return `Zborul ${f.flight} spre ${f.destination} e anulat. Ia legătura cu compania aeriană pentru alt zbor.`;
+    const p = arrivalPlan(f, this.deps.view.flow(), clock, hasCheckedBag);
+    return `Fii la intrarea în terminal la ${p.beAtEntranceAt} (${p.clock}). Zborul ${f.flight} spre ${f.destination}, poarta ${p.gate} se închide la ${p.gateCloseAt}.`;
+  }
+
+  /** D17: Unity's agents with a virtual phone. Each new one gets the arrive message, like a phone after START. */
+  registerSims(list: SimSubscriber[]) {
+    return this.serial(async () => {
+      const subs = await this.sims();
+      const fresh = list.filter(s => !subs[s.agentId] || subs[s.agentId]!.flight !== s.flight);
+      for (const s of list) subs[s.agentId] = s;
+      if (Object.keys(subs).length > SIM_MAX) throw new Error(`Sim subscribers exceed ${SIM_MAX}`);
+      await this.deps.store.put('sim:subs', subs);
+      const flights = this.deps.view.flights();
+      for (const s of fresh) {
+        const f = findFlight(flights, s.flight);
+        if (f) await this.notify({ channel: 'sim', ...s }, { kind: f.status === 'cancelled' ? 'flight' : 'arrive', text: this.arriveText(f) });
+      }
+      return fresh.length;
+    });
+  }
+
+  /** The Romanian text for a flight change, with the new times and this person's new arrival time. */
+  flightText(f: Flight, hasCheckedBag?: boolean) {
+    const label = clockLabel(this.deps.view.clock());
+    if (f.status === 'cancelled') return `✈️ Zborul ${f.flight} spre ${f.destination} a fost anulat. Nu mai e nevoie să vii la aeroport pentru el; ia legătura cu compania aeriană pentru alt zbor.`;
+    const arrive = arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag).beAtEntranceAt;
+    if (f.delayMin > 0) return `✈️ Zborul ${f.flight} spre ${f.destination} are o întârziere de ${f.delayMin} min. Pleacă la ${clockText(etd(f))} în loc de ${clockText(f.std)}, poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
+    return `✈️ Zborul ${f.flight} spre ${f.destination} pleacă la ora programată, ${clockText(etd(f))}; poarta ${gateName(f.gate)} se închide la ${clockText(closeAt(f))} (${label}). Fii la intrarea în terminal la ${arrive}.`;
+  }
+
+  /**
+   * D14, D18 beat 3: after a flight.update, announce each flight whose status became delayed/cancelled or whose delay
+   * changed, once per change, to all its subscribers (real + sim). Returns the flights announced.
+   */
+  flightsChanged() {
+    return this.serial(async () => {
+      if (this.deps.view.provisional()) return [];
+      const seen = (await this.deps.store.get<Record<string, string>>('msg:flights')) ?? {};
+      const changed: Flight[] = [];
+      for (const f of this.deps.view.flights()) {
+        const key = flightKey(f.flight), sig = `${f.status}:${f.delayMin}`;
+        const [prevStatus = 'scheduled', prevDelay = '0'] = (seen[key] ?? '').split(':').filter(Boolean);
+        seen[key] = sig;
+        if (prevStatus === f.status && Number(prevDelay) === f.delayMin) continue;
+        if (f.status === 'cancelled' || (f.status === 'delayed' && prevStatus !== 'delayed') || Number(prevDelay) !== f.delayMin) changed.push(f);
+      }
+      await this.deps.store.put('msg:flights', seen);
+      if (!changed.length) return [];
+      const subs = await this.subscribers();
+      for (const f of changed) {
+        let sent = 0;
+        for (const s of subs.filter(s => s.flight && flightKey(s.flight) === flightKey(f.flight)))
+          if (await this.notify(s.sub, { kind: 'flight', text: this.flightText(f, s.hasCheckedBag) }) === 'sent') sent++;
+        console.log(JSON.stringify({ msg: 'flight-change', flight: f.flight, status: f.status, delayMin: f.delayMin, sent }));
+      }
+      return changed.map(f => f.flight);
+    });
+  }
+
+  /** Generic evacuation text, sent when vision's evac.plan does not arrive in time. */
+  evacuateText(zones: string[]) {
+    return `⚠️ Evacuare: ${zones.map(nodeName).join(', ')} ${zones.length > 1 ? 'sunt închise' : 'e închisă'}. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.`;
+  }
+  /**
+   * D10, D18 beat 4: an evacuate ops.command. Waits up to evacWaitMs for vision's evac.plan (routes per node);
+   * without it, everyone gets the generic message. Returns what went out.
+   */
+  async evacuate(zones: string[], id: string): Promise<'planned' | 'generic'> {
+    await new Promise(r => setTimeout(r, this.deps.evacWaitMs ?? EVAC_WAIT_MS));
+    if (this.planned.has(id)) return 'planned';
+    await this.serial(async () => {
+      for (const s of await this.subscribers()) await this.notify(s.sub, { kind: 'evacuate', text: this.evacuateText(zones) });
+    });
+    return 'generic';
+  }
+  /** evac.plan: each subscriber gets the route for the node it is estimated to be at; sim agents also walk it (agent.route). */
+  plan(p: EvacPlan) {
+    this.planned.add(p.id);
+    return this.serial(async () => {
+      const flights = this.deps.view.flights(), now = this.deps.view.clock().now;
+      let sent = 0;
+      for (const s of await this.subscribers()) {
+        const f = s.flight ? findFlight(flights, s.flight) : undefined;
+        const r = routeFor(p, f, now);
+        const blocked = p.blocked.length ? `${p.blocked.map(nodeName).join(', ')} ${p.blocked.length > 1 ? 'sunt închise' : 'e închisă'}. ` : '';
+        const text = `⚠️ Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(nodeName).join(' → ')}. Urmează indicatoarele și personalul.`;
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') sent++;
+        if (s.sub.channel === 'sim') this.deps.toUnity('agent.route', { agentId: s.sub.agentId, nodes: r.nodes, reason: 'evacuate' });
+      }
+      console.log(JSON.stringify({ msg: 'evac-plan', id: p.id, routes: p.routes.length, sent }));
+      return sent;
+    });
+  }
+}
