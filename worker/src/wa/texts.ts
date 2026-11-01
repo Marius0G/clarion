@@ -102,8 +102,8 @@ const texts = {
     "Flight {0} is not in today's schedule. The flight number is on your boarding pass."
   ],
   "startConnected": [
-    "Gata ✈️ Te-am conectat la zborul {0} spre {1}. Poarta {2} se închide la {3}.",
-    "Connected ✈️ Your flight is {0} to {1}. Gate {2} closes at {3}."
+    "Gata ✈️ Te-am conectat la zborul {0} spre {1}.",
+    "Connected ✈️ Your flight is {0} to {1}."
   ]
 } as const;
 export function say(lang: Lang | undefined, key: keyof typeof texts, ...values: (string | number)[]): string {

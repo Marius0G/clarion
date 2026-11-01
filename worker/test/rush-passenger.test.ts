@@ -101,7 +101,7 @@ it('delivers the D18 rush, recovery, delay and gate change to WhatsApp and web h
   const transcript = scenario.map(b => ({ recipient: b.to, type: b.type === 'interactive' ? 'buttons' : b.type,
     text: b.text?.body ?? b.interactive?.body.text ?? b.image?.caption }));
   expect(transcript).toEqual([
-    { recipient: '40712345678', type: 'text', text: 'Gata ✈️ Te-am conectat la zborul W4 3625 spre Birmingham. Poarta 3 se închide la 16:30.' },
+    { recipient: '40712345678', type: 'text', text: 'Gata ✈️ Te-am conectat la zborul W4 3625 spre Birmingham.' },
     { recipient: '40712345678', type: 'text', text: 'Zborul W4 3625 spre Birmingham. Check-in grupul 1: fără coadă. Control de securitate: fără coadă. De la securitate până la poarta 3 ~2 min de mers, ~4 min de stat la coadă.' },
     { recipient: '40712345678', type: 'text', text: 'Poarta 3 se închide la 16:30.' },
     { recipient: '40712345678', type: 'text', text: `https://passenger.example/m/${token}` },
