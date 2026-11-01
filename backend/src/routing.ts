@@ -13,8 +13,23 @@ export function walkingSpeed(density: number | null | undefined): number {
   if (density >= 5.4) return 0;
   return FREE_SPEED * -Math.expm1(-1.913 * (1 / density - 1 / 5.4));
 }
+export interface RouteOptions {
+  /**
+   * Evacuation mode opens the emergency-only crossings. Default: a route to an exit node tries a normal
+   * path first and falls back to evacuation mode only when there is none.
+   */
+  evacuation?: boolean
+}
 export function route(graph: RoutingGraph, from: string, to: string,
-  density: Readonly<Record<string, number | null | undefined>> = {}, blocked: readonly string[] = []): Route | null {
+  density: Readonly<Record<string, number | null | undefined>> = {}, blocked: readonly string[] = [], options: RouteOptions = {}): Route | null {
+  if (options.evacuation !== undefined) return search(graph, from, to, density, blocked, options.evacuation);
+  const target = graph.nodes.find(n => n.id === (graph.realMap ? mapNodeId(to) : to));
+  if (target?.kind !== 'exit') return search(graph, from, to, density, blocked, false);
+  return search(graph, from, to, density, blocked, false) ?? search(graph, from, to, density, blocked, true);
+}
+
+function search(graph: RoutingGraph, from: string, to: string,
+  density: Readonly<Record<string, number | null | undefined>>, blocked: readonly string[], evacuation: boolean): Route | null {
   const requestedFrom = from, requestedTo = to;
   if (graph.realMap) {
     from = mapNodeId(from); to = mapNodeId(to);
@@ -26,7 +41,6 @@ export function route(graph: RoutingGraph, from: string, to: string,
   }
   const nodes = new Map(graph.nodes.map(n => [n.id, n]));
   const closed = new Set(blocked);
-  const evacuation = nodes.get(to)?.kind === 'exit';
   const nodeDensity = (n: { id: string; zone?: string }) => Math.max(density[n.id] ?? 0, density[n.zone ?? n.id] ?? 0);
   const passable = (id: string) => {
     const n = nodes.get(id);
