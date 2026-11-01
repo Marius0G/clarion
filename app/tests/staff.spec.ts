@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { chatCoverage } from './chat-fixture'
-import { mockLive, opsFixture, staffData, staffSession } from './live-fixture'
+import { flowFixture, mockLive, opsFixture, staffData, staffSession } from './live-fixture'
 const shots = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad'
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
@@ -32,7 +32,10 @@ test('staff map: own zone, live numbers, forecast, report pins and the moving te
   await expect(team).toHaveAttribute('aria-label', 'Echipa · ~3 min')
   const before = await team.evaluate(e => (e as SVGGElement).style.transform)
   await expect.poll(() => team.evaluate(e => (e as SVGGElement).style.transform), { timeout: 4000 }).not.toBe(before)
-  await expect(page.locator('.lm-team-line')).toBeVisible()
+  const lines = page.getByTestId('lm-team-route').locator('.lm-team-line')
+  await expect(lines.first()).toBeVisible()
+  await expect(lines).toHaveCount(1)
+  await expect(lines.first()).toHaveAttribute('data-floor', 'U')
   await page.getByRole('button', { name: 'Extinde' }).press('Enter')
   await expect(page.getByTestId('zone-forecast')).toContainText('Peste 30 min: ▲~18 min'.replace('▲', '●'))
   await expect(page.getByTestId('zone-forecast')).toContainText('Peste 60 min: ~8 min')
@@ -41,6 +44,44 @@ test('staff map: own zone, live numbers, forecast, report pins and the moving te
   await expect(page.getByTestId('dispatch-notices')).not.toContainText('Poarta 9')
   await expect(page.locator('body')).not.toContainText(/Sarcini|Deschide o linie|Confirm|Gata|demo/)
   await page.screenshot({ path: `${shots}/staff.png` })
+})
+
+test('team route stays on each floor and drops completed corridors', async ({ page }) => {
+  const now = Date.now()
+  await page.clock.install({ time: now })
+  await page.clock.pauseAt(now)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const data = staffData(now)
+  data.reports[1]!.timestamps.en_route = new Date(now).toISOString()
+  await open(page, () => data)
+  await page.clock.runFor(100)
+  const route = page.getByTestId('lm-team-route')
+  const lines = route.locator('.lm-team-line')
+  await expect(lines).toHaveCount(2)
+  await expect(lines.nth(0)).toHaveAttribute('data-floor', 'G')
+  await expect(lines.nth(1)).toHaveAttribute('data-floor', 'U')
+  await expect(route.locator('.lm-change')).toHaveCount(1)
+  const remainingLength = () => lines.evaluateAll(els => els.reduce((sum, el) => sum + (el as SVGPathElement).getTotalLength(), 0))
+  const before = await remainingLength()
+  await page.getByRole('button', { name: 'Micșorează' }).click()
+  await page.getByRole('button', { name: 'Micșorează' }).click()
+  await page.clock.runFor(1000)
+  await page.screenshot({ path: `${shots}/team-route.png` })
+  await page.clock.fastForward(180_000)
+  await expect(lines).toHaveCount(1)
+  await expect(lines.first()).toHaveAttribute('data-floor', 'U')
+  await expect(route.locator('.lm-change')).toHaveCount(0)
+  expect(await remainingLength()).toBeLessThan(before)
+})
+
+test('blocked security removes an unreachable route without a straight fallback', async ({ page }) => {
+  await page.addInitScript(s => localStorage.setItem('clarion.session', s), staffSession)
+  await mockLive(page, { flow: () => ({ ...flowFixture(), blocked: ['security'] }) })
+  await page.route('**/api/staff', route => route.fulfill({ json: staffData() }))
+  await page.goto('/s')
+  await expect(page.getByTestId('lm-pin-R2')).toBeVisible()
+  await expect(page.getByTestId('lm-team-route')).toHaveCount(0)
+  await expect(page.getByTestId('lm-team')).toHaveCount(0)
 })
 
 test('one tap: too many people in my zone, or in the selected place', async ({ page }) => {

@@ -8,11 +8,12 @@ import '../map/live/page.css'
 import { Chat, ChatView } from '../chat/Chat'
 import { useChatChannel } from '../chat/channel'
 import { LiveMap, teamMark, type Focus, type ReportPin, type TeamMark } from '../map/live/LiveMap'
-import { landmarkFor, routeBetween, nodeAt, search, shortName, type Lang, type Landmark, type PathNode } from '../map/live/catalogue'
+import { landmarkFor, nodeAt, search, shortName, type Lang, type Landmark, type PathNode } from '../map/live/catalogue'
 import { useFlow, useIndex, useTick, useViewportHeight, useWide } from '../map/live/useLive'
 import { Sheet, sheetHeight, type Snap } from '../map/live/Sheet'
 import { PointCard, ReportPanel, ResultList, SearchBar, StaffNumbers } from '../map/live/Panels'
 import { sendReport, useReportFlow } from '../map/live/useReport'
+import { dispatchPath } from '../map/live/team'
 import { teamProgress } from '../map/live/view'
 import { notices, type OpsRecord } from '../map/live/notices'
 import { langOverride, LangToggle } from '../map/live/lang'
@@ -99,12 +100,10 @@ export default function Staff() {
     return [{ id: r.id, at, state: r.state, priority: r.priority, fade: fade !== undefined ? Math.max(0.3, Math.min(1, fade)) : undefined, label: `${kind} · ${stateLabel(r.state, en)}` }]
   })
   const moving = reports.filter(r => r.state === 'en_route').map(r => {
-    const end = placeOf(r), l = landmarkFor(points, r.place?.node)
+    const end = placeOf(r)
     const progress = teamProgress(r.timestamps?.en_route, r.etaMin, tick)
     if (!end || !progress || !index) return null
-    const routed = l ? routeBetween(index, 'G_INFO', l.id, lang) : null
-    const start = landmarkFor(points, 'G_INFO')
-    const path: PathNode[] = routed?.ok ? routed.path : start ? [{ id: start.id, level: start.level, x: start.x, z: start.z }, end] : [end]
+    const path = dispatchPath(index.points, r.place.node!, live.blocked)
     return { r, mark: teamMark(path, progress.t, `${en ? 'Team' : 'Echipa'} · ~${progress.leftMin} min`, end.level, r.id, lang) }
   }).filter((m): m is { r: PersonalReport; mark: TeamMark | null } => !!m)
   const team = moving[0]?.mark ?? null
