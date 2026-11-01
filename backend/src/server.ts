@@ -194,6 +194,11 @@ export function createControlTower() {
       if (req.method === "GET" && url.pathname === "/api/sim") {
         res.end(JSON.stringify(engine.sim.snapshot(twins().length > 0, engine.state.metrics, open("vision").length > 0))); return;
       }
+      if (req.method === "GET" && url.pathname === "/api/sim/flow") {
+        // Light live crowding for the phone maps (/m, /s): camera rows only, no positions or truth (D0).
+        const s = engine.sim.snapshot(twins().length > 0, null, open("vision").length > 0);
+        res.end(JSON.stringify({ at: new Date().toISOString(), simTime: s.simTime, flow: s.flow, blocked: s.blocked })); return;
+      }
       if (req.method === "GET" && url.pathname === "/api/sim/agents") {
         res.end(JSON.stringify(engine.sim.agents(url.searchParams))); return;
       }

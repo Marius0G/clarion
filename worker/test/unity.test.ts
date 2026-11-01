@@ -43,6 +43,11 @@ describe('Worker Unity integration', () => {
     twin.ws.send(JSON.stringify(envelope('flow.report', { zones: [{ zone: 'taxi_rank', waiting: 30, capacity: 24, waitMin: 12 }, { zone: 'security', waiting: 80, capacity: null, waitMin: null }] })));
     await expect.poll(async () => (await (await request('/api/sim')).json() as any).flow.taxi_rank?.waiting).toBe(30);
     expect((await (await request('/api/sim')).json() as any).flow).toMatchObject({ taxi_rank: { waiting: 30, capacity: 24, waitMin: 12, peak: 30 }, security: { waiting: 80, capacity: null, waitMin: null, peak: 80 } });
+    // Light view for the phone maps: the same camera rows, no positions or truth.
+    const light = await (await request('/api/sim/flow')).json() as any;
+    expect(light.flow).toEqual((await (await request('/api/sim')).json() as any).flow);
+    expect(Object.keys(light).sort()).toEqual(['at', 'blocked', 'flow', 'simTime']);
+    expect(Date.parse(light.at)).toBeGreaterThan(0);
     expect(await (await request('/api/sim/agents?role=taxi&location=road&action=wait')).json()).toHaveLength(400);
     expect(await (await request('/api/sim/agents?location=home')).json()).toEqual([]);
     expect((await request('/api/sim/command', { action: 'start', arm: 'Z' })).status).toBe(400);
