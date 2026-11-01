@@ -48,8 +48,6 @@ function Hero() {
   const line1 = useTransform(p, [0, 1], [0, -40 * k]);
   const line2 = useTransform(p, [0, 1], [0, -90 * k]);
   const line3 = useTransform(p, [0, 1], [0, -140 * k]);
-  const chipsFast = useTransform(p, [0, 1], [0, -320 * k]);
-  const chipsSlow = useTransform(p, [0, 1], [0, -140 * k]);
   const fade = useTransform(p, [0, 0.8], [1, reduce ? 1 : 0.2]);
   const curvesY = useTransform(p, [0, 1], [0, 120 * k]);
   const draw = (d: number) => reduce ? {} : { initial: { pathLength: 0, opacity: 0 }, animate: { pathLength: 1, opacity: 1 }, transition: { duration: 2.6, ease: [0.16, 1, 0.3, 1] as const, delay: d } };
@@ -76,21 +74,6 @@ function Hero() {
         <motion.span className="lp-h1-tail" {...rise(0.5)}>când ceva merge prost.</motion.span>
       </h1>
       <motion.div {...rise(0.6)}><Ctas /></motion.div>
-    </motion.div>
-
-    <motion.div className="lp-chip lp-chip-msg" style={{ y: chipsFast }} aria-hidden="true">
-      <span className="lp-chip-from">Clarion, pe WhatsApp</span>
-      <span>Pleacă spre aeroport la 11:40. La securitate se așteaptă acum 7 minute.</span>
-      <small>exemplu de mesaj</small>
-    </motion.div>
-    <motion.div className="lp-chip lp-chip-fc" style={{ y: chipsSlow }} aria-hidden="true">
-      <span className="lp-chip-from">Prognoză, coada la securitate</span>
-      <span className="lp-fc">{[["+30", "9"], ["+60", "12"], ["+90", "8"], ["+120", "5"]].map(([h, v]) => <span key={h}><b>{v}</b><i>{h} min</i></span>)}</span>
-      <small>exemplu</small>
-    </motion.div>
-    <motion.div className="lp-chip lp-chip-exit" style={{ y: chipsFast }} aria-hidden="true">
-      <span className="lp-exit-sign">E2</span>
-      <span>Ieșirea liberă cea mai apropiată, 40 m în stânga</span>
     </motion.div>
 
     <div className="lp-runway" aria-hidden="true">

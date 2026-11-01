@@ -75,21 +75,6 @@
   animation:lp-sweep 6s linear infinite }
 @keyframes lp-sweep { to { transform:rotate(360deg) } }
 
-/* hero tags: square plates with a cyan hairline head and a cut corner */
-.lp-chip { position:absolute; z-index:3; display:flex; flex-direction:column; gap:6px; padding:14px 18px 16px; font-size:14px; line-height:1.35;
-  background:rgba(2,18,28,.86); border-top:2px solid var(--cyan); clip-path:polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%) }
-.lp-chip small { font-family:var(--mono); font-size:11px; color:var(--muted) }
-.lp-chip-from { font-family:var(--mono); font-size:12px; color:var(--cyan) }
-.lp-chip-msg { right:clamp(16px,6vw,110px); top:12%; width:280px; border-top-color:var(--pink) }
-.lp-chip-msg .lp-chip-from { color:var(--pink) }
-.lp-chip-fc { right:clamp(24px,30vw,520px); bottom:16%; width:290px }
-.lp-fc { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:4px }
-.lp-fc > span { display:flex; flex-direction:column; align-items:flex-start }
-.lp-fc b { font-family:var(--display); font-size:32px; line-height:1; color:var(--cyan) }
-.lp-fc i { white-space:nowrap; font-style:normal; font-family:var(--mono); font-size:11px; color:var(--muted) }
-.lp-chip-exit { right:clamp(16px,4vw,64px); bottom:20%; flex-direction:row; align-items:center; gap:12px; width:260px }
-.lp-exit-sign { flex:none; display:grid; place-items:center; width:44px; height:44px; background:#0bb35b; color:#fff; font-family:var(--display); font-weight:800; font-size:22px }
-
 .lp-runway { position:absolute; left:0; right:0; bottom:28px; display:flex; justify-content:space-between; padding:0 clamp(16px,4vw,56px); z-index:2 }
 .lp-runway span { width:6px; height:6px; background:#e9fdff; opacity:.3; animation:lp-rabbit 1.68s linear infinite }
 @keyframes lp-rabbit { 0%,6% { opacity:1; box-shadow:0 0 14px 4px rgba(46,230,255,.9) } 14%,100% { opacity:.3; box-shadow:none } }
@@ -191,7 +176,6 @@
 .lp-foot a { color:var(--text); text-underline-offset:4px }
 
 @media (max-width:1100px) {
-  .lp-chip-fc { display:none }
   .lp-bento { grid-template-columns:1fr }
   .lp-tile-cam { grid-row:auto; padding-right:0; border-right:0 }
   .lp-tile-staff, .lp-tile-admin { padding-left:0; border-top:1px solid var(--line-2) }
@@ -206,8 +190,6 @@
   .lp-hero-copy { max-width:none }
   .lp-h1-line { font-size:clamp(44px,14vw,76px) }
   .lp-globe { position:relative; right:auto; top:auto; width:min(108vw, 460px); margin:-12px auto 0; order:2 }
-  .lp-chip-msg { position:relative; right:auto; top:auto; width:auto; margin-top:-60px; order:3 }
-  .lp-chip-exit { display:none }
   .lp-actions { gap:18px }
   .lp-actions > .lp-magnet:first-child, .lp-actions .lp-magnet:first-child .lp-spark, .lp-actions .lp-magnet:first-child .lp-btn { display:flex; width:100% }
   .lp-btn { justify-content:space-between }
