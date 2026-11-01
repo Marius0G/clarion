@@ -167,11 +167,13 @@ export function LiveMap(p: Props) {
   useEffect(() => {
     if (!focus || !focus.pts.length) return
     const [w, h] = sizeRef.current
-    const visible: Size = [w, Math.max(160, h - insetBottom)]
+    // Keep clear of the zoom buttons on the right (64 px) and the sheet at the bottom.
+    const right = 64
+    const visible: Size = [Math.max(160, w - right), Math.max(160, h - insetBottom)]
     const box = boxAround(focus.pts.map(at), focus.minW ?? 380)
-    const fit = fitView(pad(box, 40), visible, 56)
+    const fit = fitView(pad(box, 40), visible, 32)
     const s = Math.min(fit.s, limitsRef.current.min * 6)
-    flyTo({ s, cx: fit.cx, cy: fit.cy + insetBottom / 2 / s }, 480)
+    flyTo({ s, cx: fit.cx + right / 2 / s, cy: fit.cy + insetBottom / 2 / s }, 480)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey])
 
