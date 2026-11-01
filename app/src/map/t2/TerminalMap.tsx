@@ -52,6 +52,10 @@ interface Props {
   describe?: (id: string) => ReactNode
   /** Clicking a floor's name asks for that floor. */
   onLevel?: (level: Level) => void
+  /** Fixed view box in map units (render-only maps, e.g. route images); turns zoom off. */
+  view?: Box
+  /** Extra drawing on top of the map, in map units. `at` places a world point (x, z metres) of a level. */
+  overlay?: (at: (level: Level, x: number, z: number) => Pt, unit: number) => ReactNode
 }
 
 /* ---------- One pixel space for everything: the G/U frame, 10 px per metre ---------- */
@@ -92,6 +96,12 @@ const P = (l: Level, p: Pt): Pt => onPlate(plateOf(l), GAP, p)
 const CONTENT: Box = boundsOf(PLATES.flatMap(({ key, i }) => ringsOf(PLATE_ZONES[key].filter(z => !APRON(z))).flat().map(p => onPlate(i, GAP, p))))
 /** The whole map, with room for the floor names on the left, at 16:9 for the projector. */
 const FULL: Box = fitAspect(pad(CONTENT, 60, 50, 60, 50), 16 / 9)
+/** A world point (x, z metres) of a level, in the map's units (exterior points land on the ground plate). */
+export const worldAt = (level: Level, x: number, z: number): Pt => P(level, toPx(x, z))
+/** The whole two-floor map, in map units. */
+export const MAP_BOX: Box = FULL
+/** y of the line between the floors (upper floor above it). */
+export const MAP_DIVIDER = DIVIDER
 
 /* ---------- Zone geometry caches ---------- */
 type Geo = { d: string; frame: ReturnType<typeof frameOf>; pts: MapPoint[] }
@@ -155,14 +165,15 @@ const TEXT = {
 }
 const NAME = 15, NUM = 15, GATE = 22
 
-export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = false, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-', layers = {}, focus = null, wheelZoom = false, keys = false, describe, onLevel }: Props) {
+export function TerminalMap({ level, views = {}, selected = null, highlight = [], onZone, dots = [], route, cameras = false, base = false, lang = 'ro', className, markers = [], testIdPrefix = 't2-zone-', layers = {}, focus = null, wheelZoom = false, keys = false, describe, onLevel, view: fixedView, overlay }: Props) {
   const show = { dots: layers.dots !== false, heat: layers.heat === true, labels: layers.labels !== false, points: layers.points !== false, pins: layers.pins !== false }
   const tx = TEXT[lang]
   const lit = new Set(highlight)
   const full = FULL
   const activeIdx = plateOf(level)
 
-  const [view, setView] = useState<Box>(full)
+  const [ownView, setView] = useState<Box>(full)
+  const view = fixedView ?? ownView
   const svgRef = useRef<SVGSVGElement>(null)
   const anim = useRef(0)
   const viewRef = useRef(view)
@@ -428,6 +439,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       {show.dots && <g className="t2-dots" aria-hidden="true" data-testid="map-dots">{own.map(circle)}</g>}
       {show.labels && <g className="t2-labels">{labelEls}</g>}
       <g className="t2-floors">{floorEls}</g>
+      {overlay && <g className="t2-overlay">{overlay(worldAt, u)}</g>}
       {show.pins && <g className="t2-pins">
         {markers.map(mk => {
           const [x, y] = P(mk.level ?? level, fromLevel(mk.at, mk.level ?? level))
