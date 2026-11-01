@@ -503,7 +503,7 @@ export class Messaging {
   /** D22: describe an admin decision only to passengers whose queues/gate it affects. */
   adminChanged(command: OpsCommand & { id?: string }) {
     return this.serial(async () => {
-      await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, command);
+      await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, command, this.deps.historyAppended);
       if (command.type === 'evacuate') return 0;
       if (command.type === 'staff') {
         if (command.delta > 0) await this.deps.store.put(`msg:staff:${mapNodeId(command.zone)}`, { id: command.id ?? crypto.randomUUID(), at: this.deps.view.clock().now });
@@ -587,7 +587,7 @@ export class Messaging {
    */
   async evacuate(zones: string[], id: string): Promise<'planned' | 'generic' | 'cancelled'> {
     const epoch = this.epoch;
-    await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, { type: 'evacuate', zones, id });
+    await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, { type: 'evacuate', zones, id }, this.deps.historyAppended);
     await this.deps.store.put('msg:evacuation', { active: true, zones });
     if (epoch !== this.epoch) return 'cancelled';
     await new Promise<void>(resolve => {

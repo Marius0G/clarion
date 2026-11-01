@@ -50,7 +50,8 @@ const noticeZone = (zone: string) => zone.startsWith('bag_drop:') ? mapNodeId(zo
 
 const locks = new WeakMap<WaStore, Promise<unknown>>();
 /** One informational message per matching staff phone and command, independent of passenger throttling. */
-export function dispatchStaffNotices(store: WaStore, wa: WhatsAppClient, view: AirportView, command: OpsCommand & { id?: string }) {
+export function dispatchStaffNotices(store: WaStore, wa: WhatsAppClient, view: AirportView, command: OpsCommand & { id?: string },
+  appended?: (phone: string, entry: { id: string; role: 'clarion'; text: string; channel: 'whatsapp'; at: string; timestamp: number }) => void | Promise<void>) {
   const next = (locks.get(store) ?? Promise.resolve()).then(async () => {
     const id = command.id ?? crypto.randomUUID();
     const phones = new Set(await store.get<string[]>('wa:subs') ?? []);
@@ -75,7 +76,8 @@ export function dispatchStaffNotices(store: WaStore, wa: WhatsAppClient, view: A
         text: staffNoticeText(command, profile.zone, profile.lang) };
       await store.put(`msg:staffNotices:${phone}`, [...await staffNotices(store, phone), notice].slice(-20));
       await store.put(marker, true);
-      // TODO(staff-notices): pushToPhone(phone, event) is unavailable; page updates use GET /api/staff.
+      // Live on the staff member's open pages (chat WebSocket) and in the shared history.
+      try { await appended?.(phone, { id: `notice:${id}:${phone}`, role: 'clarion', text: notice.text, channel: 'whatsapp', at: notice.at, timestamp: Date.now() }); } catch { /* Closed socket. */ }
       const last = await store.get<number>(`wa:last:${phone}`);
       if (typeof last !== 'number' || Date.now() - last >= 86_400_000) continue;
       try { await wa.sendText(phone, notice.text); } catch { /* The persisted notice remains available in the API. */ }
