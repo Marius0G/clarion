@@ -1,3 +1,4 @@
+import { personalRoute } from '../../backend/src/personal-routes.js';
 import { Auth, bearer } from '../../backend/src/auth.js';
 import { authRoute, type AuthEnv } from '../../backend/src/auth-routes.js';
 import { allowed } from './wa/transport.js';
@@ -289,6 +290,10 @@ export class Tower extends DurableObject<Env> {
             return result.ok && !result.dryRun;
           },
         });
+        const personal = await personalRoute(request, { store: this.ctx.storage, agent: this.whatsapp,
+          sim: this.engine.sim, view: airportView(this.engine.sim, () => this.twins().length > 0), env: this.env,
+          operator: !this.env.DEMO_TOKEN || await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`) });
+        if (personal) return personal;
         if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/alerts/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (path === '/ws') {
@@ -304,10 +309,6 @@ export class Tower extends DurableObject<Env> {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         if (request.method === 'GET') {
-          if (path === '/api/me') {
-            const data = await this.whatsapp.messaging.passenger(url.searchParams.get('token') ?? '');
-            return data ? json(data) : json({ error: 'Unknown passenger' }, 404);
-          }
           if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics, this.visions().length > 0));
           // D11: staff reports for the dashboard pins.
           if (path === '/api/reports') return json(await this.whatsapp.reports.list());
@@ -388,11 +389,6 @@ export class Tower extends DurableObject<Env> {
             const sub = this.engine.subscribe(input);
             await this.engine.confirmSubscription(sub);
             return json({ subscriptionId: sub.id }, 201);
-          }
-          const close = /^\/api\/reports\/([A-Za-z0-9_-]{1,40})\/close$/.exec(path);
-          if (close) {
-            const report = await this.whatsapp.reports.close(close[1]!);
-            return report ? json(report) : json({ error: 'Unknown report' }, 404);
           }
           if (path === '/api/sim/command') {
             const data = simCommand(JSON.parse(await bodyText(request)));

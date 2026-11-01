@@ -92,3 +92,18 @@ it('keeps STAFF_CODE roles and supports auth CORS preflights', async () => {
   }
   expect((await mf.dispatchFetch('https://worker.example/api/auth/me', { headers: { Origin: 'https://attacker.example' } })).status).toBe(403);
 });
+
+it('serves shared web reports behind D3 while denying the staff API to passengers', async () => {
+  const result = await login('40733333333');
+  expect((await post('/api/join', { flight: 'W6 3751' }, result.session)).status).toBe(201);
+  const headers = { Authorization: `Bearer ${result.session}` };
+  expect((await mf.dispatchFetch('https://worker.example/api/staff', { headers })).status).toBe(403);
+  expect((await post('/api/staff/tasks/no/confirm', {}, result.session)).status).toBe(403);
+  const response = await post('/api/reports', { type: 'medical', place: { node: 'gate_2', name: 'Poarta 2' }, text: 'Incident' }, result.session);
+  expect(response.status).toBe(201);
+  expect(await response.json()).toMatchObject({ source: 'passenger', phone: '+40733333333', priority: 'P1', state: 'sent' });
+  const page = await (await mf.dispatchFetch('https://worker.example/api/me', { headers })).json() as any;
+  expect(page.reports).toHaveLength(1);
+  const staff = await login('40711111111');
+  expect((await mf.dispatchFetch('https://worker.example/api/staff', { headers: { Authorization: `Bearer ${staff.session}` } })).status).toBe(200);
+});

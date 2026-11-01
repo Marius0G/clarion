@@ -144,7 +144,7 @@ export class RouteImages {
     if (!entry || typeof entry.file !== 'string' || !Number.isFinite(entry.walkSec) || entry.walkSec < 0) return null;
     // A PNG is safe only when its recorded path matches the current routing response.
     // Older indexes with prose-only steps cannot establish that and stay text-only.
-    const staticNodes = entry.nodes ?? entry.steps;
+    const staticNodes = entry.nodes ?? (Array.isArray(entry.steps) ? entry.steps.map(step => typeof step === 'string' ? step : step && typeof step === 'object' && 'node' in step ? step.node : null) : entry.steps);
     if (!live || live.rerouted || live.reroute || !Array.isArray(staticNodes) || staticNodes.length < 2 ||
       !staticNodes.every(n => typeof n === 'string') || !Array.isArray(live.nodes)) return null;
     const canonical = (node: string) => mapNodeId(id(node));

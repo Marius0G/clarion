@@ -78,9 +78,9 @@ export type OpsCommand =
   | { type: 'redirect'; from: string; to: string }
   | { type: 'evacuate'; zones: string[] }
   | { type: 'close' | 'open'; zone: string };
-export type OpsRecord = OpsCommand & { id: string; status: 'sent' | 'acked'; sentAt: string; ackedAt: string | null };
+export type OpsRecord = OpsCommand & { id: string; staffState?: 'confirmed' | 'done'; staffConfirmedAt?: string; staffDoneAt?: string; status: 'sent' | 'acked'; sentAt: string; ackedAt: string | null };
 /** The ops.command payload Unity receives: the command and its id, no tracking fields. */
-export const opsWire = ({ status: _s, sentAt: _t, ackedAt: _a, ...wire }: OpsRecord) => wire;
+export const opsWire = ({ status: _s, sentAt: _t, ackedAt: _a, staffState: _ss, staffConfirmedAt: _sc, staffDoneAt: _sd, ...wire }: OpsRecord) => wire;
 const simTimeValue = (v: any) => finite(v, 0) || (text(v, 40) && v.length > 0);
 /** D12: validate an admin decision before it is forwarded to Unity as ops.command. */
 export function opsCommand(d: any): OpsCommand {
@@ -321,6 +321,16 @@ export class SimStore {
     if (!record) throw new Error('Unknown ops command');
     if (record.status !== 'acked') { record.status = 'acked'; record.ackedAt = new Date().toISOString(); }
     this.lastSeen = record.ackedAt;
+  }
+  staffTask(id: string, state: 'confirmed' | 'done') {
+    const record = this.ops.find(o => o.id === id);
+    if (!record) throw new Error('Unknown task');
+    if (record.staffState === state || record.staffState === 'done') return structuredClone(record);
+    if (state === 'done' && record.staffState !== 'confirmed') throw new Error('Confirm task first');
+    record.staffState = state;
+    if (state === 'confirmed') record.staffConfirmedAt = new Date().toISOString();
+    else record.staffDoneAt = new Date().toISOString();
+    return structuredClone(record);
   }
   agents(filters: URLSearchParams) {
     return [...this.rows.values()].filter(r => ['role', 'location', 'action'].every(k => !filters.get(k) || filters.get(k) === (r as any)[k]));

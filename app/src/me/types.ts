@@ -1,4 +1,9 @@
 export type PassengerData = {
+  stage?: 'public' | 'airside' | 'gate' | null
+  routeImage?: string
+  assembly?: string
+  timeline?: { at: string; kind: string; text: string }[]
+  reports?: import('../reports/types.js').PersonalReport[]
   lang?: 'ro' | 'en'
   simTime: number | null
   flight: {

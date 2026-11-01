@@ -1,3 +1,4 @@
+import { personalRoute } from './personal-routes.js';
 import { Auth, bearer } from './auth.js';
 import { authRoute } from './auth-routes.js';
 import { FileAuthStore } from './auth-store.js';
@@ -83,7 +84,8 @@ export function createControlTower() {
   const authStore = new FileAuthStore(`${stateFile}.auth.json`);
   const auth = new Auth(authStore);
   const view = airportView(engine.sim, () => [...clients.values()].includes('twin'));
-  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0 });
+  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, reportsChanged: rows => engine.updateStaffReports(rows) });
+  const reportsReady = waAgent.reports.list().then(rows => engine.updateStaffReports(rows));
   const webhookWork = new Set<Promise<void>>();
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
   let queue = Promise.resolve();
@@ -129,6 +131,16 @@ export function createControlTower() {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
+      await reportsReady;
+      if (url.pathname === '/api/me' || url.pathname === '/api/staff' || url.pathname.startsWith('/api/staff/tasks/') ||
+        (url.pathname === '/api/reports' && req.method === 'POST') || /^\/api\/reports\/[^/]+\/(state|close)$/.test(url.pathname)) {
+        const personalBody = req.method === 'POST' ? await rawBody(req) : undefined;
+        const response = await ordered(() => personalRoute(new Request(url, { method: req.method,
+          headers: { Authorization: req.headers.authorization ?? '' }, ...(personalBody !== undefined && { body: personalBody }) }), {
+          store: authStore, agent: waAgent, sim: engine.sim, view, env: process.env,
+          operator: operator(req.headers.authorization?.replace(/^Bearer /, '')) }));
+        if (response) { res.writeHead(response.status); res.end(await response.text()); return; }
+      }
       if (req.method === "POST" && ["/api/action", "/api/sim/command", "/api/ops/command", "/api/alerts/command", "/api/reports", "/api/agent/route", "/api/demo/reset"].includes(url.pathname) && !operator(req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null)) {
         res.writeHead(401); res.end(JSON.stringify({ error: "Operator token required" })); return;
       }
@@ -193,12 +205,7 @@ export function createControlTower() {
       }
       if (req.method === 'GET' && url.pathname === '/api/reports') {
         if (!operator(req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null)) { res.writeHead(401); res.end(JSON.stringify({ error: 'Operator token required' })); return; }
-        res.end(JSON.stringify(engine.sim.reportSnapshot())); return;
-      }
-      if (req.method === 'POST' && url.pathname === '/api/reports') {
-        const report = await jsonBody(req);
-        await ordered(() => engine.updateStaffReports([...engine.sim.reportSnapshot().filter(r => r.id !== report.id), report].slice(-200)));
-        res.end(JSON.stringify(report)); return;
+        res.end(JSON.stringify(await waAgent.reports.list())); return;
       }
       if (req.method === "POST" && url.pathname === "/api/ops/command") {
         // D12: Unity confirms with ops.ack { id }; nothing is recorded while Unity is offline.
@@ -206,6 +213,7 @@ export function createControlTower() {
         const open = twins(), visions = () => [...clients].filter(([ws, kind]) => kind === "vision" && ws.readyState === WebSocket.OPEN);
         if (!open.length) { res.writeHead(409); res.end(JSON.stringify({ connected: false })); return; }
         const record = engine.sim.sent(command);
+        await waAgent.messaging.adminChanged(command);
         // Vision gets every command too, to know the open lanes and blocked zones (contract v2).
         for (const [ws] of [...open, ...visions()]) ws.send(JSON.stringify({ type: "ops.command", ts: new Date().toISOString(), data: opsWire(record) }));
         res.writeHead(202); res.end(JSON.stringify({ connected: true, command: record })); return;
@@ -329,7 +337,12 @@ export function createControlTower() {
       ws.on("message", (raw) => {
         void ordered(async () => {
           try {
-            await wallet.handle(engine, JSON.parse(raw.toString()), clients.get(ws));
+            const event = JSON.parse(raw.toString());
+            const client = clients.get(ws);
+            await wallet.handle(engine, event, client);
+            if (client === 'vision' && event.type === 'flow.report') await waAgent.messaging.flowChanged();
+            if (client === 'twin' && event.type === 'flight.update') await waAgent.messaging.flightsChanged();
+            if (client === 'vision' && event.type === 'evac.plan') await waAgent.messaging.plan(event.data);
           } catch (error) {
             ws.send(
               JSON.stringify({

@@ -43,7 +43,7 @@ const flight = (extra = {}) => ({ flight: 'W6 3751', airline: 'W6', destination:
 describe('passenger messaging in the Tower', () => {
   it('rejects unknown or missing passenger tokens without operator auth', async () => {
     for (const path of ['/api/me', '/api/me?token=unknown']) {
-      expect((await api(path, undefined, '')).status).toBe(404);
+      expect((await api(path, undefined, '')).status).toBe(path === '/api/me' ? 401 : 404);
     }
   });
   it('sim subscribers, flight changes, staff reports and evacuation end to end', async () => {
@@ -61,7 +61,7 @@ describe('passenger messaging in the Tower', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://clarion-craiova.pages.dev');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       lang: 'ro', simTime: 25200,
       flight: { flight: 'W6 3751', destination: 'Londra Luton', std: '09:40', gate: 'gate_2', gateCloseAt: '09:10', status: 'scheduled', delayMin: 0 },
       arriveBy: '08:30', entranceToGateMin: 39,
@@ -104,7 +104,7 @@ describe('passenger messaging in the Tower', () => {
     expect((await api('/api/reports', undefined, '')).status).toBe(401);
     await expect.poll(async () => (await (await api('/api/reports')).json() as any[]).length, { timeout: 10000 }).toBe(1);
     const [report] = await (await api('/api/reports')).json() as any[];
-    expect(report).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
+    expect(report).toMatchObject({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
     expect(report.etaMin).toBe(2);
     expect((await api('/api/reports/R1/close', {}, '')).status).toBe(401);
     expect(await (await api('/api/reports/R1/close', {})).json()).toMatchObject({ id: 'R1', status: 'closed' });

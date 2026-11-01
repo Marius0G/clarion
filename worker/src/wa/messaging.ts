@@ -1,7 +1,7 @@
 import { RouteImages } from './airport-info.js';
 import { Auth } from '../../../backend/src/auth.js';
-import { route } from '../../../backend/src/routing.js';
-import { terminalGraph } from '../../../backend/src/terminal.js';
+import { route, zoneDensities } from '../../../backend/src/routing.js';
+import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
 import { isNodeId, mapNodeId } from '../../../backend/src/mapIds.js';
 import { urgentBubbles } from './urgency.js';
 import { toBubbles } from './agent.js';
@@ -170,18 +170,29 @@ export class Messaging {
       return `${(this.deps.appUrl ?? 'https://clarion-craiova.pages.dev').replace(/\/$/, '')}/m/${p.pageToken}`;
     });
   }
-  async passenger(token: string): Promise<PassengerData | undefined> {
-    if (!token || token.length > 100) return;
-    const sub = await this.deps.store.get<Subscriber>(`page:${token}`);
+  async passenger(token: string, phone?: string): Promise<PassengerData | undefined> {
+    if ((!token && !phone) || token.length > 100) return;
+    const sub: Subscriber | undefined = phone ? { channel: 'whatsapp', phone } : await this.deps.store.get<Subscriber>(`page:${token}`);
     if (!sub) return;
     const p = await this.subscriberProfile(sub);
-    if (!p || p.pageToken !== token || !p.flight) return;
+    if (!p || (!phone && p.pageToken !== token) || !p.flight) return;
     const f = findFlight(this.deps.view.flights(), p.flight);
     if (!f) return;
     const clock = this.deps.view.clock();
     // Unknown bag choice uses the same conservative assumption as WhatsApp.
     const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history);
+    const stage = estimateStage(f, clock.now);
+    const from = stage === 'gate' ? f.gate : stage === 'airside' ? 'U_CORRIDOR_EAST' : 'door_departures';
+    const evacuation = await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang);
+    const evacPlan = evacuation.active ? await this.deps.store.get<EvacPlan>('msg:evacPlan') : undefined;
+    const liveEvac = evacPlan?.routes.length ? routeFor(evacPlan, f, clock.now) : null;
+    const preview = evacuation.active ? await this.deps.images?.evacuation(liveEvac?.from ?? from) : null;
+    const path = route(terminalGraph, from, f.gate, zoneDensities(this.deps.view.flow(), zoneAreas), this.deps.view.blocked?.());
+    const image = !evacuation.active && path ? await this.deps.images?.image(from, f.gate, path, this.deps.view.blocked?.()) : null;
     return {
+      stage, routeImage: evacuation.active ? (preview && (!liveEvac || mapNodeId(preview.exit) === mapNodeId(liveEvac.exit)) ? preview.link : undefined) : image?.link,
+      assembly: liveEvac?.assembly ?? preview?.assembly,
+      timeline: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-50),
       lang: language(p.lang),
       simTime: clock.sim ? clock.now : null,
       flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
@@ -190,7 +201,7 @@ export class Messaging {
       queues: plan.queues.map(({ forecast: _forecast, ...q }) => ({ ...q, label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
       steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.zone === 'walk' ? say(p.lang, 'walk', gateName(f.gate)) : nodeName(s.zone, p.lang), waitMin: s.min })),
       alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
-      evacuation: await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang),
+      evacuation,
     };
   }
   /** D33: during an evacuation the page shows the exit route for his estimated place, or that he should not come yet. */
@@ -274,7 +285,7 @@ export class Messaging {
       }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
-      await this.deps.store.put(key, [...alerts, { at: new Date(this.deps.now?.() ?? Date.now()).toISOString(), ...m }].slice(-5));
+      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), ...m }].slice(-50));
     });
     return delivery;
   }

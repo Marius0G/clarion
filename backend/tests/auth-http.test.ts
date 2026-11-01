@@ -43,11 +43,18 @@ it('shares signed reverse login, join, persistent sessions and logout in Node', 
   expect(await (await me()).json()).toMatchObject({ flight: 'W6 3751' });
   expect(await (await post('/api/auth/otp', { phone: '0799 999 999' })).json()).toEqual({ sent: false, reason: 'window' });
   expect(await (await post('/api/auth/otp', { phone: '0712 345 678' })).json()).toEqual({ sent: false, reason: 'delivery' });
+  expect((await fetch(`${base}/api/staff`, { headers: { Authorization: `Bearer ${result.session}` } })).status).toBe(403);
+  const report = await post('/api/reports', { type: 'medical', place: { node: 'gate_2', name: 'Poarta 2' }, text: 'Incident' }, result.session);
+  expect(report.status).toBe(201);
+  expect(await report.json()).toMatchObject({ source: 'passenger', priority: 'P1' });
+  const page = await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${result.session}` } }).then(r => r.json());
+  expect(page.reports).toHaveLength(1);
   await server.stop();
   server = createControlTower();
   await new Promise<void>(r => server.http.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.http.address() as AddressInfo).port}`;
   expect(await (await me()).json()).toMatchObject({ phone: '+40712345678', flight: 'W6 3751' });
+  expect((await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${result.session}` } }).then(r => r.json())).reports).toHaveLength(1);
   expect((await post('/api/auth/logout', {}, result.session)).status).toBe(200);
   expect((await me()).status).toBe(401);
 });
