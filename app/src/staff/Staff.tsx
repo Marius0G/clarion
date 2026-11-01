@@ -121,7 +121,7 @@ export default function Staff() {
   }, [sel, zoneL, focusReport, report.stage, report.place?.id, wide])
 
   if (!sessionToken() || error === '401') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Staff' : 'Personal'}</h1><a href="/join">{en ? 'Connect with WhatsApp' : 'Conectează-te cu WhatsApp'}</a></div></main>
-  if (error === '403') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Staff access' : 'Acces personal'}</h1><a href="/m">{en ? 'My page' : 'Pagina mea'}</a></div></main>
+  if (error === '403') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Send STAFF <code> on WhatsApp' : 'Trimite STAFF <cod> pe WhatsApp'}</h1><a href="/m">{en ? 'My page' : 'Pagina mea'}</a></div></main>
 
   const situation = data?.situation
   const stateWord = (en ? { normal: 'Normal', busy: 'Busy', full: 'Full', unknown: 'Unknown' } : { normal: 'Normal', busy: 'Ocupat', full: 'Plin', unknown: 'Necunoscut' })[situation?.state ?? 'unknown']

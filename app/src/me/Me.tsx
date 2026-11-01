@@ -19,7 +19,7 @@ import { evacuationDraw } from '../map/live/evacuation'
 import { langOverride, LangToggle } from '../map/live/lang'
 
 export default function Me() {
-  const [state, setState] = useState(() => ({ data: normalizePassenger(null), error: '', loading: true, changed: [] as string[], here: null as { node: string; ageSec: number } | null }))
+  const [state, setState] = useState(() => ({ data: normalizePassenger(null), noFlight: false, error: '', loading: true, changed: [] as string[], here: null as { node: string; ageSec: number } | null }))
 
   useEffect(() => {
     let disposed = false
@@ -34,6 +34,10 @@ export default function Me() {
         const url = new URL('/api/me', backend.http)
         if (token) url.searchParams.set('token', decodeURIComponent(token))
         const response = await fetch(url, { headers: authHeaders(), signal: controller.signal, cache: 'no-store' })
+        if (response.status === 404) {
+          if (!disposed) setState({ data: normalizePassenger(null), noFlight: true, here: null, error: '', loading: false, changed: [] })
+          return
+        }
         if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'auth' : 'unavailable')
         const raw = await response.json() as { here?: { node?: unknown; ageSec?: unknown } }
         const data = normalizePassenger(raw)
@@ -41,7 +45,7 @@ export default function Me() {
         const keys = ['gate', 'gateCloseAt', 'status', 'delayMin'] as const
         if (!disposed) setState(previous => {
           const diff = keys.filter(key => data.flight[key] !== previous.data.flight[key])
-          return { data, here, error: '', loading: false, changed: previous.loading ? [] : diff.length ? [...diff] : previous.changed }
+          return { data, noFlight: false, here, error: '', loading: false, changed: previous.loading || previous.noFlight ? [] : diff.length ? [...diff] : previous.changed }
         })
       } catch (error) {
         if (!disposed) setState(previous => ({ ...previous, error: error instanceof Error ? error.message : 'unavailable', loading: false }))
@@ -61,7 +65,7 @@ export default function Me() {
     }
   }, [])
 
-  const { data, error, loading, changed } = state
+  const { data, noFlight, error, loading, changed } = state
   const [override, setOverride] = useState<Lang | null>(langOverride)
   const lang: Lang = override ?? data.lang ?? 'ro'
   const en = lang === 'en'
@@ -123,7 +127,7 @@ export default function Me() {
   const checkinQueue = data.queues?.find(q => /check_in|CHECKIN/.test(q.zone))
   const walk = data.steps.find(s => s.zone === 'walk')?.waitMin ?? null
   const reports = data.reports ?? []
-  const queues = <QueueList lang={lang} rows={[
+  const queues = noFlight ? null : <QueueList lang={lang} rows={[
     { key: 'checkin', label: 'Check-in', min: checkinQueue?.nowMin ?? null, note: checkinQueue?.nowMin != null ? `${waitBand(checkinQueue.nowMin)} min` : null, extra: checkinQueue?.staffCrowd },
     { key: 'security', label: en ? 'Security' : 'Securitate', min: securityQueue?.nowMin ?? null,
       note: securityQueue?.forecastMin != null && securityQueue.nowMin != null && securityQueue.forecastMin !== securityQueue.nowMin ? `~${Math.ceil(securityQueue.forecastMin)} ${t('min la')} ${securityQueue.forecastAt}` : securityQueue?.nowMin != null ? `${waitBand(securityQueue.nowMin)} min` : null,
@@ -159,8 +163,11 @@ export default function Me() {
 
   /* ---------- Normal page ---------- */
   const header = <header className="dashboard-header me-flight lv-head">
-    <div className="row"><h1>{flight.flight} · {flight.destination}</h1><LangToggle lang={lang} onChange={setOverride} /></div>
-    <p><span className={changed.includes('gate') ? 'flight-change' : ''}>{t('Poarta')} {flight.gate}{changed.includes('gate') && <small> · {en ? 'Change' : 'Schimbare'}</small>}</span> · <span className={changed.includes('gateCloseAt') ? 'flight-change' : ''}>{t('se închide la')} {flight.gateCloseAt}</span> · <span className={changed.includes('status') || changed.includes('delayMin') ? 'flight-change' : ''}>{statusLabel(flight.status, flight.delayMin, lang)}</span></p>
+    <div className="row"><h1>{noFlight ? (en ? 'Your flight' : 'Zborul tău') : `${flight.flight} · ${flight.destination}`}</h1><LangToggle lang={lang} onChange={setOverride} /></div>
+    {noFlight ? <>
+      <p>{en ? 'Send START <flight> on WhatsApp or scan your boarding pass' : 'Trimite START <zbor> pe WhatsApp sau scanează boarding pass-ul'}</p>
+      <a className="me-add-flight" href="/join">{en ? 'Add your flight' : 'Adaugă zborul'}</a>
+    </> : <p><span className={changed.includes('gate') ? 'flight-change' : ''}>{t('Poarta')} {flight.gate}{changed.includes('gate') && <small> · {en ? 'Change' : 'Schimbare'}</small>}</span> · <span className={changed.includes('gateCloseAt') ? 'flight-change' : ''}>{t('se închide la')} {flight.gateCloseAt}</span> · <span className={changed.includes('status') || changed.includes('delayMin') ? 'flight-change' : ''}>{statusLabel(flight.status, flight.delayMin, lang)}</span></p>}
     {loading && <small role="status">{t('Se încarcă…')}</small>}
     {error && <p role="alert">{en ? 'Data unavailable' : 'Date indisponibile'}</p>}
   </header>
@@ -179,7 +186,7 @@ export default function Me() {
     {target && hereId && index && <section className="lv-myroute" aria-label={en ? 'Your route' : 'Drumul tău'}>
       <h2>{routeTo ? `${en ? 'To' : 'Spre'} ${shortName(points.find(p => p.id === routeTo) ?? { name: { ro: routeTo, en: routeTo } }, lang)}` : `${en ? 'To gate' : 'Spre poarta'} ${flight.gate}`}</h2>
       <RouteNote index={index} from={hereId} to={target} lang={lang} />
-      {routeTo && <button type="button" className="lv-link" onClick={() => setRouteTo(null)}>{en ? `Back to gate ${flight.gate}` : `Înapoi la poarta ${flight.gate}`}</button>}
+      {routeTo && gateId && <button type="button" className="lv-link" onClick={() => setRouteTo(null)}>{en ? `Back to gate ${flight.gate}` : `Înapoi la poarta ${flight.gate}`}</button>}
     </section>}
     <div className="lv-buttons">
       <button type="button" onClick={() => { report.start(null); setSnap('peek') }}>{en ? 'Report a problem' : 'Raportează o problemă'}</button>

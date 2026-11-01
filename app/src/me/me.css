@@ -113,3 +113,7 @@
 .me-shell .crowd-action:not(:disabled):hover { background: #254b76; color: #fff; }
 .me-shell .report-action > button:not(:disabled):active,
 .me-shell .crowd-action:not(:disabled):active { background: #09213e; color: #fff; }
+
+.lv .me-add-flight { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 1px solid var(--lv-live); border-radius: 2px; background: var(--lv-live); color: #fff; font-weight: 600; text-decoration: none; }
+.lv .me-add-flight:hover { background: #254b76; }
+.lv .me-add-flight:focus-visible { outline: 2px solid var(--lv-live); outline-offset: 2px; }

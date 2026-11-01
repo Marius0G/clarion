@@ -156,14 +156,19 @@ test('chat from the staff sheet', async ({ page }) => {
   await chatCoverage(page)
 })
 
-test('passengers see access restriction and guests see login', async ({ page }) => {
+test('guests see login', async ({ page }) => {
   await page.route('**/api/staff', route => route.fulfill({ status: 401, json: {} }))
   await page.goto('/s')
   await expect(page.getByRole('link', { name: 'Conectează-te cu WhatsApp' })).toBeVisible()
-  await page.evaluate(s => localStorage.setItem('clarion.session', s), staffSession)
-  await page.route('**/api/staff', route => route.fulfill({ status: 403, json: {} }))
-  await page.reload()
-  await expect(page.getByRole('heading', { name: 'Acces personal' })).toBeVisible()
+})
+
+test('403 explains the WhatsApp staff command', async ({ page }) => {
+  await page.addInitScript(s => localStorage.setItem('clarion.session', s), staffSession)
+  await mockLive(page)
+  await page.route('**/api/staff', route => route.fulfill({ status: 403, json: { error: 'Staff role required' } }))
+  await page.goto('/s')
+  await expect(page.getByRole('heading', { name: 'Trimite STAFF <cod> pe WhatsApp', exact: true })).toBeVisible()
+  await expect(page.getByText('Acces personal', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Prea multă lume aici' })).toHaveCount(0)
 })
 
