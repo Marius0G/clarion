@@ -15,7 +15,7 @@ export const WAKE_MODEL = 'claude-haiku-5-5';
 const MAX_TOOL_TURNS = 5;
 export const FALLBACK = say('ro', 'fallback');
 
-export interface HistoryEntry { role: 'user' | 'clarion'; text: string; at: string }
+export interface HistoryEntry { role: 'user' | 'clarion'; text: string; at: string; channel?: 'whatsapp' | 'web'; timestamp?: number; buttons?: { id: string; title: string }[]; image?: string }
 export const hasLlm = (env: WaEnv) => Boolean(env.ANTHROPIC_API_KEY);
 
 const PERSONA = `<role>
@@ -167,6 +167,7 @@ export function contextBlock(profile: Profile, clock: Clock, memory?: PassengerC
 const NONE = { type: 'object', properties: {} };
 const FLIGHT = { flight: { type: 'string', description: 'număr de zbor, ex. "W6 3751"; implicit zborul lui' } };
 export const TOOL_SPECS = [
+  { name: 'staffTasks', description: 'Staff only: read assigned tasks or confirm/complete one by id.', input_schema: { type: 'object', properties: { id: { type: 'string' }, action: { type: 'string', enum: ['confirm', 'done'] } } } },
   { name: 'airportInfo', description: 'Sourced static airport information: parking, security rules, baggage, check-in, assistance, services, contacts, transport. Supply topic and/or a precise query. found=false means say you do not know. Label official=false as unconfirmed, cite source, translate to passenger language, describe rules without orders. Use live tools for current flight, gate, queues and routes.', input_schema: { type: 'object', properties: { topic: { type: 'string' }, query: { type: 'string' } } } },
   { name: 'rememberFact', description: 'Remember an explicit passenger self-report or correction only. Never infer needs. Keys: hasCheckedBag, groupSize, kids, reducedMobility, needs (short other need), lang (ro/en), flight (validated against schedule); gates and waits use live tools.', input_schema: { type: 'object', properties: { key: { type: 'string', enum: ['hasCheckedBag', 'groupSize', 'kids', 'reducedMobility', 'needs', 'lang', 'flight'] }, value: { type: ['string', 'boolean', 'number'] } }, required: ['key', 'value'] } },
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
@@ -250,7 +251,7 @@ async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: a
     { type: 'text', text: context },
   ];
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
-    const data = await callClaude(env, fetcher, { model, max_tokens: 1024, system, messages, tools: TOOL_SPECS, output_config: { effort: 'low' } });
+    const data = await callClaude(env, fetcher, { model, max_tokens: 1024, system, messages, tools: TOOL_SPECS.filter(spec => tools[spec.name]), output_config: { effort: 'low' } });
     if (data.stop_reason === 'refusal') return say(lang, 'refusal');
     if (data.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: data.content }); continue; }
     if (data.stop_reason === 'tool_use') {
@@ -263,7 +264,7 @@ async function runAgent(env: WaEnv, fetcher: Fetch, context: string, messages: a
     return textOf(data);
   }
   // Out of tool turns: one last call with tools off, answering from what was already looked up.
-  const last = await callClaude(env, fetcher, { model, max_tokens: 1024, system, tools: TOOL_SPECS, tool_choice: { type: 'none' }, messages });
+  const last = await callClaude(env, fetcher, { model, max_tokens: 1024, system, tools: TOOL_SPECS.filter(spec => tools[spec.name]), tool_choice: { type: 'none' }, messages });
   return textOf(last) || say(lang, 'tangled');
 }
 

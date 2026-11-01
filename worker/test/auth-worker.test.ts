@@ -97,6 +97,13 @@ it('serves shared web reports behind D3 while denying the staff API to passenger
   const result = await login('40733333333');
   expect((await post('/api/join', { flight: 'W6 3751' }, result.session)).status).toBe(201);
   const headers = { Authorization: `Bearer ${result.session}` };
+  expect((await post('/api/chat', { text: 'Cozi?' })).status).toBe(401);
+  const sendsBefore = sent.length;
+  expect((await post('/api/chat', { text: 'Cozi?' }, result.session)).status).toBe(200);
+  expect(sent).toHaveLength(sendsBefore);
+  const chat = await (await mf.dispatchFetch('https://worker.example/api/chat', { headers })).json() as any;
+  expect(chat.history).toContainEqual(expect.objectContaining({ role: 'user', text: 'Cozi?', channel: 'web' }));
+
   expect((await mf.dispatchFetch('https://worker.example/api/staff', { headers })).status).toBe(403);
   expect((await post('/api/staff/tasks/no/confirm', {}, result.session)).status).toBe(403);
   const response = await post('/api/reports', { type: 'medical', place: { node: 'gate_2', name: 'Poarta 2' }, text: 'Incident' }, result.session);

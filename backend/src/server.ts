@@ -1,4 +1,4 @@
-import { personalRoute } from './personal-routes.js';
+import { personalRoute, staffTaskTool } from './personal-routes.js';
 import { Auth, bearer } from './auth.js';
 import { authRoute } from './auth-routes.js';
 import { FileAuthStore } from './auth-store.js';
@@ -84,7 +84,7 @@ export function createControlTower() {
   const authStore = new FileAuthStore(`${stateFile}.auth.json`);
   const auth = new Auth(authStore);
   const view = airportView(engine.sim, () => [...clients.values()].includes('twin'));
-  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, reportsChanged: rows => engine.updateStaffReports(rows) });
+  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, staffTasks: (phone, input) => staffTaskTool(authStore, engine.sim, process.env, phone, input), reportsChanged: rows => engine.updateStaffReports(rows) });
   const reportsReady = waAgent.reports.list().then(rows => engine.updateStaffReports(rows));
   const webhookWork = new Set<Promise<void>>();
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
@@ -132,7 +132,7 @@ export function createControlTower() {
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
       await reportsReady;
-      if (url.pathname === '/api/me' || url.pathname === '/api/staff' || url.pathname.startsWith('/api/staff/tasks/') ||
+      if (url.pathname === '/api/chat' || url.pathname === '/api/me' || url.pathname === '/api/staff' || url.pathname.startsWith('/api/staff/tasks/') ||
         (url.pathname === '/api/reports' && req.method === 'POST') || /^\/api\/reports\/[^/]+\/(state|close)$/.test(url.pathname)) {
         const personalBody = req.method === 'POST' ? await rawBody(req) : undefined;
         const response = await ordered(() => personalRoute(new Request(url, { method: req.method,

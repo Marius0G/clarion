@@ -293,6 +293,7 @@ Decizie Bogdan, 1 nov. Ce se vede pe WhatsApp se vede și pe web, mai frumos. Ce
 - **Raportare, ambele roluri.** Pe WhatsApp: text liber, iar agentul extrage locul și tipul (D11). Când locul nu e clar, întreabă reperul cu butoane. Fotografia e opțională. Pe web: butonul „Raportează”, apoi tipul (butoane), locul (reper sau hartă) și o descriere scurtă. Rapoartele pasagerilor intră în același jurnal ca ale angajaților (D28), cu sursa marcată. Prioritatea o pune backend-ul după tip (securitate, medical: P1).
 - **Pagina pasagerului** (`/m`, D33): situația lui (coada, prognoza, zborul), traseul ca imagine pre-randată, cronologia mesajelor primite pe WhatsApp (alerte, schimbări de zbor, evacuare) și rapoartele lui cu starea lor.
 - **Pagina angajatului** (`/s`, logat cu D3 și rolul `staff`): rapoartele lui cu starea și ETA-ul echipei, alertele pentru zona lui, sarcinile din D30 care îi revin (de exemplu supervizorul de securitate la +1 linie), cu „Confirm” și „Făcut”, plus același buton „Raportează”.
+- **Chat web** (`/m`, `/s`): același agent și istoric per telefon ca WhatsApp, canal marcat (`whatsapp` / `web`), cu limită de mesaje per sesiune.
 - Stările unui raport: trimis, preluat, echipa pe drum (ETA), rezolvat. Fiecare schimbare ajunge și pe WhatsApp, și pe pagină.
 
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)

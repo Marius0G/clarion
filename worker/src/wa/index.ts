@@ -54,9 +54,11 @@ export class WhatsAppAgent {
   private fetcher: Fetch;
   private observe?: Observe;
   private images: RouteImages;
+  private staffTasks?: (phone: string, input: { id?: string; action?: string }) => Promise<unknown>;
   private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
-    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
+    opts: { staffTasks?: (phone: string, input: { id?: string; action?: string }) => Promise<unknown>; fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
+    this.staffTasks = opts.staffTasks;
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.observe = opts.observe;
     this.images = new RouteImages(env.APP_URL ?? 'https://clarion-craiova.pages.dev', this.fetcher);
@@ -108,39 +110,79 @@ export class WhatsAppAgent {
   profile(phone: string) { return this.store.get<Profile>(`wa:profile:${phone}`); }
 
   /** Parsed webhook messages and isolated lab messages enter the same serialized turn. */
-  receive(m: InboundMessage) {
+  receive(m: InboundMessage, channel: 'whatsapp' | 'web' = 'whatsapp', output: HistoryEntry[] = []) {
     const next = (this.chains.get(m.phone) ?? Promise.resolve())
       .then(async () => {
         const started = Date.now();
         const trace = { tools: [] as string[], bubbles: 0 };
         this.traces.set(m.phone.replace(/^\+/, ''), trace);
         await this.observe?.({ kind: 'inbound', phone: m.phone, type: m.type, text: redact(m.text ?? '') });
-        try { await this.turn(m); }
+        try { await this.conversationTurn(m, channel, output); }
         catch (e) {
           const error = String((e as Error)?.message ?? e);
           await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error });
           console.error(JSON.stringify({ wa: 'turn-crashed', id: m.id, error: error.slice(0, 200) }));
+          if (channel === 'web') throw e;
           await this.wa.sendText(m.phone, say((await this.profile(m.phone))?.lang, 'fallback')).catch(() => {});
         } finally {
           this.traces.delete(m.phone.replace(/^\+/, ''));
           await this.observe?.({ kind: 'turn', phone: m.phone, ...trace, ms: Date.now() - started });
         }
-      }).catch(e => { console.error('WhatsApp turn failed', String(e)); });
+      });
     this.chains.set(m.phone, next);
-    void next.finally(() => { if (this.chains.get(m.phone) === next) this.chains.delete(m.phone); });
+    void next.then(() => { if (this.chains.get(m.phone) === next) this.chains.delete(m.phone); }, () => { if (this.chains.get(m.phone) === next) this.chains.delete(m.phone); });
     return next;
   }
 
-  private async turn(m: InboundMessage) {
+  async chat(phone: string, text: string, replyId: string | null = null) {
+    const output: HistoryEntry[] = [];
+    await this.receive({ id: crypto.randomUUID(), phone, name: '', type: 'text', text, replyId, at: Date.now() }, 'web', output);
+    return output;
+  }
+
+  async chatHistory(phone: string) {
+    const ctx = await this.store.get<PassengerContext>(`wa:ctx:${phone}`);
+    const alerts = await this.store.get<{ at: string; text: string; timestamp?: number }[]>(`msg:alerts:wa:${phone}`) ?? [];
+    return [...(ctx?.history ?? []).map(e => ({ ...e, channel: e.channel ?? 'whatsapp' })),
+      ...alerts.map(e => ({ ...e, role: 'clarion' as const, channel: 'whatsapp' as const }))]
+      .sort((a, b) => a.timestamp !== undefined && b.timestamp !== undefined ? a.timestamp - b.timestamp : a.at.localeCompare(b.at));
+  }
+
+  private async conversationTurn(m: InboundMessage, channel: 'whatsapp' | 'web', output: HistoryEntry[]) {
+    // A scoped transport shares the full turn without mutating the live WhatsApp client.
+    const graph = async (body: Record<string, unknown>) => {
+      const result = channel === 'web' ? { ok: true } : await this.wa.graph(body);
+      if (result.ok) {
+        const interactive = body.interactive as { body?: { text: string }; action?: { buttons: { reply: { id: string; title: string } }[] } } | undefined;
+        const image = body.image as { link: string; caption: string } | undefined;
+        const reaction = body.reaction as { emoji?: string } | undefined;
+        const text = (body.text as { body?: string } | undefined)?.body ?? interactive?.body?.text ?? image?.caption ?? (reaction?.emoji ? `[react]${reaction.emoji}` : undefined);
+        if (text) output.push({ role: 'clarion', text: redact(text), at: clockText(this.view.clock().now), timestamp: Date.now(), channel,
+          ...(interactive && { buttons: interactive.action?.buttons.map(b => b.reply) }), ...(image && { image: image.link }) });
+      }
+      return result;
+    };
+    const transport = new Proxy(channel === 'web' ? new WhatsAppClient(this.env, this.fetcher, 0) : this.wa, {
+      get: (target, property, receiver) => property === 'graph' ? graph : Reflect.get(target, property, receiver),
+    });
+    await this.turn(m, transport, channel);
+    if (m.text && !(channel === 'whatsapp' && parseLogin(m.text)) && !DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
+      const key = `wa:ctx:${m.phone}`, ctx = await this.store.get<PassengerContext>(key) ?? { history: [] };
+      const entries: HistoryEntry[] = [{ role: 'user', text: parseStaff(m.text) !== undefined ? 'STAFF ***' : redact(m.text), at: clockText(this.view.clock().now), timestamp: m.at, channel }, ...output];
+      await this.store.put(key, { ...ctx, ...await foldHistory(this.env, this.fetcher, ctx, entries) });
+    }
+  }
+
+  private async turn(m: InboundMessage, transport: WhatsAppClient, channel: 'whatsapp' | 'web') {
     console.log(JSON.stringify({ wa: 'in', id: m.id, type: m.type, from: masked(m.phone) }));
     const login = parseLogin(m.text);
-    if (login) {
+    if (login && channel === 'whatsapp') {
       const ok = await new Auth(this.store).bindLogin(login, m.phone);
       await this.store.put(`wa:last:${m.phone}`, m.at);
-      if (allowed(this.env, m.phone)) await this.wa.sendText(m.phone, ok ? 'Gata, ești conectat pe site.' : 'Cod expirat sau folosit. Cere un cod nou pe site.');
+      if (allowed(this.env, m.phone)) await transport.sendText(m.phone, ok ? 'Gata, ești conectat pe site.' : 'Cod expirat sau folosit. Cere un cod nou pe site.');
       return;
     }
-    await this.wa.markReadTyping(m.id);
+    await transport.markReadTyping(m.id);
     const key = `wa:profile:${m.phone}`;
     let profile: Profile = { phone: m.phone, role: 'passenger', lang: 'ro', ...(await this.store.get<Profile>(key)) };
     if ((this.env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === m.phone)) profile.role = 'staff';
@@ -150,7 +192,7 @@ export class WhatsAppAgent {
       && /flight|zbor|gate|poart/i.test(m.text ?? '');
     const urgent = m.text && (clearProblem(m.text) || m.replyId?.startsWith('rep:') || urgentText(m.text) || flightAlert || (profile.role === 'staff' && staffIncident(m.text)));
     const quick = m.text && !urgent ? quickReaction(m.text) : null;
-    if (quick) await this.wa.sendReaction(m.phone, m.id, quick);
+    if (quick && channel === 'whatsapp') await this.wa.sendReaction(m.phone, m.id, quick);
 
     const initiallyBound = Boolean(profile.flight);
     const save = async (patch: Partial<Profile>) => {
@@ -160,7 +202,7 @@ export class WhatsAppAgent {
       if (patch.flight || patch.role === 'staff') await this.messaging.addPhone(m.phone);
     };
     // Every message the person sends opens the 24h window.
-    await this.store.put(`wa:last:${m.phone}`, m.at);
+    if (channel === 'whatsapp') await this.store.put(`wa:last:${m.phone}`, m.at);
     await save({ role: profile.role, lastInboundAt: m.at, ...(m.name && { name: m.name }) });
 
     if (m.photo) {
@@ -168,9 +210,9 @@ export class WhatsAppAgent {
       await this.store.put(`wa:report:${m.phone}`, { ...draft, photo: m.photo });
       m.text ??= '';
     }
-    if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
+    if (m.text === null) { if (MEDIA.has(m.type)) await transport.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
-    if (chosen) { await save({ lang: chosen, languageExplicit: true }); await this.wa.sendText(m.phone, say(chosen, 'language')); return; }
+    if (chosen) { await save({ lang: chosen, languageExplicit: true }); await transport.sendText(m.phone, say(chosen, 'language')); return; }
     const detected = messageLanguage(m.text);
     if (!profile.languageExplicit && detected) await save({ lang: detected });
     // ş (cedilla, older keyboards) is matched as ș.
@@ -178,7 +220,7 @@ export class WhatsAppAgent {
       if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);
       for (const k of [key, `wa:ctx:${m.phone}`, `wa:last:${m.phone}`]) await this.store.delete(k);
       await this.messaging.removePhone(m.phone);
-      await this.wa.sendText(m.phone, say(profile.lang, 'deleted'));
+      await transport.sendText(m.phone, say(profile.lang, 'deleted'));
       return;
     }
     const ctxKey = `wa:ctx:${m.phone}`;
@@ -186,21 +228,17 @@ export class WhatsAppAgent {
     const alerts = await this.store.get<PassengerContext['alerts']>(`msg:urgent:wa:${m.phone}`)
       ?? await this.store.get<PassengerContext['alerts']>(`msg:alerts:wa:${m.phone}`) ?? [];
     ctx.alerts = alerts.filter(a => a.kind === 'flight' || a.kind === 'evacuate');
-    const remember = async (user: string, bubbles: string[]) => {
-      const at = clockText(this.view.clock().now);
-      const entries: HistoryEntry[] = [{ role: 'user', text: user, at }, ...bubbles.map(text => ({ role: 'clarion' as const, text, at }))];
-      return this.store.put(ctxKey, { ...ctx, ...await foldHistory(this.env, this.fetcher, ctx, entries) });
-    };
+    const persistContext = async () => this.store.put(ctxKey, ctx);
 
     const staff = parseStaff(m.text);
     if (staff !== undefined) {
-      const ok = staff.toUpperCase() === (this.env.STAFF_CODE || DEFAULT_STAFF_CODE).toUpperCase();
+      const ok = channel === 'whatsapp' && staff.toUpperCase() === (this.env.STAFF_CODE || DEFAULT_STAFF_CODE).toUpperCase();
       if (ok) await save({ role: 'staff' });
       const text = ok
         ? say(profile.lang, 'staffRegistered')
         : say(profile.lang, 'staffCodeInvalid');
-      await this.wa.sendText(m.phone, text);
-      await remember('STAFF ***', [text]);
+      await transport.sendText(m.phone, text);
+      await persistContext();
       return;
     }
     const start = parseStart(m.text);
@@ -208,8 +246,8 @@ export class WhatsAppAgent {
       const flight = findFlight(this.view.flights(), start.flight);
       if (!flight) {
         const text = say(profile.lang, 'unknownFlight', start.flight);
-        await this.wa.sendText(m.phone, text);
-        await remember(m.text, [text]);
+        await transport.sendText(m.phone, text);
+        await persistContext();
         return;
       }
       const pending = await consumeJoin(this.store, start.token, flight.flight);
@@ -221,11 +259,12 @@ export class WhatsAppAgent {
       const text = say(profile.lang, 'startConnected', flight.flight, flight.destination, gateName(flight.gate), clockText(closeAt(flight)), say(profile.lang, clock.sim ? 'simClock' : 'realClock'));
       const ask = say(profile.lang, 'bagQuestion');
       const urgentStart = flight.status === 'delayed' || flight.status === 'cancelled';
-      if (!urgentStart) await this.wa.sendReaction(m.phone, m.id, '✈️');
-      await this.wa.sendText(m.phone, urgentStart ? text.replace(/✈️\s*/gu, '') : text);
-      await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag, true);
-      await this.wa.sendButtons(m.phone, ask, [{ id: 'bag:yes', title: say(profile.lang, 'bagYes') }, { id: 'bag:no', title: say(profile.lang, 'bagNo') }]);
-      await remember(`START ${flight.flight}`, [text, ask]);
+      if (!urgentStart) await transport.sendReaction(m.phone, m.id, '✈️');
+      await transport.sendText(m.phone, urgentStart ? text.replace(/✈️\s*/gu, '') : text);
+      if (channel === 'web') await transport.sendText(m.phone, this.messaging.arriveText(flight, profile.hasCheckedBag, profile.lang));
+      else await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag, true);
+      await transport.sendButtons(m.phone, ask, [{ id: 'bag:yes', title: say(profile.lang, 'bagYes') }, { id: 'bag:no', title: say(profile.lang, 'bagNo') }]);
+      await persistContext();
       return;
     }
     // Reports from either role use one bounded slot-filling flow; missing type/place are button choices.
@@ -254,25 +293,25 @@ export class WhatsAppAgent {
       await this.store.put(reportKey, draft);
       if (!draft.type) {
         const names = en ? ['Security', 'Medical', 'Cleaning', 'Lost item', 'Crowd', 'Other'] : ['Securitate', 'Medical', 'Curățenie', 'Obiect pierdut', 'Aglomerare', 'Altele'];
-        for (const offset of [0, 3]) await this.wa.sendButtons(m.phone, en ? 'Type' : 'Tip', REPORT_TYPES.slice(offset, offset + 3).map((type, i) => ({ id: `rep:type:${type}`, title: names[offset + i]! })));
+        for (const offset of [0, 3]) await transport.sendButtons(m.phone, en ? 'Type' : 'Tip', REPORT_TYPES.slice(offset, offset + 3).map((type, i) => ({ id: `rep:type:${type}`, title: names[offset + i]! })));
         return;
       }
       if (!draft.node) {
         const choices = index?.points ?? [{ id: 'door_departures', name: { ro: 'Intrare plecări', en: 'Entrance' } }, { id: 'U_SECURITY_QUEUE', name: { ro: 'Securitate', en: 'Security' } }];
         const offset = m.replyId?.startsWith('rep:page:') ? Number(m.replyId.slice(9)) || 0 : 0;
-        await this.wa.sendButtons(m.phone, en ? 'Place' : 'Reper', [...choices.slice(offset, offset + 2).map(p => ({ id: `rep:loc:${p.id}`, title: p.name[en ? 'en' : 'ro'].slice(0, 20) })),
+        await transport.sendButtons(m.phone, en ? 'Place' : 'Reper', [...choices.slice(offset, offset + 2).map(p => ({ id: `rep:loc:${p.id}`, title: p.name[en ? 'en' : 'ro'].slice(0, 20) })),
           { id: `rep:page:${offset + 2 < choices.length ? offset + 2 : 0}`, title: en ? 'More' : 'Alte repere' }]);
         return;
       }
-      if (!draft.text) { await this.wa.sendText(m.phone, en ? 'Description' : 'Descriere'); return; }
+      if (!draft.text) { await transport.sendText(m.phone, en ? 'Description' : 'Descriere'); return; }
       const path = route(terminalGraph,
         'team_post', draft.node, zoneDensities(this.view.flow(), zoneAreas), this.view.blocked?.());
-      await this.reports.add({ kind: kindForType(draft.type), type: draft.type, node: draft.node,
+      const reported = await this.reports.add({ kind: kindForType(draft.type), type: draft.type, node: draft.node,
         place: { node: draft.node, name: index?.points.find(p => p.id === draft!.node)?.name[en ? 'en' : 'ro'] ?? draft.node },
-        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null });
-      if (draft.type === 'lost item') await this.messaging.notify({ channel: 'whatsapp', phone: m.phone }, { kind: 'admin', requested: true,
-        text: en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
-          : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.` });
+        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null }, Date.now(), channel === 'whatsapp');
+      if (channel === 'web') await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
+      if (draft.type === 'lost item') await transport.sendText(m.phone, en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
+          : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.`);
       await this.store.delete(reportKey);
       return;
     }
@@ -304,6 +343,7 @@ export class WhatsAppAgent {
         if (stored?.pageToken) profile.pageToken = stored.pageToken;
         return link;
       } });
+    if (profile.role === 'staff' && this.staffTasks) tools.staffTasks = input => this.staffTasks!(m.phone, input);
     let waitEstimate: Profile['lastWaitEstimate'];
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
@@ -322,10 +362,10 @@ export class WhatsAppAgent {
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
     const bubbles = ((routeResult?.status === 'needs_location' || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
-    if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
+    if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const delivered = routeResult?.status === 'needs_location'
-      ? (await this.wa.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
-      : await this.wa.sendReplies(m.phone, bubbles, m.id);
+      ? (await transport.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
+      : await transport.sendReplies(m.phone, bubbles, m.id);
     if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
         const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
@@ -335,22 +375,25 @@ export class WhatsAppAgent {
           for (const zone of candidates) {
             const image = await this.images.evacuation(zone);
             if (!image?.link || (live && mapNodeId(image.exit) !== mapNodeId(live.exit))) continue;
-            await this.wa.sendImage(m.phone, image.link, profile.lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare');
+            await transport.sendImage(m.phone, image.link, profile.lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare');
             break;
           }
         } else {
           const blocked = [...(this.view.blocked?.() ?? []), ...Object.entries(zoneDensities(this.view.flow(), zoneAreas)).filter(([, density]) => density >= 5.4).map(([zone]) => zone)];
           const image = await this.images.image(routeResult.from, routeResult.to, routeResult, blocked);
-          if (image) await this.wa.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
+          if (image) await transport.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
         }
       } catch { /* Text delivery must never depend on a preview. */ }
     }
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
     if (!initiallyBound && profile.flight) {
       const flight = findFlight(this.view.flights(), profile.flight);
-      if (flight) await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
+      if (flight) {
+        if (channel === 'web') await transport.sendText(m.phone, this.messaging.arriveText(flight, profile.hasCheckedBag, profile.lang));
+        else await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
+      }
     }
-    await remember(redact(text), bubbles);
+    await persistContext();
     console.log(JSON.stringify({ wa: 'turn', id: m.id, tools: used, bubbles: bubbles.length, ms: Date.now() - started }));
   }
 }

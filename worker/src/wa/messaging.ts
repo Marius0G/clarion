@@ -285,7 +285,7 @@ export class Messaging {
       }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
-      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), ...m }].slice(-50));
+      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), timestamp: Date.now(), ...m }].slice(-50));
     });
     return delivery;
   }

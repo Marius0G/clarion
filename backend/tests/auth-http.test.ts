@@ -55,6 +55,10 @@ it('shares signed reverse login, join, persistent sessions and logout in Node', 
   base = `http://127.0.0.1:${(server.http.address() as AddressInfo).port}`;
   expect(await (await me()).json()).toMatchObject({ phone: '+40712345678', flight: 'W6 3751' });
   expect((await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${result.session}` } }).then(r => r.json())).reports).toHaveLength(1);
+  expect((await post('/api/chat', { text: 'Cozi?' })).status).toBe(401);
+  expect((await post('/api/chat', { text: 'Cozi?' }, result.session)).status).toBe(200);
+  const chat = await fetch(`${base}/api/chat`, { headers: { Authorization: `Bearer ${result.session}` } }).then(r => r.json());
+  expect(chat.history).toContainEqual(expect.objectContaining({ role: 'user', text: 'Cozi?', channel: 'web' }));
   expect((await post('/api/auth/logout', {}, result.session)).status).toBe(200);
   expect((await me()).status).toBe(401);
 });

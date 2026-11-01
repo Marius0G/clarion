@@ -16,7 +16,7 @@ const json = (value: unknown, status = 200) => Response.json(value, { status, he
 export async function personalRoute(request: Request, deps: PersonalRoutes): Promise<Response | undefined> {
   const url = new URL(request.url), path = url.pathname;
   const state = /^\/api\/reports\/([A-Za-z0-9_-]{1,40})\/(state|close)$/.exec(path);
-  if (path !== '/api/me' && path !== '/api/staff' && !path.startsWith('/api/staff/tasks/') && !(path === '/api/reports' && request.method === 'POST') && !state) return;
+  if (path !== '/api/chat' && path !== '/api/me' && path !== '/api/staff' && !path.startsWith('/api/staff/tasks/') && !(path === '/api/reports' && request.method === 'POST') && !state) return;
   try {
     if (state && request.method === 'POST') {
       if (!deps.operator) return json({ error: 'Operator token required' }, 401);
@@ -60,16 +60,18 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       return json(await deps.agent.reports.add({ kind: kindForType(input.type), type: input.type, node: input.place.node,
         place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null }), 201);
     }
+    if (path === '/api/chat') {
+      if (request.method === 'GET') return json({ history: await deps.agent.chatHistory(phone) });
+      if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+      const input = await request.json() as { text?: unknown; replyId?: unknown };
+      if (!input || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 2000 ||
+        (input.replyId !== undefined && (typeof input.replyId !== 'string' || input.replyId.length > 120))) throw new Error('Invalid message');
+      if (!await chatAllowance(deps.store, bearer(request.headers)!)) return json({ error: 'Message limit', retryAfter: 60 }, 429);
+      const bubbles = await deps.agent.chat(phone, input.text.trim(), typeof input.replyId === 'string' ? input.replyId : null);
+      return json({ bubbles, history: await deps.agent.chatHistory(phone) });
+    }
     if (!staff) return json({ error: 'Staff role required' }, 403);
-    const directory = JSON.parse(deps.env.STAFF_ASSIGNMENTS ?? '{}') as Record<string, { role?: Profile['staffRole']; zone?: string }>;
-    const assignment = directory[phone];
-    const role = assignment?.role ?? profile.staffRole ?? 'security_supervisor', zone = assignment?.zone ?? profile.zone ?? 'security';
-    if (!['security_supervisor', 'hall_agent', 'incident_commander'].includes(role) || !terminalGraph.nodes.some(n => n.id === mapNodeId(zone))) throw new Error('Invalid staff assignment');
-    const tasks = deps.sim.snapshot(false, {}).ops.filter(t => {
-      const owner = t.type === 'staff' ? 'security_supervisor' : t.type === 'redirect' ? 'hall_agent' : t.type === 'evacuate' ? 'incident_commander' : null;
-      const zones = t.type === 'evacuate' ? t.zones : [t.type === 'redirect' ? t.from : t.zone];
-      return owner === role && (role === 'incident_commander' || zones.some(id => mapNodeId(id) === mapNodeId(zone)));
-    });
+    const { role, zone, tasks } = assignedTasks(deps.sim, deps.env, profile);
     if (path === '/api/staff' && request.method === 'GET') return json({ role, zone, reports: await deps.agent.reports.own(phone),
       tasks, alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });
     const task = /^\/api\/staff\/tasks\/([^/]+)\/(confirm|done)$/.exec(path);
@@ -79,4 +81,42 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
     }
     return json({ error: 'Not found' }, 404);
   } catch (error) { return json({ error: error instanceof Error ? error.message : 'Invalid request' }, 400); }
+}
+
+export function assignedTasks(sim: SimStore, env: PersonalRoutes['env'], profile: Profile) {
+  const phone = profile.phone;
+  const directory = JSON.parse(env.STAFF_ASSIGNMENTS ?? '{}') as Record<string, { role?: Profile['staffRole']; zone?: string }>;
+  const assignment = directory[phone];
+  const role = assignment?.role ?? profile.staffRole ?? 'security_supervisor', zone = assignment?.zone ?? profile.zone ?? 'security';
+  if (!['security_supervisor', 'hall_agent', 'incident_commander'].includes(role) || !terminalGraph.nodes.some(n => n.id === mapNodeId(zone))) throw new Error('Invalid staff assignment');
+  const tasks = sim.snapshot(false, {}).ops.filter(t => {
+    const owner = t.type === 'staff' ? 'security_supervisor' : t.type === 'redirect' ? 'hall_agent' : t.type === 'evacuate' ? 'incident_commander' : null;
+    const zones = t.type === 'evacuate' ? t.zones : [t.type === 'redirect' ? t.from : t.zone];
+    return owner === role && (role === 'incident_commander' || zones.some(id => mapNodeId(id) === mapNodeId(zone)));
+  });
+  return { role, zone, tasks };
+}
+
+export async function staffTaskTool(store: WaStore, sim: SimStore, env: PersonalRoutes['env'], phone: string, input: { id?: string; action?: string }) {
+  const stored = await store.get<Profile>(`wa:profile:${phone}`);
+  if (stored?.role !== 'staff' && !(env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === phone)) throw new Error('Staff role required');
+  const { tasks } = assignedTasks(sim, env, { phone, ...stored, role: 'staff' });
+  if (!input.id && !input.action) return tasks;
+  if (!tasks.some(t => t.id === input.id) || !['confirm', 'done'].includes(input.action ?? '')) throw new Error('Invalid assigned task');
+  return sim.staffTask(input.id!, input.action === 'confirm' ? 'confirmed' : 'done');
+}
+
+export const CHAT_PER_MINUTE = 12;
+const chatLocks = new WeakMap<WaStore, Promise<unknown>>();
+async function chatAllowance(store: WaStore, session: string) {
+  const next = (chatLocks.get(store) ?? Promise.resolve()).then(async () => {
+    const key = `chat:rate:${session}`, now = Date.now();
+    const prior = await store.get<{ start: number; count: number }>(key);
+    const window = prior && now - prior.start < 60_000 ? prior : { start: now, count: 0 };
+    if (window.count >= CHAT_PER_MINUTE) return false;
+    await store.put(key, { ...window, count: window.count + 1 });
+    return true;
+  });
+  chatLocks.set(store, next.catch(() => {}));
+  return next;
 }

@@ -1,4 +1,4 @@
-import { personalRoute } from '../../backend/src/personal-routes.js';
+import { personalRoute, staffTaskTool } from '../../backend/src/personal-routes.js';
 import { Auth, bearer } from '../../backend/src/auth.js';
 import { authRoute, type AuthEnv } from '../../backend/src/auth-routes.js';
 import { allowed } from './wa/transport.js';
@@ -106,7 +106,7 @@ export class Tower extends DurableObject<Env> {
     this.waEvents = new WaEvents(ctx.storage);
     this.history = new WaitHistory(ctx.storage);
     this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0, this.history),
-      { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
+      { staffTasks: (phone, input) => staffTaskTool(ctx.storage, this.engine.sim, env, phone, input), toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
