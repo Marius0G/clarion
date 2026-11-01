@@ -26,12 +26,12 @@ describe('Passenger text regressions', () => {
     const h = harness();
     await h.receive('START W4 106');
     const messages = h.sends.filter(s => ['text', 'interactive'].includes(s.type));
-    expect(messages.map(s => s.type)).toEqual(['text', 'text', 'interactive']);
+    expect(messages.slice(0, -1).every(s => s.type === 'text' && s.text.body.length <= 180)).toBe(true);
     expect(messages[0].text.body).toMatch(/^Gata ✈️ Te-am conectat/);
-    expect(messages[1].text.body).toContain('/m/');
-    expect(messages[2].interactive.body.text).toBe('Ai bagaj de cală?');
+    expect(messages.slice(1, -1).map(s => s.text.body).join(' ')).toContain('/m/');
+    expect(messages.at(-1).interactive.body.text).toBe('Ai bagaj de cală?');
     h.sends.length = 0; await h.receive('START W4 106');
-    expect(h.sends.filter(s => ['text', 'interactive'].includes(s.type)).map(s => s.type)).toEqual(['text', 'text', 'interactive']);
+    expect(h.sends.filter(s => ['text', 'interactive'].includes(s.type)).map(s => s.type)).toEqual(messages.map(s => s.type));
   });
   it('2: Romanian and English output has no clock or estimate disclaimers', async () => {
     for (const lang of ['ro', 'en'] as const) {

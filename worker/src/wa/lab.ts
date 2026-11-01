@@ -34,13 +34,13 @@ export const SCRIPTS: Record<string, Step[]> = {
   languageSwitch: [start, { text: 'English' }, { text: 'What is my gate?', tool: 'myFlight' }, { text: 'Română' }, { text: 'Care este poarta mea?', tool: 'myFlight' }],
   evacuation: [start, { text: '(evacuation alert received)', evacuate: true, urgent: true }],
 };
-export const MAX_BUBBLES = 4;
-export const MAX_BUBBLE_CHARS = 1000;
+export const MAX_BUBBLES = 8;
+export const MAX_BUBBLE_CHARS = 180;
 export interface LabTurn { user: string; replies: string[]; tools: string[]; ms: number; lang: 'ro' | 'en'; urgent?: boolean; evacuate?: boolean; expectedTool?: string; unknown?: boolean; errors?: string[] }
 export interface Violation { turn: number; rule: string; detail: string }
 const emoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3/u;
 const normalize = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-const ro = /\b(este|sunt|poarta|securitate|acum|zborul|aeroport|minute|timp|pentru|spre|nu|stiu|bagaj|parcarea|parcare|informatii|la|in|cu|de|voi|raspunde|romana|lei|ore|tva)\b/giu;
+const ro = /\b(iesi|iesire|adunare|este|sunt|poarta|securitate|acum|zborul|aeroport|minute|timp|pentru|spre|nu|stiu|bagaj|parcarea|parcare|informatii|la|in|cu|de|voi|raspunde|romana|lei|ore|tva)\b/giu;
 const en = /\b(the|is|are|your|you|security|now|flight|airport|minutes|for|to|from|with|don't|know|gate|baggage|parking|information|i|will|reply|english)\b/giu;
 /** Lexical smoke check, not a language classifier or a semantic judge. URLs and reactions are excluded. */
 export function matchesLanguage(text: string, lang: 'ro' | 'en') {

@@ -173,8 +173,15 @@ export class WhatsAppClient {
     return this.graph({ messaging_product: 'whatsapp', status: 'read', message_id: messageId, typing_indicator: { type: 'text' } });
   }
   // preview_url off: a link preview would open one-time links before the person does.
-  sendText(phone: string, body: string) {
-    return this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'text', text: { body, preview_url: false } });
+  async sendText(phone: string, body: string) {
+    let result: { ok: boolean; dryRun?: boolean; status?: number; code?: unknown } = { ok: true };
+    for (const [i, part] of passengerBubbles(body).entries()) {
+      if (i) await sleep(this.pause);
+      const sent = await this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'text', text: { body: part, preview_url: false } });
+      if (!sent.ok) return sent;
+      result = sent;
+    }
+    return result;
   }
   /** Optional route preview hosted by the passenger site. */
   sendImage(phone: string, link: string, caption: string) {
@@ -228,5 +235,21 @@ export function splitText(text: string, max = 4000) {
     rest = rest.slice(at).trim();
   }
   if (rest) parts.push(rest);
+  return parts;
+}
+
+/** About three mobile lines. Preserve URLs and split prose at sentence/word boundaries. */
+export function passengerBubbles(text: string, max = 180): string[] {
+  const parts: string[] = [];
+  for (let rest of text.trim().split(/\n/).map(s => s.trim()).filter(Boolean)) {
+    while (rest.length > max) {
+      const sentence = [...rest.slice(0, max + 1).matchAll(/[.!?]\s/g)].at(-1);
+      let cut = sentence ? sentence.index! + 1 : rest.lastIndexOf(' ', max);
+      if (cut <= 0) cut = rest.indexOf(' ', max);
+      if (cut <= 0) break;
+      parts.push(rest.slice(0, cut).trim()); rest = rest.slice(cut).trim();
+    }
+    if (rest) parts.push(rest);
+  }
   return parts;
 }

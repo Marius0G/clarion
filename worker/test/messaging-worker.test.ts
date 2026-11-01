@@ -177,7 +177,7 @@ it('join language reaches START, /api/me, automatic delays and simulated passeng
   const token = /\/m\/([a-f0-9-]+)/.exec(all.at(-1)!)![1];
   await expect.poll(async () => (await (await api(`/api/me?token=${token}`, undefined, '')).json() as any).lang).toBe('en');
   u.ws.send(envelope('agent.register', { agentId: 'english-sim', role: 'passenger', channel: 'sim', flight: 'W6 3751', lang: 'en' }));
-  await expect.poll(() => u.of('agent.message').some(m => m.agentId === 'english-sim' && m.text.includes('Security'))).toBe(true);
+  await expect.poll(() => u.of('agent.message').some(m => m.agentId === 'english-sim' && m.text.includes('Security')), { timeout: 10000 }).toBe(true);
   const simToken = /\/m\/([a-f0-9-]+)/.exec(u.of('agent.message').find(m => m.agentId === 'english-sim').text)![1];
   expect(await (await api(`/api/me?token=${simToken}`, undefined, '')).json()).toMatchObject({ lang: 'en' });
   u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin: 45 })] }));

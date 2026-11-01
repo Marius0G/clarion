@@ -116,7 +116,7 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   const delays = () => texts().filter(t => t.includes('întârziere de 30 min'));
   const simDelays = () => twin.of('agent.message').filter(m => m.kind === 'flight');
   await expect.poll(() => delays().length, { timeout: 10000 }).toBe(1);
-  await expect.poll(simDelays).toEqual([expect.objectContaining({ agentId: 'demo-passenger', text: expect.stringContaining('întârziere de 30 min') })]);
+  await expect.poll(simDelays, { timeout: 10000 }).toEqual([expect.objectContaining({ agentId: 'demo-passenger', text: expect.stringContaining('întârziere de 30 min') })]);
   await expect.poll(sim).toMatchObject({ flights: [expect.objectContaining({ status: 'delayed', delayMin: 30 })] });
 
   // Beat 4: staff reports the incident; vision's evacuation plan reaches both kinds of passenger.

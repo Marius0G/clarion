@@ -17,7 +17,7 @@ import { clockText, closeAt, findFlight, flightKey, gateName, type Flight } from
 import { arrivalPlan, situationText, ownZones, type AirportView, type Profile } from './tools.js';
 export { nodeName } from './tools.js';
 import type { PassengerData } from '../../../app/src/me/types.js';
-import { masked, type WhatsAppClient } from './transport.js';
+import { passengerBubbles, masked, type WhatsAppClient } from './transport.js';
 import type { WaStore } from './index.js';
 import type { OpsCommand } from '../../../backend/src/sim.js';
 
@@ -304,7 +304,7 @@ export class Messaging {
       }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
-      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), timestamp: Date.now(), ...m }].slice(-50));
+      await this.deps.store.put(key, [...alerts, ...(sub.channel === 'whatsapp' ? passengerBubbles(m.text) : [m.text]).map(text => ({ at: clockText(this.deps.view.clock().now), timestamp: Date.now(), ...m, text }))].slice(-50));
     });
     return delivery;
   }

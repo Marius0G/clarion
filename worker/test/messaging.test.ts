@@ -5,7 +5,7 @@ import { Messaging,affectedByEvacuation,estimateStage,evacPlan,routeFor,splitReg
 import { classifyIssue,matchNode } from '../src/wa/reports.js';
 import { arrivalPlan,toolsFor,type AirportView,type Profile,type ZoneRow } from '../src/wa/tools.js';
 import { airportView } from '../src/wa/tower.js';
-import { WhatsAppClient } from '../src/wa/transport.js';
+import { passengerBubbles, WhatsAppClient } from '../src/wa/transport.js';
 
 const hm = (h: number, m: number) => h * 3600 + m * 60;
 class MemoryStore implements WaStore {
@@ -181,7 +181,7 @@ describe('automatic flight messages (D14, D18 beat 3)', () => {
     // Unity resends the same schedule (reconnect): nothing new goes out.
     expect(await h.m.flightsChanged()).toEqual([]);
     const wa = h.texts();
-    expect(wa).toHaveLength(1);
+    expect(wa.map(m => m.text)).toEqual(passengerBubbles(h.unity[0]!.data.text));
     expect(wa[0]!.to).toBe('40712345678');
     expect(wa[0]!.text).toContain('întârziere de 45 min. Plecarea: 10:25 în loc de 09:40.');
     expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'flight', text: expect.stringContaining('întârziere de 45 min') } }]);
@@ -222,7 +222,7 @@ describe('staff reports (D11, D18 beat 4)', () => {
     expect(r).toMatchObject({ id: 'R2', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
     expect(r).toMatchObject({ source: 'staff', state: 'sent', priority: 'P1' });
     // Pitch: the airport police's ETA too, from its nearest post, crowd-penalised like the team's.
-    expect(h.texts().at(-1)!.text).toBe(`Am primit (R2): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min. Poliția aeroportului ajunge în ~${r!.policeEtaMin} min.`);
+    expect(h.texts().map(m => m.text).join(' ')).toContain(`Am primit (R2): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min. Poliția aeroportului ajunge în ~${r!.policeEtaMin} min.`);
     expect((await h.agent.reports.close('R1'))!.status).toBe('closed');
     expect(await h.agent.reports.close('R9')).toBeUndefined();
   });
@@ -257,16 +257,18 @@ describe('evacuation (D10, A10)', () => {
     expect(routeFor(plan(), f, hm(9, 0)).from).toBe('gate_2');
     expect(routeFor(plan(), undefined, hm(9, 0)).from).toBe('entrance');
   });
-  it('without evac.plan, everyone gets the generic message after the wait', async () => {
+  it('without evac.plan, affected subscribers get a personal exit and assembly after the wait', async () => {
     quiet();
     const h = harness(fakeSim().view);
     await h.inbound('START W6 3751');
     await h.m.registerSims([{ agentId: 'a1', role: 'p', flight: 'W6 3751' }]);
     h.graph.length = 0; h.unity.length = 0;
     expect(await h.m.evacuate(['check_in:2', 'security'], 'ops-0')).toBe('generic');
-    const text = 'Evacuare: Zona Check-in, grupul 2 este închisă. Zona Control de securitate este închisă. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.';
-    expect(h.texts()[0]!.text).toContain(text);
-    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining(text) } }]);
+    const sent = h.texts().map(m => m.text).join(' ');
+    expect(sent).toContain('Evacuare: Zona Check-in, grupul 2 este închisă.');
+    expect(sent).toContain('Ieși pe');
+    expect(sent).toContain('Punct de adunare:');
+    expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: sent.split(' Dacă ești încă pe drum')[0] } }]);
   });
   it('with evac.plan in time, each subscriber gets its route and sim agents walk it', async () => {
     quiet();
@@ -278,7 +280,7 @@ describe('evacuation (D10, A10)', () => {
     expect(await h.m.plan(plan())).toBe(2);
     expect(await generic).toBe('planned');
     // 07:00 is before his A6 entrance time, so he may be on the road: the route plus how long to stay away (clearSec 140 s + 20 min).
-    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Zona Check-in, grupul 2 este închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul. Dacă ești încă pe drum, nu veni acum: estimăm că zona se redeschide în ~23 min. Îți scriem când se poate.' }]);
+    expect(h.texts().map(m => m.text).join(' ')).toBe('Evacuare: Zona Check-in, grupul 2 este închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul. Dacă ești încă pe drum, nu veni acum: estimăm că zona se redeschide în ~23 min. Îți scriem când se poate.');
     expect(h.unity).toEqual([
       { type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining('Ieși pe Ieșirea 1') } },
       { type: 'agent.route', data: { agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' } },
@@ -362,7 +364,7 @@ it('describes admin changes to the affected flight group and sends the same text
   await h.store.put('wa:last:+40712345678', Date.now());
   expect(await h.m.adminChanged({ type: 'redirect', from: 'check_in:2', to: 'check_in:3' })).toBe(2);
   expect(h.unity).toHaveLength(1);
-  expect(h.unity[0]!.data.text).toBe(h.texts()[0]!.text);
+  expect(h.unity[0]!.data.text).toBe(h.texts().map(m => m.text).join(' '));
   expect(h.texts()[0]!.text).toContain('Check-in, grupul 2: fluxul este mutat la Check-in, grupul 3.');
   expect(h.texts()[0]!.text).not.toMatch(/fii la|mergi|abon/iu);
   expect(await h.m.adminChanged({ type: 'close', zone: 'check_in:2' })).toBe(0);
@@ -402,12 +404,12 @@ describe('urgent automatic delivery', () => {
     h.graph.length = 0;
     // RO 1 closes in 10 min: estimated at its gate, so a blocked security does not concern it.
     expect(await h.m.evacuate(['security'], 'ops-generic')).toBe('generic');
-    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
-    expect(h.texts()[0]!.text).toContain('Dacă ești încă pe drum, nu veni acum. Îți scriem când zona se redeschide.');
+    expect([...new Set(h.texts().map(t => t.to))]).toEqual(['40712345678']);
+    expect(h.texts().map(m => m.text).join(' ')).toContain('Dacă ești încă pe drum, nu veni acum. Îți scriem când zona se redeschide.');
     h.graph.length = 0;
     await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
-    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
-    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate până la poarta 2 ~\d+ min de mers/);
+    expect([...new Set(h.texts().map(t => t.to))]).toEqual(['40712345678']);
+    expect(h.texts().map(m => m.text).join(' ')).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate până la poarta 2 ~\d+ min de mers/);
     expect(await h.store.get('msg:evacuation')).toBeUndefined();
  });
 
@@ -420,7 +422,7 @@ describe('urgent automatic delivery', () => {
     await h.m.registerSims([{ agentId: 'public', role: 'p', flight: 'W6 3751' }, { agentId: 'gate', role: 'p', flight: 'RO 1' }]);
     h.graph.length = 0; h.unity.length = 0;
     expect(await h.m.plan({ id: 'partial', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] })).toBe(2);
-    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
+    expect([...new Set(h.texts().map(t => t.to))]).toEqual(['40712345678']);
     expect(h.unity.map(m => m.data.agentId)).toEqual(['public', 'public']);
     const f = fromSim([row()])[0]!;
     expect(affectedByEvacuation(['U_SECURITY_QUEUE'], f, hm(7, 0))).toBe(true);
@@ -429,3 +431,4 @@ describe('urgent automatic delivery', () => {
     expect(affectedByEvacuation(['gate_2'], f, hm(9, 0))).toBe(true);
     expect(affectedByEvacuation(['security'], undefined, hm(7, 0))).toBe(false);
  });
+

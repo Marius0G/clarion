@@ -18,7 +18,7 @@ import { Messaging, WINDOW_MS } from './messaging.js';
 import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType } from './reports.js';
 import { toolsFor, type AirportView, type Profile } from './tools.js';
 import {
-  WhatsAppClient, allowed, failedStatuses, masked, parseWebhook, quickReaction, reactionOf, redact, MEDIA,
+  WhatsAppClient, passengerBubbles, allowed, failedStatuses, masked, parseWebhook, quickReaction, reactionOf, redact, MEDIA,
   type Fetch, type InboundMessage, type WaEnv,
 } from './transport.js';
 
@@ -363,9 +363,17 @@ export class WhatsAppAgent {
     const { used } = answer;
     const bubbles = ((routeResult?.status === 'needs_location' || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
+    const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
     const delivered = routeResult?.status === 'needs_location'
       ? (await transport.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
-      : await transport.sendReplies(m.phone, bubbles, m.id);
+      : bagChoice ? await (async () => {
+        const short = bubbles.flatMap(b => passengerBubbles(b));
+        const prompt = short.find(b => b.includes(say(profile.lang, 'bagQuestion')))!;
+        const other = short.filter(b => b !== prompt);
+        const sent = !other.length || await transport.sendReplies(m.phone, other, m.id);
+        const choice = await transport.sendButtons(m.phone, prompt, [{ id: 'bag:yes', title: say(profile.lang, 'bagYes') }, { id: 'bag:no', title: say(profile.lang, 'bagNo') }]);
+        return sent && choice.ok;
+      })() : await transport.sendReplies(m.phone, bubbles, m.id);
     if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
         const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');

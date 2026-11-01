@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { check, matchesLanguage, MAX_BUBBLE_CHARS, runLab, SCRIPTS, validateInput, type LabTurn } from '../src/wa/lab.js';
+import { check, matchesLanguage, MAX_BUBBLES, MAX_BUBBLE_CHARS, runLab, SCRIPTS, validateInput, type LabTurn } from '../src/wa/lab.js';
 import { labPage } from '../src/wa/labpage.js';
 import { metaExplanation, safeText, WaEvents } from '../src/wa/events.js';
 
@@ -24,7 +24,7 @@ describe('mechanical WhatsApp lab checks', () => {
   it('catches every advertised violation', () => {
     const broken = check([turn({ replies: [] }), turn({ replies: ['undefined null NaN U_SECURITY_QUEUE check_in:1 abonare abonează Mergi acum!'], expectedTool: 'queues' }),
       turn({ lang: 'en' }), turn({ replies: ['The gate is open.'] }), turn({ replies: ['Sunt Clarion. '.repeat(MAX_BUBBLE_CHARS)] }),
-      turn({ replies: Array(5).fill('Poarta este deschisă.') }), turn({ urgent: true, replies: ['[react]✈️', 'Poarta este deschisă 🧳'] }),
+      turn({ replies: Array(MAX_BUBBLES + 1).fill('Poarta este deschisă.') }), turn({ urgent: true, replies: ['[react]✈️', 'Poarta este deschisă 🧳'] }),
       turn({ unknown: true }), turn({ errors: ['Provider failed'] })]).map(v => v.rule);
     for (const rule of ['non-empty', 'invalid-value', 'raw-id', 'abonare', 'orders', 'language', 'bubble-length', 'bubble-count', 'urgent-emoji', 'expected-tool', 'unknown-fact', 'agent-error']) expect(broken).toContain(rule);
   });

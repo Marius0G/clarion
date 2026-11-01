@@ -23,7 +23,7 @@ function view(flow: Record<string, ZoneRow> = {}, flights: readonly Flight[] = P
 }
 const inbound = (text: string, extra: Record<string, unknown> = {}, id = `wamid.${Math.random()}`) => ({
   entry: [{ changes: [{ field: 'messages', value: { metadata: { phone_number_id: 'PN1' }, contacts: [{ wa_id: '40712345678', profile: { name: 'Ana' } }],
-    messages: [{ id, from: '40712345678', timestamp: '1793440000', type: 'text', text: { body: text }, ...extra }] } }] }],
+    messages: [{ id, from: '40712345678', timestamp: String(Math.floor(Date.now() / 1000)), type: 'text', text: { body: text }, ...extra }] } }] }],
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -205,13 +205,15 @@ describe('WhatsAppAgent turn', () => {
     const { agent, store, meta } = harness(live);
     const token = 'a'.repeat(48);
     await store.put(joinKey(token), { flight: 'W6 3751', expiresAt: Date.now() + JOIN_TTL_MS });
-    await agent.inbound(inbound(`START W6 3751 ${token}`, {}, 'wamid.start'));
+    const startMessage = inbound(`START W6 3751 ${token}`, {}, 'wamid.start');
+    const at = Number(startMessage.entry[0]!.changes[0]!.value.messages[0]!.timestamp) * 1000;
+    await agent.inbound(startMessage);
     expect(await store.get('wa:profile:+40712345678')).toMatchObject({
-      phone: '+40712345678', flight: 'W6 3751', airline: 'W6', role: 'passenger', verified: true, name: 'Ana', lastInboundAt: 1793440000000,
+      phone: '+40712345678', flight: 'W6 3751', airline: 'W6', role: 'passenger', verified: true, name: 'Ana', lastInboundAt: at,
     });
-    expect(await store.get('wa:last:+40712345678')).toBe(1793440000000);
-    expect(await agent.withinWindow('+40712345678', 1793440000000 + 3600000)).toBe(true);
-    expect(await agent.withinWindow('+40712345678', 1793440000000 + 86400001)).toBe(false);
+    expect(await store.get('wa:last:+40712345678')).toBe(at);
+    expect(await agent.withinWindow('+40712345678', at + 3600000)).toBe(true);
+    expect(await agent.withinWindow('+40712345678', at + 86400001)).toBe(false);
     const sent = meta();
     expect(sent[0]).toMatchObject({ status: 'read', message_id: 'wamid.start', typing_indicator: { type: 'text' } });
     expect(sent.find(b => b.type === 'text')?.text.body).toContain('W6 3751 spre Londra Luton');
@@ -383,15 +385,15 @@ describe('passenger language (D23)', () => {
     airport.provisional = () => false;
     airport.flights = () => [{ ...W6, status: 'delayed', delayMin: 30 }];
     await agent.messaging.flightsChanged();
-    expect(texts().at(-1)).toContain('is delayed by 30 min');
+    expect(texts().join(' ')).toContain('is delayed by 30 min');
     expect(texts().at(-1)).toContain('Gate 2 closes');
     expect(agent.messaging.evacuateText(['security'], 'en')).toContain('Evacuation: Security closed');
     await store.delete(`msg:last:wa:${phone}`);
     await agent.messaging.adminChanged({ type: 'close', zone: 'security' });
-    expect(texts().at(-1)).toContain('Security: the area is closed.');
+    expect(texts().join(' ')).toContain('Security: the area is closed.');
     await agent.messaging.plan({ id: 'evac-en', blocked: ['security'], clearSec: 20,
       exits: [{ exit: 'exit_1', people: 10, clearSec: 20 }], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
-    expect(texts().at(-1)).toContain('Exit via Exit 1: Entrance → Exit 1');
+    expect(texts().join(' ')).toContain('Exit via Exit 1: Entrance → Exit 1');
     await agent.inbound(inbound('STAFF CRAIOVA2026'));
     expect(texts().at(-1)).toContain('registered as airport staff');
     await agent.inbound(inbound('unattended bag near gate 2'));

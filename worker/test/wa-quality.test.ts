@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { reply, contextBlock } from '../src/wa/agent.js';
 import { clockFrom } from '../src/wa/flights.js';
-import { copy } from '../src/wa/texts.js';
+import { evacuationRoute } from '../../backend/src/evacuation.js';
+import { copy, nodeName } from '../src/wa/texts.js';
 import { WhatsAppAgent, type WaStore } from '../src/wa/index.js';
 import { toolsFor, arrivalPlan, situationText, type Profile, type AirportView } from '../src/wa/tools.js';
 import { airportInfo, RouteImages, resolveLandmark, LANDMARK_TTL_MS } from '../src/wa/airport-info.js';
@@ -223,11 +224,11 @@ describe('WhatsApp passenger quality regressions', () => {
   it('12: sends named exit, assembly and optional image, then delivers the reopening follow-up', async () => {
     for (const hasImage of [true, false]) {
       let blocked = ['G_CENTER'];
-      const h = harness({ points: [], routes: {}, evac: { G_CENTER: { exit: 'exit_west', assembly: 'ASSEMBLY_LANDSIDE_WEST', ...(hasImage && { file: 'evac.png' }) } } }, { ...view, blocked: () => blocked });
+      const h = harness({ points: [], routes: {}, evac: { 'check_in:1': { exit: evacuationRoute('check_in:1')!.exit, assembly: evacuationRoute('check_in:1')!.assembly, ...(hasImage && { file: 'evac.png' }) } } }, { ...view, blocked: () => blocked });
       await h.receive('START W4 106'); h.sends.length = 0;
       await h.agent.messaging.evacuate(blocked, 'e1');
-      const text = h.sends.find(s => s.text)?.text.body;
-      expect(text).toContain('exit_west');
+      const text = h.sends.filter(s => s.text).map(s => s.text.body).join(' ');
+      expect(text).toContain(nodeName(evacuationRoute('check_in:1')!.exit));
       expect(text).toContain('Punct de adunare:');
       expect(text).not.toMatch(/\p{Extended_Pictographic}|sunteți|Vă/u);
       expect(h.sends.filter(s => s.type === 'image')).toHaveLength(hasImage ? 1 : 0);
