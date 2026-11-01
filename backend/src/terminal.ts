@@ -104,6 +104,18 @@ export function buildPlan(): TerminalPlan {
     const exterior = zones.filter(z => z.level === 'X' && z.side === side).sort((a, b) => pointDistance([p.x, p.z], a) - pointDistance([p.x, p.z], b) || a.id.localeCompare(b.id));
     if (exterior[0]) link(p.id, exterior[0].id, true);
   }
+  // Arriving passengers leave the baggage hall through the arrivals exit into the public hall: a normal,
+  // one-way crossing (the two-way edge stays evacuation-only, so nobody routes from landside into reclaim).
+  // Only the real exit; other reclaim/landside contacts are shared walls. The gate-stair boxes (departures,
+  // down to the apron) only touch the baggage hall: that contact is for evacuations, not a walkway.
+  // Assembly points are for evacuations only; walking across the apron between them is not a passenger route.
+  for (const e of edges) if ([e.from, e.to].some(id => id.startsWith('G_GATE_DOOR_')) && [e.from, e.to].some(id => /^G_RECLAIM_|^G_ARRIVALS_PASSPORT$/.test(id))
+    || [e.from, e.to].some(id => id.startsWith('ASSEMBLY_'))) e.evacuationOnly = true;
+  for (const e of [...edges]) {
+    const reclaim = [e.from, e.to].find(id => /^G_RECLAIM_[12]$/.test(id));
+    const other = e.from === reclaim ? e.to : e.from;
+    if (e.evacuationOnly && reclaim && other === 'G_ARRIVALS_EXIT') edges.push({ from: reclaim, to: other, walkSec: e.walkSec, oneWay: true });
+  }
   for (const [group, desks] of Object.entries(deskGroups)) {
     const members = desks.map(id => byId.get(id)!);
     const node: TerminalNode = { id: `check_in:${group}`, kind: 'check_in', level: 'G', zone: 'G_CHECKIN_QUEUE',
