@@ -118,7 +118,7 @@ export const ZONE_NAMES: Record<string, string> = {
 export const EN_ZONE_NAMES: Record<string, string> = { check_in: 'Check-in', bag_drop: 'Bag drop', security: 'Security', arrivals_hall: 'Arrivals hall', taxi_rank: 'Taxi rank', kerb: 'Kerb' };
 
 export const copy = {
-  places: (lang: Lang | undefined) => lang === 'en' ? ({ entrance: 'Entrance', airside: 'Departures area', team_post: 'Response team post' } as Record<string, string>) : ({ entrance: 'Intrarea', airside: 'Zona de plecări', team_post: 'Postul echipei' } as Record<string, string>),
+  places: (lang: Lang | undefined) => lang === 'en' ? ({ entrance: 'Entrance', airside: 'Departures area', team_post: 'Response team post', U_SECURITY: 'Security' } as Record<string, string>) : ({ entrance: 'Intrarea', airside: 'Zona de plecări', team_post: 'Postul echipei', U_SECURITY: 'Securitate' } as Record<string, string>),
   group: (lang: Lang | undefined, name: string | undefined, suffix: string) => lang === 'en' ? `${name}, group ${suffix}` : `${name}, grupul ${suffix}`,
   numberedNode: (lang: Lang | undefined, n: RegExpExecArray) => lang === 'en' ? `${n[1] === 'gate' ? 'Gate' : 'Exit'} ${n[2]}` : `${n[1] === 'gate' ? 'Poarta' : 'Ieșirea'} ${n[2]}`,
   gateWalk: (lang: Lang | undefined, flight: Flight) => lang === 'en' ? `Walk to gate ${gateName(flight.gate)}` : `Drum până la poarta ${gateName(flight.gate)}`,
