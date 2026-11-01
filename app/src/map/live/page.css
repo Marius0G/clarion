@@ -1,0 +1,151 @@
+/* /m and /s around the live map (D29): flat light grey, 1 px rules, 2 px corners, 8 px grid. */
+.lv.me-shell { --lv-ink: #161616; --lv-muted: #4a4a4a; --lv-rule: #9a9a9a; --lv-live: #0e2f57; --lv-panel: #e6e6e6;
+  font-family: 'IBM Plex Sans', 'Geist', system-ui, sans-serif; min-height: 0; }
+.lv.narrow { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.lv .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Header and queue strip above the map */
+.lv .lv-head { padding: 10px 16px 8px; border-bottom: 1px solid var(--lv-rule); background: var(--lv-panel); }
+.lv .lv-head .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lv .lv-head h1 { font-size: 20px; line-height: 1.2; margin: 0; font-weight: 700; }
+.lv .lv-head p { margin: 2px 0 0; font-size: 14px; color: var(--lv-muted); }
+.lv .lv-lang { min-height: 36px; min-width: 44px; padding: 0 10px; font-weight: 700; background: transparent; border: 1px solid #6e6e6e; }
+.lv .lv-queues { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--lv-rule); background: #ececec; }
+.lv .lv-queues li { padding: 6px 10px 8px; border-right: 1px solid #b8b8b8; min-width: 0; display: flex; flex-direction: column; }
+.lv .lv-queues li:last-child { border-right: 0; }
+.lv .lv-queues span { font-size: 14px; color: var(--lv-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lv .lv-queues strong { font-size: 22px; line-height: 1.15; color: var(--lv-live); }
+.lv .lv-queues strong small { font-size: 14px; font-weight: 500; }
+.lv .lv-queues .note, .lv .lv-queues .extra { font-size: 12px; color: var(--lv-muted); line-height: 1.3; }
+.lv .lv-queues .extra { color: #8a4100; }
+
+/* Map area */
+.lv .lv-mapwrap { position: relative; flex: 1; min-height: 0; }
+.lv .lv-mapwrap .lm, .lv .lv-mapcol .lm { position: absolute; inset: 0; }
+.lv .lv-banner, .lv .lv-toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); margin: 0; padding: 10px 14px; z-index: 3;
+  background: var(--lv-live); color: #fff; font-weight: 600; font-size: 15px; border-radius: 2px; white-space: nowrap; pointer-events: none; }
+.lv .lv-toast { top: auto; bottom: calc(var(--lv-inset, 196px)); background: #161616; }
+.lv.narrow .lv-toast { bottom: 196px; }
+
+/* Bottom sheet (phone) */
+.lm-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: #ececec; border-top: 1px solid #6e6e6e; display: flex; flex-direction: column;
+  transition: height .28s cubic-bezier(.2, .8, .2, 1); touch-action: none; max-width: 640px; margin: 0 auto; }
+.lm-sheet.dragging { transition: none; }
+.lm-sheet-top { flex: none; padding: 0 12px 4px; touch-action: none; }
+.lm-handle { display: block; width: 100%; height: 22px; min-height: 0 !important; border: 0 !important; background: transparent !important; padding: 0 !important; cursor: grab; }
+.lm-handle i { display: block; width: 40px; height: 4px; margin: 8px auto; background: #8a8a8a; border-radius: 2px; }
+.lm-sheet-body { flex: 1; min-height: 0; padding: 4px 16px max(16px, env(safe-area-inset-bottom)); overscroll-behavior: contain; touch-action: pan-y; }
+
+/* Side panel (desktop) */
+.lv.wide { height: 100dvh; overflow: hidden; }
+.lv .lv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: 100dvh; }
+.lv .lv-mapcol { position: relative; min-width: 0; }
+.lm-panel { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid #6e6e6e; background: #ececec; overflow-y: auto; }
+.lm-panel .lv-head { position: sticky; top: 0; z-index: 2; }
+.lm-panel .lv-search { padding: 12px 16px 0; }
+.lm-panel-body { padding: 8px 16px 16px; }
+.lv .lv-chat { border-top: 1px solid var(--lv-rule); padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.lv .lv-chat h2 { font-size: 16px; margin: 0; }
+.lv .lv-chat .chat-history { max-height: 320px; min-height: 120px; }
+
+/* Search and chips */
+.lv .lv-q { display: flex; align-items: center; gap: 8px; border: 1px solid #6e6e6e; background: #fff; border-radius: 2px; padding: 0 4px 0 10px; }
+.lv .lv-q svg { flex: none; } .lv .lv-q svg circle, .lv .lv-q svg path { fill: none; stroke: var(--lv-ink); stroke-width: 2; }
+.lv .lv-q input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; outline: none; }
+.lv .lv-q .clear { border: 0; background: transparent; min-height: 40px; padding: 0 10px; font-size: 22px; }
+.lv .lv-chips { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 4px; scrollbar-width: none; }
+.lv .lv-chips::-webkit-scrollbar { display: none; }
+.lv .lv-chips button { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px 0 6px; background: #fff; border: 1px solid #8a8a8a; font-size: 15px; font-weight: 500; white-space: nowrap; }
+.lv .lv-chips button[aria-pressed=true] { background: var(--lv-live); color: #fff; border-color: var(--lv-live); }
+.lv-glyph { flex: none; display: block; overflow: visible; }
+
+/* Rows */
+.lv .lv-rows { list-style: none; margin: 0; padding: 0; }
+.lv .lv-rows li + li { border-top: 1px solid #c4c4c4; }
+.lv .lv-rows button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 0; border: 0; background: transparent; text-align: left; min-height: 56px; }
+.lv .lv-rows .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lv .lv-rows b { font-weight: 600; }
+.lv .lv-rows small { color: var(--lv-muted); font-size: 14px; }
+.lv .lv-rows .walk { color: var(--lv-live); font-weight: 700; white-space: nowrap; }
+.lv .cr-busy { color: #6b5300; font-weight: 600; } .lv .cr-very { color: #8a4100; font-weight: 700; }
+.lv .lv-empty { color: var(--lv-muted); }
+
+/* Tap card */
+.lv .lv-card header, .lv .lv-report header { display: flex; align-items: center; gap: 12px; }
+.lv .lv-card header > div { flex: 1; min-width: 0; }
+.lv .lv-card h2, .lv .lv-report h2 { margin: 0; font-size: 20px; line-height: 1.2; }
+.lv .lv-card header p { margin: 2px 0 0; color: var(--lv-muted); font-size: 14px; }
+.lv .x { min-height: 44px; min-width: 44px; padding: 0; font-size: 24px; line-height: 1; background: transparent; border: 0; }
+.lv .lv-crowd { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 16px; }
+.lv .lv-crowd .people .on circle, .lv .lv-crowd .people .on path { fill: var(--lv-ink); }
+.lv .lv-crowd .people .off circle, .lv .lv-crowd .people .off path { fill: none; stroke: #7a7a7a; }
+.lv .lv-crowd.cr-busy .people .on * { fill: #8a6d00; } .lv .lv-crowd.cr-very .people .on * { fill: #b85f00; }
+.lv .lv-crowd .hatch { width: 22px; height: 16px; border: 1px solid #8a8a8a; background: repeating-linear-gradient(45deg, #c9c9c9 0 4px, #a8a8a8 4px 6px); }
+.lv .lv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.lv .primary { background: var(--lv-live); color: #fff; border-color: var(--lv-live); font-weight: 600; }
+.lv .lv-actions button { font-weight: 600; }
+.lv .lv-link { background: transparent; border: 0; color: var(--lv-live); text-decoration: underline; padding: 8px 0; min-height: 44px; font-weight: 600; }
+.lv .lv-near { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid #c4c4c4; }
+.lv .lv-near button { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 6px 0; text-align: left; }
+.lv .lv-near span { flex: 1; } .lv .lv-near small { color: var(--lv-live); font-weight: 700; }
+.lv .lv-route-note { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--lv-live); background: #f4f4f4; }
+.lv .lv-route-note b { color: var(--lv-live); }
+.lv .lv-route-note ol { margin: 4px 0 0; padding-left: 20px; font-size: 14px; color: var(--lv-muted); }
+.lv .lv-route-note.none { border-left-color: #8a8a8a; color: var(--lv-muted); }
+.lv .lv-myroute h2 { font-size: 16px; margin: 4px 0 0; }
+.lv .lv-buttons { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+.lv .lv-buttons > button { background: var(--lv-live); color: #fff; font-weight: 600; }
+.lv .chat-launch { margin-top: 0; }
+.lv .lv-reports { margin-top: 12px; border-top: 1px solid #c4c4c4; padding-top: 8px; }
+.lv .lv-reports summary { min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+
+/* Report form */
+.lv .lv-report { display: grid; gap: 10px; }
+.lv .lv-report .place { margin: 0; font-size: 16px; }
+.lv .lv-report .hint { margin: -6px 0 0; font-size: 14px; color: var(--lv-muted); }
+.lv .lv-report fieldset { border: 0; padding: 0; margin: 0; }
+.lv .lv-report legend { font-size: 14px; color: var(--lv-muted); margin-bottom: 6px; }
+.lv .lv-type { display: flex; flex-wrap: wrap; gap: 8px; }
+.lv .lv-type button { min-height: 44px; padding: 0 14px; }
+.lv .lv-report label { display: grid; gap: 4px; font-size: 14px; color: var(--lv-muted); }
+.lv .lv-report textarea { min-height: 56px; resize: vertical; padding: 8px; color: var(--lv-ink); font-size: 16px; }
+
+/* Staff */
+.lv .lv-staff { margin: 10px 0 0; }
+.lv .lv-staff p { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.lv .lv-staff .now b { font-size: 18px; }
+.lv .lv-staff .now span { font-size: 18px; font-weight: 600; color: var(--lv-live); }
+.lv .lv-staff .age { color: var(--lv-muted); }
+.lv .lv-staff .fc { margin-top: 4px; font-size: 14px; color: var(--lv-muted); }
+.lv .lv-staff .hot { color: #8a4100; font-weight: 700; }
+.lv .lv-staff .over { font-style: normal; margin-right: 4px; color: #e07800; }
+.lv .lv-staff.s-very .now b, .lv .lv-staff.s-busy .now b { color: #8a4100; }
+.lv .lv-notices { list-style: none; margin: 8px 0 0; padding: 0; }
+.lv .lv-notices li { padding: 8px 0; border-top: 1px solid #c4c4c4; font-size: 15px; }
+.lv .lv-notices time { color: var(--lv-muted); font-size: 14px; margin-left: 6px; }
+.lv .lv-section-h { font-size: 16px; margin: 16px 0 4px; }
+.lv .lv-myreports { list-style: none; margin: 0; padding: 0; }
+.lv .lv-myreports button { width: 100%; text-align: left; display: flex; gap: 10px; align-items: center; border: 0; border-top: 1px solid #c4c4c4; background: transparent; padding: 8px 0; min-height: 52px; }
+.lv .lv-myreports .st { margin-left: auto; font-weight: 700; color: var(--lv-live); white-space: nowrap; }
+.lv .lv-myreports .ring { width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--lv-live); flex: none; }
+.lv .lv-myreports .s-taken .ring, .lv .lv-myreports .s-en_route .ring { background: var(--lv-live); }
+.lv .lv-myreports .s-resolved .ring { background: #9a9a9a; border-color: #6a6a6a; }
+.lv .lv-myreports .s-resolved .st { color: var(--lv-muted); }
+.lv .lv-team { margin-top: 10px; padding: 8px 12px; background: var(--lv-live); color: #fff; font-weight: 600; }
+
+/* Evacuation */
+.lv.evac .lv-evac h1 { margin: 0; color: #d40000; font-size: 26px; }
+.lv.evac .lv-evac h2 { font-size: 15px; margin: 12px 0 0; color: var(--lv-muted); }
+.lv.evac .lv-evac .steps { font-size: 17px; font-weight: 600; margin: 8px 0 0; }
+.lv.evac .lv-evac .assembly { font-size: 20px; font-weight: 700; margin: 2px 0 0; }
+.lv .lv-mapwrap.full { height: 100dvh; flex: none; }
+.lv .chat-ch { display: inline-block; padding: 0 6px; border: 1px solid #8a8a8a; border-radius: 2px; font-size: 12px; font-weight: 600; }
+.lv .chat-ch.ch-whatsapp { border-color: #2f5d2f; color: #2f5d2f; }
+.lv .chat-typing { color: var(--lv-muted); font-size: 14px; margin: 4px 0; }
+@media (prefers-reduced-motion: reduce) { .lm-sheet { transition: none; } }
+.lv .lv-staff-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.lv .lv-staff-actions button { min-height: 48px; font-weight: 600; font-size: 15px; line-height: 1.2; padding: 6px 8px; }
+.lv .lv-staff-actions .crowd-action { margin: 0; min-height: 48px; background: #fff; color: var(--lv-ink); border: 1px solid #6e6e6e; }
+.lm-panel .lv-search-wrap { padding: 12px 16px 0; }
+.lm-panel .lv-search-wrap .lv-search { padding: 0; }
+.lv .lv-report header .x, .lv .lv-card header .x { margin-left: auto; }
