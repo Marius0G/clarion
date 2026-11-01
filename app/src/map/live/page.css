@@ -149,3 +149,7 @@
 .lm-panel .lv-search-wrap { padding: 12px 16px 0; }
 .lm-panel .lv-search-wrap .lv-search { padding: 0; }
 .lv .lv-report header .x, .lv .lv-card header .x { margin-left: auto; }
+
+.lv .report-attribution { display: block; color: var(--lv-muted); font-size: 14px; font-weight: 400; }
+.lv .lv-myreports button { flex-wrap: wrap; }
+.lv .lv-myreports button > span:not(.st) { flex: 1; min-width: 160px; }

@@ -54,6 +54,30 @@ export function personalContract() {
       expect(saved).toMatchObject({ state: 'resolved', status: 'closed', timestamps: { taken: new Date(2000).toISOString(), en_route: new Date(2000).toISOString(), resolved: new Date(2000).toISOString() } });
       await expect(reports.transition(a.id, 'taken')).rejects.toThrow();
     });
+    it('projects own and zone reports with role attribution and no phone numbers', async () => {
+      const h = setup();
+      const staff = await h.login('+40712345670', { role: 'staff' });
+      await h.login('+40712345671', { role: 'staff', staffRole: 'hall_agent' });
+      await h.login('+40712345672');
+      const own = await h.agent.reports.add({ kind: 'medical', node: 'gate_2', text: 'Own', phone: '+40712345670', source: 'staff' });
+      const other = await h.agent.reports.add({ kind: 'medical', node: 'U_SECURITY_QUEUE', text: 'Zone staff', phone: '+40712345671', source: 'staff' });
+      await h.agent.reports.transition(other.id, 'taken', 2000);
+      await h.agent.reports.add({ kind: 'medical', node: 'security', text: 'Zone passenger', phone: '+40712345672', source: 'passenger' });
+      await h.agent.reports.add({ kind: 'medical', node: 'gate_3', text: 'Elsewhere', phone: '+40712345672', source: 'passenger' });
+      const data = await (await h.call('/api/staff', staff))!.json() as any;
+      expect(data.reports).toHaveLength(3);
+      expect(data.reports[0]).toMatchObject({ id: own.id, isOwn: true, reporterRole: 'security_supervisor' });
+      expect(data.reports[1]).toMatchObject({ isOwn: false, reporterRole: 'hall_agent', timestamps: { taken: new Date(2000).toISOString() } });
+      expect(data.reports[2]).toMatchObject({ isOwn: false, reporterRole: 'passenger' });
+      expect(JSON.stringify(data.reports)).not.toMatch(/phone|4071234567/);
+      const posted = await (await h.call('/api/reports', staff, h.input))!.json() as any;
+      expect(posted).toMatchObject({ isOwn: true, reporterRole: 'security_supervisor' });
+      expect(posted).not.toHaveProperty('phone');
+      const passenger = await h.login('+40712345672');
+      const me = await (await h.call('/api/me', passenger))!.json() as any;
+      expect(me.reports).toHaveLength(2);
+      expect(me.reports.every((r: any) => r.isOwn && !('phone' in r))).toBe(true);
+    });
     it('rejects missing session and passenger access to staff reads and mutations', async () => {
       const h = setup(), session = await h.login();
       expect((await h.call('/api/me'))?.status).toBe(401);

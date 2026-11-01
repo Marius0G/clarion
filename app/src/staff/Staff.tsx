@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { sessionToken } from '../backend/auth'
 import { backend } from '../backend/config'
-import { personalRequest, stateLabel } from '../reports/Reports'
+import { personalRequest, ReportAttribution, stateLabel } from '../reports/Reports'
 import type { PersonalReport } from '../reports/types'
 import '../me/me.css'
 import '../map/live/page.css'
@@ -174,9 +174,9 @@ export default function Staff() {
     {zoneL ? <StaffNumbers flow={live.flow} id={zoneL.id} now={live.now} lang={lang} history={live.history} forecast={zoneForecast} /> : null}
     {situation && situation.forecast.length > 0 && !zoneL && <p>{situation.forecast.map(p => `~${Math.ceil(p.waitMin)} min · +${p.inMin} min`).join(' · ')}</p>}
     {moving.map(({ r }) => { const p = teamProgress(r.timestamps?.en_route, r.etaMin, tick); return p ? <p key={r.id} className="lv-team" data-testid="team-eta">{en ? 'Team' : 'Echipa'} · ~{p.leftMin} min · {r.place.name}</p> : null })}
-    <h2 className="lv-section-h">{en ? 'My reports' : 'Rapoartele mele'}</h2>
+    <h2 className="lv-section-h">{en ? 'Reports in my zone and mine' : 'Rapoarte din zona mea și ale mele'}</h2>
     {reports.length ? <ul className="lv-myreports">{[...reports].reverse().map(r => <li key={r.id} className={`s-${r.state}`}><button type="button" onClick={() => { setFocusReport(r.id); setSelected(null) }}>
-      <i className="ring" aria-hidden="true" /><span><b>{TYPE[r.type]?.[en ? 1 : 0] ?? r.type}</b> · {r.place?.name}{r.text ? ` · ${r.text}` : ''}</span>
+      <i className="ring" aria-hidden="true" /><span><b>{TYPE[r.type]?.[en ? 1 : 0] ?? r.type}</b> · {r.place?.name}{r.text ? ` · ${r.text}` : ''}<ReportAttribution report={r} en={en} /></span>
       <span className="st">{stateLabel(r.state, en)}{r.state === 'en_route' && r.etaMin != null && ` · ~${teamProgress(r.timestamps?.en_route, r.etaMin, tick)?.leftMin ?? r.etaMin} min`}</span></button></li>)}</ul>
       : <p className="lv-empty">{en ? 'No reports' : 'Niciun raport'}</p>}
     <h2 className="lv-section-h">{en ? 'Dispatch' : 'Dispecerat'}</h2>

@@ -5,7 +5,7 @@ import { waitTarget } from './alerts.js';
 import { Auth, bearer, normalizePhone } from './auth.js';
 import type { WhatsAppAgent, WaStore } from '../../worker/src/wa/index.js';
 import type { Profile, AirportView } from '../../worker/src/wa/tools.js';
-import { REPORT_TYPES, kindForType, type ReportType, type ReportState } from '../../worker/src/wa/reports.js';
+import { REPORT_TYPES, kindForType, type ReportType, type ReportState, type Report } from '../../worker/src/wa/reports.js';
 import { terminalGraph, zoneAreas } from './terminal.js';
 import { mapNodeId } from './mapIds.js';
 import { route, zoneDensities } from './routing.js';
@@ -16,6 +16,20 @@ export interface PersonalRoutes {
   env: { STAFF_PHONES?: string; STAFF_ASSIGNMENTS?: string }; operator: boolean;
 }
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
+/** Personal pages receive attribution without the report's private contact field. */
+async function personalReport(report: Report, phone: string, deps: PersonalRoutes) {
+  const { phone: reporter, ...publicReport } = report;
+  const profile = reporter ? await deps.agent.profile(reporter) : undefined;
+  const isStaff = profile?.role === 'staff' || (deps.env.STAFF_PHONES ?? '').split(',').some(p => p.trim() && normalizePhone(p.trim()) === normalizePhone(reporter));
+  const reporterRole = report.source === 'passenger' ? 'passenger' : isStaff
+    ? staffAssignment(deps.env, { ...profile, phone: reporter, role: 'staff' }).role : 'staff';
+  return { ...publicReport, isOwn: !!reporter && normalizePhone(reporter) === normalizePhone(phone), reporterRole };
+}
+async function personalReports(phone: string, deps: PersonalRoutes, zone?: string) {
+  const rows = (await deps.agent.reports.list()).filter(r => normalizePhone(r.phone) === normalizePhone(phone) ||
+    (zone && r.place.node && mapNodeId(r.place.node) === mapNodeId(zone)));
+  return Promise.all(rows.map(r => personalReport(r, phone, deps)));
+}
 /** Identical authenticated API for Worker and Node. Operator reads remain on the existing reports endpoint. */
 export async function personalRoute(request: Request, deps: PersonalRoutes): Promise<Response | undefined> {
   const url = new URL(request.url), path = url.pathname;
@@ -45,7 +59,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       const position = phone ? (await deps.agent.profile(phone))?.position : undefined;
       const ageSec = position ? Math.round(deps.view.clock().now - position.at / 1000) : null;
       const here = position && ageSec !== null && ageSec >= 0 && ageSec <= 3600 ? { node: position.node, ageSec } : undefined;
-      return json({ ...data, ...(here && { here }), reports: phone || legacy?.phone ? await deps.agent.reports.own(phone ?? legacy!.phone!) : [] });
+      return json({ ...data, ...(here && { here }), reports: phone || legacy?.phone ? await personalReports(phone ?? legacy!.phone!, deps) : [] });
     }
     if (!phone && deps.operator && path === '/api/reports' && request.method === 'POST') {
       const input = await request.json() as { id?: string; kind: import('../../worker/src/wa/reports.js').IssueKind; node: string | null; text: string; status?: string };
@@ -71,8 +85,9 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
         typeof input.place.name !== 'string' || !input.place.name.trim() || input.place.name.length > 120 ||
         (input.photo !== undefined && (typeof input.photo !== 'string' || input.photo.length > 2000 || !/^https:\/\//.test(input.photo)))) throw new Error('Invalid report');
       const path = route(terminalGraph, 'team_post', input.place.node, zoneDensities(deps.view.flow(), zoneAreas), deps.view.blocked?.());
-      return json(await deps.agent.fileWebReport({ kind: kindForType(input.type), type: input.type, node: input.place.node,
-        place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: input.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null }), 201);
+      const report = await deps.agent.fileWebReport({ kind: kindForType(input.type), type: input.type, node: input.place.node,
+        place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: input.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null });
+      return json(await personalReport(report, phone, deps), 201);
     }
     if (path === '/api/chat') {
       if (request.method === 'GET') return json({ history: await deps.agent.chatHistory(phone) });
@@ -95,7 +110,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       // TODO(staff-notices): app/src/staff/Staff.tsx must read zone.id when adopting zone.forecast.
       return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone: { id: zone, forecast }, notices: await staffNotices(deps.store, phone), situation: {
         waitMin: known ? row.waitMin : null, people: known ? row.waiting : null, forecast, state,
-      }, reports: await deps.agent.reports.own(phone),
+      }, reports: await personalReports(phone, deps, zone),
         alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });
     }
     return json({ error: 'Not found' }, 404);
