@@ -1,4 +1,4 @@
-import { landmarks, resolveOrigin, placeQuestion, positionDescription } from './location.js';
+import { landmarks, resolveOrigin, placeQuestion, positionDescription, landmarkById } from './location.js';
 import { terminalGraph } from '../../../backend/src/terminal.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import guide from './airport-guide.json' with { type: 'json' };
@@ -111,7 +111,7 @@ export interface RouteIndex {
   evac?: Record<string, { file?: string; caption?: string; exit: string; assembly?: string; assemblyPoint?: string; nodes?: string[]; steps?: string[] }>;
   routes: Record<string, { file: string; walkSec: number; steps: unknown; nodes?: string[] }>;
 }
-/** Per-agent cache includes absent indexes, so a missing deployment never floods the site. */
+/** Parsed manifests live for ten minutes; failed fetches back off for sixty seconds. */
 export class RouteImages {
   private cached?: { until: number; value: RouteIndex | null };
   constructor(private appUrl: string, private fetcher: import('./transport.js').Fetch, private now = Date.now) {}
@@ -119,13 +119,13 @@ export class RouteImages {
     if (this.cached && this.cached.until > this.now()) return this.cached.value;
     let value: RouteIndex | null = null;
     try {
-      const res = await this.fetcher(`${this.appUrl.replace(/\/$/, '')}/routes/index.json`, { signal: AbortSignal.timeout(2500) });
+      const res = await this.fetcher(`${this.appUrl.replace(/\/$/, '')}/routes/index.json`, { signal: AbortSignal.timeout(6000) });
       if (res.ok) {
         const json = await res.json() as RouteIndex;
         if (Array.isArray(json.points) && json.routes && typeof json.routes === 'object' && json.points.every(p => p && typeof p.id === 'string' && p.name && typeof p.name.ro === 'string' && typeof p.name.en === 'string' && Array.isArray(p.aliases) && p.aliases.every(a => typeof a === 'string'))) value = json;
       }
     } catch { /* Images are optional. */ }
-    this.cached = { until: this.now() + 60000, value };
+    this.cached = { until: this.now() + (value ? 600000 : 60000), value };
     return value;
   }
   async evacuation(zone: string) {
@@ -142,22 +142,22 @@ export class RouteImages {
     }
     return { from: zone, exit: entry.exit, assembly, nodes, link, caption: entry.caption };
   }
-  async image(from: string, to: string, live?: { nodes: string[]; rerouted?: boolean; reroute?: boolean }, blocked: readonly string[] = []) {
+  async image(from: string, to: string, _live?: { nodes: string[]; rerouted?: boolean; reroute?: boolean }, blocked: readonly string[] = []) {
     const index = await this.index();
     const id = (node: string) => index?.points.find(p => p.id === node)?.id ?? index?.points.find(p => mapNodeId(p.id) === mapNodeId(node) || p.aliases.some(a => normalize(a) === normalize(node)))?.id ?? node;
-    const entry = index?.routes[`${id(from)}__${id(to)}`];
+    const entry = index?.routes[`${id(from)}__${id(to)}`]
+      ?? index?.routes[`${id(landmarkById(from)?.graphNode ?? from)}__${id(landmarkById(to)?.graphNode ?? to)}`];
     if (!entry || typeof entry.file !== 'string' || !Number.isFinite(entry.walkSec) || entry.walkSec < 0) return null;
-    // A PNG is safe only when its recorded path matches the current routing response.
-    // Older indexes with prose-only steps cannot establish that and stay text-only.
-    const staticNodes = entry.nodes ?? (Array.isArray(entry.steps) ? entry.steps.map(step => typeof step === 'string' ? step : step && typeof step === 'object' && 'node' in step ? step.node : null) : entry.steps);
-    if (!live || live.rerouted || live.reroute || !Array.isArray(staticNodes) || staticNodes.length < 2 ||
-      !staticNodes.every(n => typeof n === 'string') || !Array.isArray(live.nodes)) return null;
-    const canonical = (node: string) => mapNodeId(id(node));
-    const expected = staticNodes.map(canonical), actual = live.nodes.map(canonical);
-    if (expected.length !== actual.length || expected.some((n, i) => n !== actual[i])) return null;
+    // Check the path drawn on the PNG, independently of the live path.
+    const staticNodes = Array.isArray(entry.steps) ? entry.steps.map(step => typeof step === 'string' ? step : step && typeof step === 'object' && 'node' in step ? step.node : null) : entry.nodes;
+    if (!Array.isArray(staticNodes) || staticNodes.length < 2 || !staticNodes.every(n => typeof n === 'string')) return null;
+    const canonical = (node: string) => mapNodeId(landmarkById(node)?.graphNode ?? id(node));
     const closed = new Set(blocked.map(canonical));
-    if (actual.some(n => closed.has(n) || closed.has(terminalGraph.nodes.find(p => p.id === n)?.zone ?? n) ||
-      (n === 'U_SECURITY' && closed.has('U_SECURITY_QUEUE')))) return null;
+    if (staticNodes.some(n => {
+      const node = canonical(n);
+      return closed.has(node) || closed.has(terminalGraph.nodes.find(p => p.id === node)?.zone ?? node) ||
+        (node === 'U_SECURITY' && closed.has('U_SECURITY_QUEUE'));
+    })) return null;
     const root = new URL(`${this.appUrl.replace(/\/$/, '')}/routes/`);
     const url = new URL(entry.file, root);
     if (!url.href.startsWith(root.href)) return null;
