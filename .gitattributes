@@ -1,0 +1,3 @@
+
+# LightGBM model files must keep LF line endings
+vision/models/*.txt -text
