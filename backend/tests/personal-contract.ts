@@ -181,6 +181,13 @@ export function personalContract() {
       expect((await (await h.call('/api/staff', staff))!.json() as any).reports).toHaveLength(1);
       expect(h.sim.snapshot(false, {}).ops).toEqual([]);
     });
+    it('returns the landmark the passenger last told WhatsApp, with its age, while it is under an hour old', async () => {
+      const h = setup(), now = 7 * 3600 * 1000
+      const fresh = await h.login('+40712345678', { position: { node: 'U_CAFE', at: now - 120_000 } })
+      expect((await (await h.call('/api/me', fresh))!.json() as any).here).toEqual({ node: 'U_CAFE', ageSec: 120 })
+      const old = await h.login('+40712345679', { position: { node: 'U_CAFE', at: now - 2 * 3600_000 } })
+      expect((await (await h.call('/api/me', old))!.json() as any).here).toBeUndefined()
+    });
     it('uses only exit imagery and the assembly point during evacuation', async () => {
       const h = setup(), session = await h.login();
       await h.agent.messaging.plan({ id: 'E1', blocked: ['security'], clearSec: 30,

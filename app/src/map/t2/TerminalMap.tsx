@@ -103,6 +103,23 @@ export const MAP_BOX: Box = FULL
 /** y of the line between the floors (upper floor above it). */
 export const MAP_DIVIDER = DIVIDER
 
+/** Plate geometry for other renderers of the same flat map (the live map): same projection as the route pictures. */
+export const PLATE = {
+  /** Zones drawn on each plate, exterior edge first on the ground plate. */
+  zones: PLATE_ZONES as Record<'G' | 'U', MapZone[]>,
+  /** Vertical shift of a level's pixels onto its plate (exterior points sit on the ground plate). */
+  shift: (l: Level) => plateOffset(plateOf(l), GAP),
+  /** Building outline of the two floors, without the exterior edge. */
+  content: CONTENT,
+  isApron: (z: MapZone) => APRON(z),
+  /** Inverse of `worldAt` for the two floors: map units back to world metres and level. */
+  toWorld: ([x, y]: Pt): { level: 'G' | 'U'; x: number; z: number } => {
+    const level = y < DIVIDER ? 'U' : 'G'
+    const py = y - plateOffset(plateOf(level), GAP)
+    return { level, x: x / M + frames.G.x0, z: frames.G.z1 - py / M }
+  },
+}
+
 /* ---------- Zone geometry caches ---------- */
 type Geo = { d: string; frame: ReturnType<typeof frameOf>; pts: MapPoint[] }
 const geoCache = new Map<string, Geo>()
@@ -115,7 +132,9 @@ function geoOf(z: MapZone): Geo {
   }
   return g
 }
-const SHELL: Record<PlateKey, string[]> = { G: BUILDING.G.map(z => geoOf(z).d), U: BUILDING.U.map(z => geoOf(z).d) }
+/** Zone outline path (level pixels), furniture frame and the points inside it. */
+export const zoneGeo = (z: MapZone) => geoOf(z)
+export const SHELL: Record<PlateKey, string[]> = { G: BUILDING.G.map(z => geoOf(z).d), U: BUILDING.U.map(z => geoOf(z).d) }
 
 /** Padded box around a zone, at the full map's aspect ratio, never smaller than 1/8 of it. */
 function zoneBox(z: MapZone): Box {

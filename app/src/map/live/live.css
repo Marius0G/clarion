@@ -1,0 +1,115 @@
+/*
+ * Live map (D29): light grey, flat, 2 px corners, one sans with tabular numbers.
+ * Colour is reserved for live things: crowding (amber / orange), the route and "you" (navy), P1 red.
+ */
+.lm {
+  --lm-bg: #d4d4d4; --lm-floor: #c4c4c4; --lm-wall: #4e4e4e; --lm-sep: #a9a9a9; --lm-ink: #161616; --lm-ink2: #4a4a4a;
+  --lm-live: #0e2f57; --lm-band: #b9c6d3; --lm-busy: #e6b800; --lm-very: #e07800; --lm-p1: #d40000; --lm-halo: #ececec;
+  position: relative; overflow: hidden; background: var(--lm-bg); touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; font-family: 'IBM Plex Sans', 'Geist', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+}
+.lm .lm-svg { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--lm-bg); cursor: grab; }
+.lm.picking .lm-svg { cursor: crosshair; }
+.lm-ground { fill: var(--lm-bg); }
+.lm-shell path { fill: var(--lm-floor); stroke: var(--lm-wall); }
+.lz .fill { fill: transparent; transition: fill .4s; }
+.lz .edge { fill: none; stroke: var(--lm-sep); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lz.ext .fill { fill: #e2e2e2; }
+.lz.ext .edge { stroke: #a6a6a6; stroke-dasharray: 4 3; }
+.lz.k-parking .fill { fill: #dadada; }
+.lz.apron { display: none; }
+.lz .detail { opacity: .45; pointer-events: none; }
+.lm[data-zoom="0"] .lz .detail { opacity: .3; }
+/* Crowding: set by data attribute, no React render. Normal stays grey (ISA-101). */
+.lz[data-crowd="free"] .fill { fill: #b4b4b4; }
+.lz[data-crowd="busy"] .fill { fill: color-mix(in srgb, var(--lm-busy) 62%, var(--lm-floor)); }
+.lz[data-crowd="very"] .fill { fill: color-mix(in srgb, var(--lm-very) 66%, var(--lm-floor)); }
+.lz[data-crowd="busy"] .edge { stroke: #9c7d00; stroke-width: 2; }
+.lz[data-crowd="very"] .edge { stroke: #a85a00; stroke-width: 2.5; }
+.lz[data-crowd="stale"] .fill, .lz[data-crowd="unknown"] .fill { fill: url(#lm-hatch); }
+.hatch-bg { fill: #c9c9c9; } .hatch { stroke: #a8a8a8; stroke-width: 3; }
+.lz[data-home="1"] .edge { stroke: var(--lm-live); stroke-width: 3; stroke-dasharray: 8 5; }
+.lz[data-sel="1"] .edge { stroke: var(--lm-ink); stroke-width: 3; stroke-dasharray: none; }
+.lm.evac .lz .fill { fill: #cfcfcf; }
+.lm.evac .lz .detail { opacity: .15; }
+
+/* Floors, named by use */
+.lm-floor text { fill: var(--lm-ink); font-weight: 700; paint-order: stroke; stroke: var(--lm-bg); stroke-width: 4px; stroke-linejoin: round; }
+.lm-floor .use { font-weight: 500; fill: var(--lm-ink2); }
+
+/* Points: round ink icons with a white glyph */
+.lm-pt { cursor: pointer; outline: none; }
+.lm-pt .hit { fill: transparent; }
+.lm-icon circle, .lm-icon rect { fill: #262626; stroke: #f4f4f4; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.lm-icon path { fill: #fff; }
+.lm-icon.gate rect { fill: var(--lm-ink); }
+.lm-icon.gate text { fill: #fff; font-weight: 700; text-anchor: middle; }
+.lm-icon.c-emergency circle { fill: #2f5d2f; }
+.lm-icon.c-area circle { fill: #6b6b6b; }
+.lm-pt.sel .lm-icon circle, .lm-pt.sel .lm-icon rect { fill: var(--lm-live); }
+.lm-pt .sel-ring { fill: none; stroke: var(--lm-live); stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.lm-pt:focus-visible .sel-ring, .lm-pt:focus-visible .lm-icon circle { stroke: var(--lm-live); stroke-width: 3px; }
+.lm-label text { paint-order: stroke; stroke: var(--lm-halo); stroke-width: 3.5px; stroke-linejoin: round; }
+.lm-label .name { fill: var(--lm-ink); font-weight: 600; }
+.lm-label .cr { fill: var(--lm-ink2); font-weight: 600; }
+.lm-pt.cr-busy .lm-label .cr { fill: #6b5300; }
+.lm-pt.cr-very .lm-label .cr { fill: #8a4100; font-weight: 700; }
+.lm-label .crowd .on circle, .lm-label .crowd .on path { fill: var(--lm-ink); }
+.lm-label .crowd .off circle, .lm-label .crowd .off path { fill: none; stroke: #7a7a7a; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lm-pt.cr-busy .crowd .on circle, .lm-pt.cr-busy .crowd .on path { fill: #8a6d00; }
+.lm-pt.cr-very .crowd .on circle, .lm-pt.cr-very .crowd .on path { fill: #b85f00; }
+.lm.filtering .lm-points .lm-pt:not(.sel) .lm-icon circle { fill: var(--lm-live); }
+
+/* Route: thick navy line, flowing dots, floor changes */
+.lm-route .halo { fill: none; stroke: #f4f4f4; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+.lm-route .line { fill: none; stroke: var(--lm-live); stroke-linecap: round; stroke-linejoin: round; }
+.lm-route .flow { fill: none; stroke: #fff; stroke-linecap: round; animation: lm-flow 1.1s linear infinite; }
+@keyframes lm-flow { to { stroke-dashoffset: calc(var(--dash) * -1); } }
+.lm-route.evac .line { stroke: var(--lm-p1); }
+.lm-change rect { fill: var(--lm-live); stroke: #fff; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.lm-change path { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+.lm-end .flag { fill: var(--lm-live); stroke: var(--lm-ink); stroke-linejoin: round; }
+.lm-assembly .out { fill: none; stroke: var(--lm-p1); }
+.lm-assembly .spot { fill: #fff; stroke: var(--lm-p1); }
+
+/* Tags */
+.lm-tag rect { fill: #fff; stroke: var(--lm-ink); stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
+.lm-tag text { fill: var(--lm-ink); font-weight: 600; }
+.lm-tag.dark rect { fill: var(--lm-live); stroke: var(--lm-live); }
+.lm-tag.dark text { fill: #fff; }
+
+/* You are here: navy, grey once old */
+.lm-here .halo { fill: rgba(14, 47, 87, .16); stroke: rgba(14, 47, 87, .5); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lm-here .dot { fill: var(--lm-live); stroke: #fff; }
+.lm-here.old .halo { fill: rgba(80, 80, 80, .12); stroke: #8a8a8a; }
+.lm-here.old .dot { fill: #8a8a8a; }
+.lm-here.old .lm-tag rect { fill: #f2f2f2; stroke: #8a8a8a; }
+.lm-here.old .lm-tag text { fill: #4a4a4a; }
+
+/* Staff report pins: state by shape and word, not colour */
+.lm-pin .stem { stroke: var(--lm-ink); }
+.lm-pin .body { fill: #fff; stroke: var(--lm-live); }
+.lm-pin .body.filled { fill: var(--lm-live); }
+.lm-pin.P1 .body { stroke: var(--lm-p1); } .lm-pin.P1 .body.filled { fill: var(--lm-p1); }
+.lm-pin.P1 .lm-tag.dark rect { fill: var(--lm-p1); stroke: var(--lm-p1); }
+.lm-pin.s-resolved .body { fill: #9a9a9a; stroke: #6a6a6a; }
+.lm-pin.s-resolved .lm-tag rect { stroke: #8a8a8a; } .lm-pin.s-resolved .lm-tag text { fill: #5a5a5a; }
+.lm-pin .check { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+.lm-pin .foot { fill: var(--lm-ink); }
+.lm-pin { transition: opacity 1s; }
+.lm-team { transition: transform 1s linear; }
+.lm-team .body { fill: var(--lm-live); stroke: #fff; }
+.lm-team .arrow { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+.lm-team-line { fill: none; stroke: var(--lm-live); stroke-linecap: round; }
+.lm-draft { cursor: grab; }
+.lm-draft .grab { fill: transparent; }
+.lm-draft .body { fill: var(--lm-ink); stroke: #fff; }
+.lm-draft .eye { fill: #fff; }
+
+/* Controls */
+.lm-zoom { position: absolute; right: 12px; display: flex; flex-direction: column; border: 1px solid #6e6e6e; border-radius: 2px; background: #ececec; z-index: 2; transition: bottom .25s; }
+.lm-zoom button { width: 44px; height: 44px; padding: 0; border: 0; border-bottom: 1px solid #8a8a8a; background: transparent; color: var(--lm-ink); font: 600 22px/1 'IBM Plex Sans', system-ui; border-radius: 0; min-height: 0; cursor: pointer; }
+.lm-zoom button:last-child { border-bottom: 0; }
+.lm-zoom button:focus-visible { outline: 2px solid var(--lm-live); outline-offset: -2px; }
+.lm-zoom .locate svg circle { fill: var(--lm-live); } .lm-zoom .locate svg path { stroke: var(--lm-live); stroke-width: 2.4; }
+@media (prefers-reduced-motion: reduce) { .lz .fill, .lm-team, .lm-pin, .lm-zoom { transition: none; } .lm-route .flow { animation: none; } }

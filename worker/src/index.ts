@@ -333,6 +333,8 @@ export class Tower extends DurableObject<Env> {
         }
         if (request.method === 'GET') {
           if (path === '/api/sim') return json(this.engine.sim.snapshot(this.twins().length > 0, this.engine.state.metrics, this.visions().length > 0));
+          // Light live crowding for the phone maps (/m, /s): camera rows only, no positions or truth (D0).
+          if (path === '/api/sim/flow') { const s = this.engine.sim.snapshot(this.twins().length > 0, null, this.visions().length > 0); return json({ at: new Date().toISOString(), simTime: s.simTime, flow: s.flow, blocked: s.blocked }); }
           // D11: staff reports for the dashboard pins.
           if (path === '/api/reports') return json(await this.whatsapp.reports.list());
           if (path === '/api/sim/agents') return json(this.engine.sim.agents(url.searchParams));
