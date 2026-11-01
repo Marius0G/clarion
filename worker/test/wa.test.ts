@@ -284,7 +284,10 @@ describe('WhatsAppAgent turn', () => {
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang, position: { node: 'entrance', at: sim7.now * 1000 } });
     await agent.inbound(inbound(text));
     expect(meta().filter(b => b.type === 'reaction')).toEqual([]);
-    expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Received . Exit 1 → 2.']);
+    const expected = tool === 'routeTo'
+      ? (lang === 'en' ? 'Security control (lanes) → Arrivals door: ~2 min walking.' : 'Control de securitate (benzi) → Ușă sosiri: ~2 min de mers.')
+      : 'Received . Exit 1 → 2.';
+    expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual([expected]);
   });
 
   it('keeps the queue reaction and Moni prompt in English', async () => {

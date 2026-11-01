@@ -35,6 +35,17 @@ function tools(initial: Partial<Profile> = {}, now = () => 1000, airport = view)
   return { get: () => profile, tools: toolsFor({ view: airport, profile: () => profile, save: async patch => { profile = { ...profile, ...patch }; }, now }) };
 }
 describe('WhatsApp passenger quality regressions', () => {
+  it.each(['whatsapp', 'web'] as const)('does not append an arrival link when a route first binds a flight on %s', async channel => {
+    const h = harness();
+    const text = 'Sunt la Hol central. Cum ajung la poarta pentru W4 106?';
+    const entries = channel === 'web' ? await h.agent.chat('+40712345678', text) : (await h.receive(text), []);
+    const texts = channel === 'web' ? entries.map(e => e.text) : h.sends.filter(s => s.type === 'text').map(s => s.text.body);
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('→');
+    expect(texts.join(' ')).not.toMatch(/https?:|\/m\//);
+    expect((await h.agent.profile('+40712345678'))?.flight).toBe('W4 106');
+    expect((await h.agent.profile('+40712345678'))?.pageToken).toBeUndefined();
+  });
   it('6: airport knowledge includes floors and security sides for every amenity', async () => {
     for (const query of ['Unde e toaleta?', 'where can I eat', 'ATM', 'info', 'Duty free']) {
       const r = airportInfo({ query });
@@ -143,8 +154,8 @@ describe('WhatsApp passenger quality regressions', () => {
     const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
     const index = { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: live.nodes } },
       evac: { G_CENTER: { file: 'evac.png', exit: 'exit_west', assembly: 'ASSEMBLY_LANDSIDE_WEST' } } };
-    const h = harness(index);
-    await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+    const h = harness(index, { ...view, blocked: () => ['G_CAFE'] });
+    await h.store.put('msg:evacuation', { active: true, zones: ['G_CAFE'] });
     await h.receive('Unde e toaleta? Sunt la Hol central.');
     expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/evac.png']);
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));

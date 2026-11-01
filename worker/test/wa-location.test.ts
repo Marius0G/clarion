@@ -102,10 +102,31 @@ describe('catalogue location conversation', () => {
     expect(h.sends.some(s => s.type === 'image')).toBe(false);
   });
   it('sends the exact evacuation Graph image after text', async () => {
-    const h = harness(); await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+    const h = harness(manifest, ['G_CAFE']); await h.store.put('msg:evacuation', { active: true, zones: ['G_CAFE'] });
     await h.receive('Unde e toaleta? Sunt la Hol central.');
     expect(h.sends.at(-1)).toEqual({ ...envelope, type: 'image', image: { link: 'https://site.test/routes/evac/G_CENTER.png', caption: 'Traseu de evacuare' } });
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
+  });
+  it.each(['whatsapp', 'web'] as const)('uses the normal image after evacuation ends on %s', async channel => {
+    const blocked = ['G_CAFE'];
+    const h = harness(manifest, blocked);
+    await h.agent.messaging.plan({ id: 'ended', blocked: [...blocked], clearSec: 10, exits: [], routes: [{ from: 'G_CENTER', exit: 'door_exit_west', nodes: ['G_CENTER', 'door_exit_west'] }] });
+    blocked.length = 0;
+    await h.agent.messaging.adminChanged({ type: 'open', zone: 'G_CAFE' });
+    expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
+    expect(await h.store.get('msg:evacPlan')).toBeUndefined();
+    h.advance(3600);
+    const text = 'Unde e toaleta? Sunt la Hol central.';
+    const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+    const images = channel === 'web' ? entries.filter(e => e.image).map(e => e.image) : h.sends.filter(s => s.type === 'image').map(s => s.image.link);
+    expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
+  });
+  it.each([{ blocked: [] }, { blocked: ['G_CAFE'] }])('ignores stale evacuation state when its zones are no longer blocked ($blocked)', async ({ blocked }) => {
+    const h = harness(manifest, blocked);
+    await h.store.put('msg:evacuation', { active: true, zones: ['G_INFO'] });
+    h.advance(3600);
+    await h.receive('Unde e toaleta? Sunt la Hol central.');
+    expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
   });
   it('shares list rows as web history chips, including Other and free text', async () => {
     const h = harness(), entries = await h.agent.chat(phone, 'unde e toaleta');

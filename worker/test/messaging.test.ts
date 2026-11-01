@@ -409,7 +409,7 @@ describe('urgent automatic delivery', () => {
     await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
     expect([...new Set(h.texts().map(t => t.to))]).toEqual(['40712345678']);
     expect(h.texts().map(m => m.text).join(' ')).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate până la poarta 2 ~\d+ min de mers/);
-    expect(await h.store.get('msg:evacuation')).toBeUndefined();
+    expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
  });
 
  it('limits partial evacuation to estimated locations and remaining routes on both channels', async () => {

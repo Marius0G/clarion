@@ -512,9 +512,10 @@ export class Messaging {
       }
       if (command.type === 'open' && (await this.deps.store.get<{ active: boolean }>('msg:evacuation'))?.active) {
         const left = (this.deps.view.blocked?.() ?? []).filter(z => mapNodeId(z) !== mapNodeId(command.zone));
-        if (!left.length) return this.allClear();
         const state = await this.deps.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
-        await this.deps.store.put('msg:evacuation', { ...state, zones: state!.zones.filter(z => left.includes(z)) });
+        const zones = state!.zones.filter(zone => left.some(blocked => mapNodeId(blocked) === mapNodeId(zone)));
+        if (!zones.length) return this.allClear();
+        await this.deps.store.put('msg:evacuation', { ...state, zones });
         const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
         for (const s of await this.subscribers()) {
           if (!told.has(this.identity(s.sub))) continue;
@@ -542,7 +543,8 @@ export class Messaging {
   /** Pitch: open on the last blocked zone is the all clear. Everyone told to leave or stay away hears that it reopened, with the situation now. */
   private async allClear() {
     const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
-    for (const key of ['msg:evacuation', 'msg:evacPlan', 'msg:evacuated']) await this.deps.store.delete(key);
+    await this.deps.store.put('msg:evacuation', { active: false, zones: [] });
+    for (const key of ['msg:evacPlan', 'msg:evacuated']) await this.deps.store.delete(key);
     const flights = this.deps.view.flights();
     let sent = 0;
     for (const s of await this.subscribers()) {

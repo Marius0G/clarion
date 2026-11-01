@@ -449,9 +449,11 @@ export class WhatsAppAgent {
     if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
         const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
-        if (evacuation?.active || routeResult.status === 'evacuation') {
+        const blockedZones = this.view.blocked?.() ?? [];
+        const evacuationZones = evacuation?.active ? evacuation.zones.filter(zone => blockedZones.some(blocked => mapNodeId(blocked) === mapNodeId(zone))) : [];
+        if (evacuationZones.length || routeResult.status === 'evacuation') {
           const live = await this.messaging.evacRouteFor(profile.flight ? findFlight(this.view.flights(), profile.flight) : undefined);
-          const candidates = [routeResult.from, ...(evacuation?.zones ?? [])];
+          const candidates = [routeResult.from, ...evacuationZones];
           for (const zone of candidates) {
             const image = await this.images.evacuation(zone);
             if (!image?.link || (live && mapNodeId(image.exit) !== mapNodeId(live.exit))) continue;
@@ -466,7 +468,7 @@ export class WhatsAppAgent {
       } catch { /* Text delivery must never depend on a preview. */ }
     }
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
-    if (!initiallyBound && profile.flight) {
+    if (!initiallyBound && profile.flight && !routeResult) {
       const flight = findFlight(this.view.flights(), profile.flight);
       if (flight) {
         if (channel === 'web') await transport.sendText(m.phone, this.messaging.arriveText(flight, profile.hasCheckedBag, profile.lang));
