@@ -5,7 +5,7 @@
 .ops button.ops-cam:hover:not(:disabled) { background:none; color:var(--night-ink) }
 .ops button.ops-cam:hover .ops-cam-frame { outline:1px solid var(--night-ink); outline-offset:2px }
 .ops-cam-frame { position:relative; display:grid; background:#000; overflow:hidden }
-.ops-cam-frame img { grid-area:1/1; opacity:0; transition:opacity .25s ease-out }
+.ops-cam-frame img { grid-area:1/1; opacity:0; transition:opacity .12s ease-out }
 .ops-cam-frame img.on { opacity:1 }
 @media(prefers-reduced-motion:reduce) { .ops-cam-frame img { transition:none } }
 .ops-cam .ops-cam-frame img { display:block; width:100%; height:clamp(120px,17vh,250px); object-fit:contain; background:#000 }

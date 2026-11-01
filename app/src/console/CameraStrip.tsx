@@ -17,7 +17,7 @@ const persons = (n: number) => `${n} ${n === 1 ? 'persoană' : 'persoane'}`
 const wait = (v: number | null | undefined) => v == null ? '—' : `${Math.round(v)} min`
 
 /**
- * Crossfades to each new JPEG once it has decoded (~250 ms), so a 1 fps feed never blanks or jumps.
+ * Crossfades to each new JPEG once it has decoded (~120 ms), so a feed never blanks or jumps, at 1 or 10 frames a second.
  * Holds the last shown frame under the incoming one; the loaded <img> keeps its pixels after useCams revokes the old blob URL.
  */
 function Frame({ url, w, h, alt = '' }: { url: string; w?: number; h?: number; alt?: string }) {
