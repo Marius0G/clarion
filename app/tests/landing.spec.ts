@@ -7,7 +7,7 @@ test('landing page explains Clarion and subscribes through /join', async ({ page
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(tagline, { useInnerText: false })
   await expect(page.getByRole('link', { name: 'Abonează-te', exact: true }).first()).toHaveAttribute('href', '/join')
-  await expect(page.getByRole('link', { name: 'Scrie-ne pe WhatsApp' }).first()).toHaveAttribute('href', 'https://wa.me/15556318672?text=START')
+  await expect(page.getByRole('link', { name: 'Vezi consola de admin (demo)' }).first()).toHaveAttribute('href', '/console?demo')
   await expect(page.getByRole('link', { name: 'Consola operatorului' })).toHaveAttribute('href', '/console')
   const widths = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
   expect(widths[0]).toBeLessThanOrEqual(widths[1]!)

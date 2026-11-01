@@ -44,10 +44,9 @@
 .lp-btn:hover { background:#ff5aa2 }
 .lp-btn:hover svg { transform:translateX(4px) }
 .lp-btn:active { transform:scale(.97) }
+.lp-btn-alt { background:var(--cyan); color:#01141c !important }
+.lp-btn-alt:hover { background:#7af0ff }
 .lp-btn-sm { min-height:42px; padding:0 18px 0 20px; font-size:15px; --cut:10px; margin-left:8px }
-.lp-link { display:inline-flex; align-items:center; gap:10px; min-height:48px; font-weight:700; font-size:18px; text-decoration:none; border-bottom:1px solid rgba(46,230,255,.55); transition:color .2s, border-color .2s }
-.lp-link svg { width:20px; height:20px; color:var(--cyan) }
-.lp-link:hover { color:var(--cyan); border-color:var(--cyan) }
 
 /* hero */
 .lp-hero { position:relative; min-height:calc(100dvh - 68px); padding:clamp(28px,6vh,72px) clamp(16px,4vw,56px) 96px; display:flex; align-items:center }
@@ -163,8 +162,8 @@
 .lp-pass-main p { max-width:52ch; margin:18px 0 0; color:#fff2f8 }
 .lp-pass .lp-btn { background:var(--ink); color:#fff !important }
 .lp-pass .lp-btn:hover { background:#062a3a }
-.lp-pass .lp-link { border-color:rgba(255,255,255,.7) }
-.lp-pass .lp-link svg { color:#fff }
+.lp-pass .lp-btn-alt { background:#ffffff; color:var(--ink) !important }
+.lp-pass .lp-btn-alt:hover { background:#e6fbff }
 .lp-pass-stub { display:flex; flex-direction:column; gap:20px; padding:36px 28px; border-left:2px dashed rgba(255,255,255,.45); background:rgba(2,18,28,.18) }
 .lp-pass-brand { font-family:var(--display); font-weight:800; font-size:34px; line-height:1 }
 .lp-pass-stub dl { margin:0; display:grid; gap:12px }
@@ -191,7 +190,7 @@
   .lp-h1-line { font-size:clamp(44px,14vw,76px) }
   .lp-globe { position:relative; right:auto; top:auto; width:min(108vw, 460px); margin:-12px auto 0; order:2 }
   .lp-actions { gap:18px }
-  .lp-actions > .lp-magnet:first-child, .lp-actions .lp-magnet:first-child .lp-spark, .lp-actions .lp-magnet:first-child .lp-btn { display:flex; width:100% }
+  .lp-actions > .lp-magnet, .lp-actions .lp-magnet .lp-spark, .lp-actions .lp-magnet .lp-btn { display:flex; width:100% }
   .lp-btn { justify-content:space-between }
   .lp-board-row { grid-template-columns:1fr; gap:6px; padding:16px 18px }
   .lp-board-th { display:none }

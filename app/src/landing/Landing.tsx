@@ -2,13 +2,14 @@ import { lazy, Suspense, useRef } from "react";
 import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
 import "@fontsource-variable/big-shoulders-display";
 import "./landing.css";
-import { ArrowUpRight, CaretRight, WhatsappLogo } from "@phosphor-icons/react";
+import { CaretRight } from "@phosphor-icons/react";
 import { BlurText, ClickSpark, CountUp, Magnet, ScrollVelocity, SplitFlap, Spotlight, VariableProximity } from "./effects";
 
 const FlightGlobe = lazy(() => import("./FlightGlobe"));
 
 /** Public main page: what Clarion does for passengers, then «Abonează-te» → /join (sign-in, Wallet card, WhatsApp START link). */
-const WHATSAPP_START = "https://wa.me/15556318672?text=START";
+/** The admin console in view-only mode: live cameras with detection, no operator commands. */
+const CONSOLE_DEMO = "/console?demo";
 
 const BOARD: readonly { code: string; text: string; detail: string; alert?: boolean }[] = [
   { code: "PLECARE", text: "Când să pleci spre aeroport", detail: "din coada de acum, de pe camere, și din zborurile zilei" },
@@ -33,7 +34,7 @@ const BOXES: readonly [number, number, number][] = [
 function Ctas() {
   return <div className="lp-actions">
     <Magnet><ClickSpark color="#ff2d87"><a className="lp-btn" href="/join">Abonează-te<CaretRight weight="bold" aria-hidden="true" /></a></ClickSpark></Magnet>
-    <Magnet strength={0.18}><ClickSpark><a className="lp-link" href={WHATSAPP_START} target="_blank" rel="noopener noreferrer"><WhatsappLogo weight="regular" aria-hidden="true" />Scrie-ne pe WhatsApp<ArrowUpRight aria-hidden="true" /></a></ClickSpark></Magnet>
+    <Magnet><ClickSpark color="#2ee6ff"><a className="lp-btn lp-btn-alt" href={CONSOLE_DEMO}>Vezi consola de admin (demo)<CaretRight weight="bold" aria-hidden="true" /></a></ClickSpark></Magnet>
   </div>;
 }
 
