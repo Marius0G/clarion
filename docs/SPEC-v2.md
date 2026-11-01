@@ -288,6 +288,13 @@ Extinde `/m/<token>` (există deja). Pasagerul vede, fără să întrebe pe What
 - **Logat:** pagina se deschide cu sesiunea din D3 (link unic din WhatsApp sau `LOGIN`). Fără sesiune, cere login cu WhatsApp. Token-ul vechi din URL rămâne pentru compatibilitate.
 - La evacuare, pagina arată doar ruta spre ieșire și punctul de adunare.
 
+### D34. Raportarea problemelor și pagina web, pentru pasager și angajat
+Decizie Bogdan, 1 nov. Ce se vede pe WhatsApp se vede și pe web, mai frumos. Cele două sunt aceeași conversație și aceleași date.
+- **Raportare, ambele roluri.** Pe WhatsApp: text liber, iar agentul extrage locul și tipul (D11). Când locul nu e clar, întreabă reperul cu butoane. Fotografia e opțională. Pe web: butonul „Raportează”, apoi tipul (butoane), locul (reper sau hartă) și o descriere scurtă. Rapoartele pasagerilor intră în același jurnal ca ale angajaților (D28), cu sursa marcată. Prioritatea o pune backend-ul după tip (securitate, medical: P1).
+- **Pagina pasagerului** (`/m`, D33): situația lui (coada, prognoza, zborul), traseul ca imagine pre-randată, cronologia mesajelor primite pe WhatsApp (alerte, schimbări de zbor, evacuare) și rapoartele lui cu starea lor.
+- **Pagina angajatului** (`/s`, logat cu D3 și rolul `staff`): rapoartele lui cu starea și ETA-ul echipei, alertele pentru zona lui, sarcinile din D30 care îi revin (de exemplu supervizorul de securitate la +1 linie), cu „Confirm” și „Făcut”, plus același buton „Raportează”.
+- Stările unui raport: trimis, preluat, echipa pe drum (ETA), rezolvat. Fiecare schimbare ajunge și pe WhatsApp, și pe pagină.
+
 ## Contractul Unity ↔ backend (înghețat pentru lucru în paralel)
 
 Același WebSocket: `wss://clarion-backend.bogdan-c-2206.workers.dev/ws?client=twin&token=<DEMO_TOKEN>`. Serviciul de vision (D0) se conectează separat, cu `client=vision` și același token. E un client nou: backend-ul acceptă azi doar `twin`, `console` și `viewer`. Mesajele vechi (`sim.status`, `agent.register`, `agent.batch`, `metric.report`, `sim.command`) rămân valabile. `flow.report` trece de la Unity la vision. Cele despre dronă (`drone.detected`, `ops.suspended`, `intercept.*`) ies din proiect.
