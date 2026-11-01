@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { checkButtons } from './button-states'
 import { chatCoverage } from './chat-fixture'
 import { flowFixture, mockLive, opsFixture, staffData, staffSession } from './live-fixture'
 const shots = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad'
@@ -42,7 +43,7 @@ test('staff map: own zone, live numbers, forecast, report pins and the moving te
   await expect(page.getByTestId('team-eta')).toContainText('Echipa · ~3 min · Poarta 3')
   await expect(page.getByTestId('dispatch-notices')).toContainText('Dispeceratul a deschis o linie în plus la Coadă securitate')
   await expect(page.getByTestId('dispatch-notices')).not.toContainText('Poarta 9')
-  await expect(page.locator('body')).not.toContainText(/Sarcini|Deschide o linie|Confirm|Gata|demo/)
+  await expect(page.locator('body')).not.toContainText(/Sarcini|Deschide o linie|Gata|demo/)
   await page.screenshot({ path: `${shots}/staff.png` })
 })
 
@@ -198,3 +199,36 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('lm-team')).toBeVisible()
   })
 })
+
+for (const width of [390, 1440]) {
+  test(`staff attribution, labels and button states at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const data = staffData()
+    data.reports.push({ ...data.reports[0], id: 'R4', state: 'taken', isOwn: false, reporterRole: 'security_supervisor', timestamps: { sent: data.reports[0].at, taken: data.reports[0].at } })
+    await open(page, () => data)
+    await checkButtons(page)
+    if (width < 900) await page.getByRole('button', { name: 'Extinde' }).press('Enter')
+    const reports = page.locator('.lv-myreports')
+    for (const text of ['Neconfirmat', 'Confirmat de dispecerat', 'Trimis de tine', 'Agent hol', 'Pasager', 'Supervizor securitate']) await expect(reports).toContainText(text)
+    await expect(page.getByTestId('lm-pin-R4')).toHaveAttribute('aria-label', 'Aglomerație · Confirmat')
+    if (width === 1440) await page.screenshot({ path: `${shots}/staff-labels.png` })
+    await checkButtons(page)
+    const primary = page.getByRole('button', { name: 'Raportează pe hartă' })
+    await primary.hover()
+    await expect(primary).toHaveCSS('background-color', 'rgb(37, 75, 118)')
+    if (width === 1440) await page.screenshot({ path: `${shots}/hover.png` })
+    await primary.click()
+    const target = (await page.getByTestId('lm-point-U_SECURITY_QUEUE').boundingBox())!
+    await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2)
+    const form = page.getByRole('form', { name: 'Raportează' })
+    await expect(form.getByRole('button', { name: 'Trimite' })).toBeDisabled()
+    await checkButtons(page)
+    await form.getByRole('button', { name: 'Medical' }).click()
+    await checkButtons(page)
+    await page.getByRole('button', { name: 'Renunță' }).click()
+    await page.getByPlaceholder('Caută un loc').fill('cafenea')
+    await checkButtons(page)
+    await page.getByRole('list', { name: 'Rezultate' }).getByRole('button').first().click()
+    await checkButtons(page)
+  })
+}

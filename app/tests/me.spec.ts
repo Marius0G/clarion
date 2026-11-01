@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { chatCoverage } from './chat-fixture'
+import { checkButtons } from './button-states'
 import { fixture } from '../src/me/fixture'
-import { flowFixture, mockLive, passengerData, session } from './live-fixture'
+import { flowFixture, mockLive, passengerData, session, staffData } from './live-fixture'
 const shots = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad'
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
@@ -185,3 +186,29 @@ test.describe('desktop', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 })
+
+for (const width of [390, 1440]) {
+  test(`passenger report labels and button states at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const reports = staffData().reports
+    reports.push({ ...reports[0], id: 'R4', state: 'taken' })
+    await open(page, { ...passengerData, reports })
+    await checkButtons(page)
+    if (width < 900) await expandSheet(page)
+    await page.locator('.lv-reports summary').click()
+    for (const text of ['Neconfirmat', 'Confirmat', 'Echipa vine · ~4 min', 'Rezolvat']) await expect(page.locator('.lv-reports')).toContainText(text)
+    await checkButtons(page)
+    await page.getByRole('button', { name: 'English' }).click()
+    await expect(page.locator('.lv-reports')).toContainText('Unconfirmed')
+    await expect(page.locator('.lv-reports')).toContainText('Confirmed')
+    await page.getByRole('button', { name: 'Română' }).click()
+    await page.getByRole('button', { name: 'Toalete', exact: true }).click()
+    await checkButtons(page)
+    await page.getByRole('list', { name: 'Rezultate' }).getByRole('button').first().click()
+    await checkButtons(page)
+    await page.getByRole('button', { name: 'Raportează aici' }).click()
+    await checkButtons(page)
+    await page.getByRole('button', { name: 'Medical', exact: true }).click()
+    await checkButtons(page)
+  })
+}
