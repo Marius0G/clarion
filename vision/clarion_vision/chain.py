@@ -117,8 +117,11 @@ class PeopleSmoother:
     JUMP_M = 3.0
     ADOPT_M = 1.5
 
-    def __init__(self, alpha: float = 0.5, min_seen: int = 2, hold: int = 2):
+    def __init__(self, alpha: float = 0.5, min_seen: int = 2, hold: int = 2, inside=None):
         self.alpha, self.min_seen, self.hold = alpha, min_seen, hold
+        # inside(level, x, z) -> bool: the walkable zones. A smoothed point that falls off them (between two rooms) goes back
+        # to the measured one, which is on the floor, so the map never shows a dot inside a wall.
+        self.inside = inside
         self.tracks: dict[str, dict] = {}
 
     def reset(self) -> None:
@@ -150,6 +153,8 @@ class PeopleSmoother:
             else:
                 s["x"] += self.alpha * (p.x - s["x"])
                 s["z"] += self.alpha * (p.z - s["z"])
+                if self.inside is not None and not self.inside(p.level, s["x"], s["z"]):
+                    s.update(x=p.x, z=p.z)
             s["n"] += 1
             s["miss"] = 0
         for key in list(self.tracks):
@@ -249,7 +254,8 @@ class Chain:
         self.tracks = {q.queue: QueueTrack(q, CountFilter(flows=True), HeadRate(q.mu0), ArrivalScale()) for q in self.queues}
         self.last_t: float | None = None
         self.people: list[FloorPoint] = []
-        self.smoother = PeopleSmoother()
+        # Display only: steadier dots (a bit more smoothing, a track seen three times before it is drawn), kept on the floor.
+        self.smoother = PeopleSmoother(alpha=0.35, min_seen=3, inside=lambda level, x, z: int(self.index.lookup(level, np.array([x]), np.array([z]))[0]) >= 0)
         self.shown_people: list[dict] = []
         self.detector = ""
         self.active: frozenset[str] = frozenset()
