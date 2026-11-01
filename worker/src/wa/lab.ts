@@ -25,7 +25,8 @@ export const SCRIPTS: Record<string, Step[]> = {
   gate: [start, { text: 'Care este poarta mea?', tool: 'myFlight' }],
   route: [start, { text: 'Cum ajung la poartă?', tool: 'routeTo' }],
   toilet: [{ text: 'unde e toaleta', tool: 'routeTo' }, { text: 'Hol central', replyId: 'loc:G_CENTER', tool: 'routeTo' }],
-  atmGate: [{ text: 'sunt lângă bancomat, cum ajung la poarta 3', tool: 'routeTo' }],
+  atmGate: [{ text: 'sunt lângă bancomat, cum ajung la poarta 3', tool: 'routeTo' }, { text: 'Bancomat BCR', replyId: 'loc:atm_bcr', tool: 'routeTo' }],
+  gateLocation: [{ text: 'cum ajung la poarta 5', tool: 'routeTo' }, { text: 'Hol central', replyId: 'loc:G_CENTER', tool: 'routeTo' }],
   food: [{ text: 'English' }, { text: 'Where can I eat? I am at Duty free.', tool: 'routeTo' }],
   landmarkRoute: [start, { text: 'Sunt la Hol central. Cum ajung la poartă?', tool: 'routeTo' }],
   airportInfo: [{ text: 'Cât costă parcarea la aeroport?', tool: 'airportInfo' }],
@@ -41,7 +42,7 @@ export interface LabTurn { images?: { link: string; caption: string }[]; user: s
 export interface Violation { turn: number; rule: string; detail: string }
 const emoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3/u;
 const normalize = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-const ro = /\b(iesi|iesire|adunare|este|sunt|poarta|securitate|acum|zborul|aeroport|minute|timp|pentru|spre|nu|stiu|bagaj|parcarea|parcare|informatii|la|in|cu|de|voi|raspunde|romana|lei|ore|tva)\b/giu;
+const ro = /\b(langa|esti|iesi|iesire|adunare|este|sunt|poarta|securitate|acum|zborul|aeroport|minute|timp|pentru|spre|nu|stiu|bagaj|parcarea|parcare|informatii|la|in|cu|de|voi|raspunde|romana|lei|ore|tva)\b/giu;
 const en = /\b(the|is|are|your|you|security|now|flight|airport|minutes|for|to|from|with|don't|know|gate|baggage|parking|information|i|will|reply|english)\b/giu;
 /** Lexical smoke check, not a language classifier or a semantic judge. URLs and reactions are excluded. */
 export function matchesLanguage(text: string, lang: 'ro' | 'en') {

@@ -46,11 +46,11 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(await tools().tools.routeTo!({ to: 'food', from: 'Duty free' })).toMatchObject({ status: 'ready', to: 'U_CAFE' });
     expect(await tools().tools.routeTo!({ to: 'ATM', from: 'Hol central' })).toMatchObject({ status: 'ready' });
   });
-  it('6: D9 picks an airside amenity from flight time without reading passenger truth', async () => {
+  it('6: flight stage filters choices without inventing a position', async () => {
     const airport = { ...view, clock: () => ({ now: 5 * 3600 + 5 * 60, sim: true }) };
-    expect(await tools({}, undefined, airport).tools.routeTo!({ to: 'toilet' })).toMatchObject({ status: 'ready', from: 'airside', to: 'U_WC' });
+    expect(await tools({}, undefined, airport).tools.routeTo!({ to: 'toilet' })).toMatchObject({ status: 'needs_location', buttons: expect.arrayContaining([{ id: 'loc:U_WC', title: 'Toalete etaj' }]) });
     const gate = { ...view, clock: () => ({ now: 5 * 3600 + 40 * 60, sim: true }) };
-    expect(await tools({}, undefined, gate).tools.routeTo!({ to: 'food' })).toMatchObject({ status: 'ready', from: 'gate_10', to: 'U_CAFE' });
+    expect(await tools({}, undefined, gate).tools.routeTo!({ to: 'food' })).toMatchObject({ status: 'needs_location', buttons: expect.arrayContaining([{ id: 'loc:U_GATE_10', title: 'Poarta 10' }]) });
   });
   it('6: a named landmark destination stays the destination', async () => {
     const h = harness(); await h.receive('START W4 106'); h.sends.length = 0;
@@ -113,16 +113,16 @@ describe('WhatsApp passenger quality regressions', () => {
       }
     }
   });
-  it('8: rejects blocked, changed, flagged and unrecorded static paths', async () => {
+  it('8: rejects blocked and unrecorded static paths while allowing different live paths', async () => {
     const nodes = ['G_CENTER', 'U_SECURITY', 'gate_10'];
     const index = { points: [], routes: { G_CENTER__gate_10: { file: 'gate.png', walkSec: 42, steps: nodes } } };
     const images = new RouteImages('https://site.test', async () => Response.json(index));
     expect(await images.image('G_CENTER', 'gate_10', { nodes })).toMatchObject({ link: 'https://site.test/routes/gate.png' });
     expect(await images.image('G_CENTER', 'gate_10', { nodes }, ['security'])).toBeNull();
     expect(await images.image('G_CENTER', 'gate_10', { nodes }, ['U_SECURITY_QUEUE'])).toBeNull();
-    expect(await images.image('G_CENTER', 'gate_10', { nodes, rerouted: true })).toBeNull();
-    expect(await images.image('G_CENTER', 'gate_10', { nodes, reroute: true })).toBeNull();
-    expect(await images.image('G_CENTER', 'gate_10', { nodes: ['G_CENTER', 'gate_10'] })).toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes, rerouted: true })).not.toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes, reroute: true })).not.toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes: ['G_CENTER', 'gate_10'] })).not.toBeNull();
     index.routes.G_CENTER__gate_10.steps = [];
     expect(await new RouteImages('https://site.test', async () => Response.json(index)).image('G_CENTER', 'gate_10', { nodes })).toBeNull();
   });
@@ -156,6 +156,19 @@ describe('WhatsApp passenger quality regressions', () => {
     await images.image('a', 'b'); expect(fetcher).toHaveBeenCalledTimes(1);
     expect(await new RouteImages('https://site.test', async () => { throw Error('offline'); }).image('a', 'b')).toBeNull();
     expect(await new RouteImages('https://site.test', async () => Response.json({ points: [null], routes: {} })).index()).toBeNull();
+  });
+  it('8: caches parsed manifests for ten minutes and failed fetches for sixty seconds', async () => {
+    let now = 0;
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ points: [], routes: {} }));
+    const images = new RouteImages('https://site.test', fetcher, () => now);
+    await images.index();
+    expect(fetcher.mock.calls[0]![1]!.signal).toBeInstanceOf(AbortSignal);
+    now = 599999; await images.index(); expect(fetcher).toHaveBeenCalledTimes(1);
+    now++; await images.index(); expect(fetcher).toHaveBeenCalledTimes(2);
+    const offline = vi.fn(async () => { throw Error('offline'); });
+    const missing = new RouteImages('https://site.test', offline, () => now);
+    await missing.index(); now += 59999; await missing.index(); expect(offline).toHaveBeenCalledTimes(1);
+    now++; await missing.index(); expect(offline).toHaveBeenCalledTimes(2);
   });
   it('9: follows English and Romanian messages and remembers each switch', async () => {
     const h = harness();

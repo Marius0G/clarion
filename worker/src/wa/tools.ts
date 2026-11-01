@@ -1,4 +1,4 @@
-import { placeQuestion, landmarks, landmarkById, resolvePlace, locationChoices, landmarkRoute, positionDescription } from './location.js';
+import { originCandidates, ambiguityChoices, placeQuestion, landmarks, landmarkById, resolvePlace, locationChoices, landmarkRoute, positionDescription } from './location.js';
 import { airportInfo, amenities, amenityKind, amenityDescription, resolveLandmark, LANDMARK_TTL_MS, type RouteIndex } from './airport-info.js';
 import { factPatch, lostItemClaim } from './context.js';
 import { flowRow, mapNodeId } from '../../../backend/src/mapIds.js';
@@ -229,12 +229,17 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
       const index = await routeIndex?.() ?? null;
       if (!['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to)) to = resolvePlace(to)?.id ?? to;
       if (!['gate', 'check_in', 'exit', ...new Set(amenities.map(a => a.kind))].includes(to) && !amenityKind(to) && !landmarkById(to) && !amenities.some(a => a.id === to) && !terminalGraph.nodes.some(n => n.id === mapNodeId(to))) return { error: 'invalid_destination' };
+      const candidates = input?.from ? originCandidates(input.from) : [];
+      if (candidates.length > 1) {
+        await save({ pendingRoute: { to, ...(input.flight && { flight: input.flight }) } });
+        return { status: 'ambiguous_location', note: lang === 'en' ? 'Which one are you near?' : 'Lângă care ești?', buttons: ambiguityChoices(candidates, lang) };
+      }
       const stated = input?.from && (resolveLandmark(input.from, index) ?? (terminalGraph.nodes.some(n => n.id === mapNodeId(input.from!)) ? input.from : undefined));
       if (stated) await save({ position: { node: stated, at: now() } });
       const position = stated ? { node: stated, at: now() } : profile().position;
       const stored = position && now() - position.at >= 0 && now() - position.at < LANDMARK_TTL_MS ? position.node : undefined;
       const stage = estimateStage(f, view.clock().now);
-      const from = stated || stored || (stage === 'gate' ? f?.gate : stage === 'airside' ? 'airside' : undefined);
+      const from = stated || stored;
       if (!from) {
         await save({ pendingRoute: { to, ...(input.flight && { flight: input.flight }) } });
         const asked = profile().locationAskedAt;
