@@ -28,7 +28,16 @@ from .sources.live_files import read_json
 
 log = logging.getLogger("clarion.frames")
 DEFAULT_CAMERAS = ("cctv_security_queue", "cctv_checkin_overview", "cctv_hall_east", "cctv_upper_4")
-MAX_CAMERAS, WIDTH, HEIGHT, JPEG_MAX_BYTES = 4, 960, 540, 120_000
+MAX_CAMERAS, WIDTH, HEIGHT = 4, 960, 540
+# Each picture goes out at up to SEND_FPS a camera so the console's monitors move smoothly (worker FRAME_MIN_MS 90);
+# YOLO still runs at most every `period` (about 2 a second) and its latest boxes are drawn on the pictures in between.
+# Smaller JPEGs at that rate keep the upload near 1 MB/s for four cameras.
+import os as _os
+SEND_FPS = float(_os.environ.get("CAMERA_SEND_FPS", "5"))
+JPEG_MAX_BYTES = int(_os.environ.get("CAMERA_JPEG_KB", "14")) * 1000
+# Sent pictures are this wide (16:9). Every picture crosses the venue Wi-Fi twice (vision up, the console down: ~0.6-0.9 MB/s
+# measured on 1 Nov), so 640 px at ~25 KB keeps four cameras at about 4-5 frames a second each.
+OUT_W = int(_os.environ.get("CAMERA_OUT_W", "512"))
 GPU_PERIOD_S, CPU_PERIOD_S = 1.0, 2.0          # real seconds between two frames of one camera (slowest on the GPU)
 GPU_BUDGET = 0.2                                # YOLO may take at most this share of each second on the GPU it shares with Unity
 MIN_PERIOD_S = 0.5                              # at most 2 frames/s per camera: Unity renders at most that (-cctv-live-fps 2)
@@ -70,10 +79,12 @@ def draw(image: np.ndarray, boxes: np.ndarray, camera: str, label: str) -> np.nd
 
 def encode(image: np.ndarray) -> bytes:
     import cv2
-    for quality in (75, 65, 55, 45, 35):
-        ok, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
-        if ok and len(buf) <= JPEG_MAX_BYTES:
-            return buf.tobytes()
+    for scale in (1.0, 0.75, 0.5):          # a busy picture that will not fit at full size goes out smaller
+        img = image if scale == 1.0 else cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        for quality in (60, 50, 42, 35):        # start near what fits (each try is a full encode)
+            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            if ok and len(buf) <= JPEG_MAX_BYTES:
+                return buf.tobytes()
     raise ValueError("cannot fit the frame under the size limit")
 
 
@@ -99,6 +110,8 @@ class CameraFeed:
         self.detector, self.device, self.weights = detector, device, weights
         self.last_seq: dict[str, object] = {}
         self.next_due: dict[str, float] = {}
+        self.next_send: dict[str, float] = {}
+        self.boxes: dict[str, np.ndarray] = {}
         self.zones: dict[str, str | None] = {}
         self.sent = 0
         self.infer_ms = 0.0
@@ -131,7 +144,7 @@ class CameraFeed:
         out = []
         for camera in self.cameras:
             now = time.monotonic()
-            if now < self.next_due.get(camera, 0.0):
+            if now < self.next_send.get(camera, 0.0):
                 continue
             meta = read_json(self.root / camera / "frame.json")
             if not meta or meta.get("seq") == self.last_seq.get(camera):
@@ -141,13 +154,19 @@ class CameraFeed:
                 continue
             self._ensure()
             self.last_seq[camera] = meta.get("seq")
-            self.next_due[camera] = now + self.period
-            started = time.perf_counter()
-            boxes = self.detector(image)
-            self.infer_ms = (time.perf_counter() - started) * 1000
-            self.infer_avg_ms = self.infer_ms if self.infer_avg_ms <= 0 else 0.8 * self.infer_avg_ms + 0.2 * self.infer_ms
+            self.next_send[camera] = now + 1.0 / max(0.5, SEND_FPS)
+            if camera not in self.boxes or now >= self.next_due.get(camera, 0.0):
+                self.next_due[camera] = now + self.period
+                started = time.perf_counter()
+                self.boxes[camera] = self.detector(image)
+                self.infer_ms = (time.perf_counter() - started) * 1000
+                self.infer_avg_ms = self.infer_ms if self.infer_avg_ms <= 0 else 0.8 * self.infer_avg_ms + 0.2 * self.infer_ms
+            boxes = self.boxes[camera]
             label = f"{camera.removeprefix('cctv_')}  |  {len(boxes)} persoane  |  YOLO11s"
-            out.append(frame_message(camera, self.zones.get(camera), float(meta.get("t_s") or 0.0), encode(draw(image, boxes, camera, label)), len(boxes)))
+            shown = draw(image, boxes, camera, label)
+            if OUT_W and shown.shape[1] > OUT_W:
+                shown = cv2.resize(shown, (OUT_W, round(shown.shape[0] * OUT_W / shown.shape[1])), interpolation=cv2.INTER_AREA)
+            out.append(frame_message(camera, self.zones.get(camera), float(meta.get("t_s") or 0.0), encode(shown), len(boxes)))
         return out
 
 
