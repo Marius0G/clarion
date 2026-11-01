@@ -113,3 +113,7 @@
 .lm-zoom button:focus-visible { outline: 2px solid var(--lm-live); outline-offset: -2px; }
 .lm-zoom .locate svg circle { fill: var(--lm-live); } .lm-zoom .locate svg path { stroke: var(--lm-live); stroke-width: 2.4; }
 @media (prefers-reduced-motion: reduce) { .lz .fill, .lm-team, .lm-pin, .lm-zoom { transition: none; } .lm-route .flow { animation: none; } }
+
+.lm .lm-zoom button:not(:disabled):hover { background: #dedede; color: var(--lm-ink); }
+.lm .lm-zoom button:not(:disabled):active { background: #c8c8c8; color: var(--lm-ink); }
+.lv.me-shell .lm-zoom button:focus-visible { outline-offset: -3px; }

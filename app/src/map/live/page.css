@@ -153,3 +153,12 @@
 .lv .report-attribution { display: block; color: var(--lv-muted); font-size: 14px; font-weight: 400; }
 .lv .lv-myreports button { flex-wrap: wrap; }
 .lv .lv-myreports button > span:not(.st) { flex: 1; min-width: 160px; }
+
+/* Scoped interaction states also cover sheets, report chips and inline chat. */
+.lv.me-shell button:not(:disabled):hover { background: #dedede; color: var(--lv-ink); border-color: #6e6e6e; }
+.lv.me-shell button:not(:disabled):active { background: #c8c8c8; color: var(--lv-ink); }
+.lv.me-shell :is(.primary, .lv-buttons > button, .lv-chips button[aria-pressed=true]):not(:disabled):hover { background: #254b76; color: #fff; border-color: #254b76; }
+.lv.me-shell :is(.primary, .lv-buttons > button, .lv-chips button[aria-pressed=true]):not(:disabled):active { background: #09213e; color: #fff; }
+.lv.me-shell button:focus-visible { outline: 3px solid #0e2f57; outline-offset: 2px; }
+.lv.me-shell .lm-handle:not(:disabled):hover i { background: #4a4a4a; }
+.lv.me-shell .lm-handle:not(:disabled):active i { background: #161616; }

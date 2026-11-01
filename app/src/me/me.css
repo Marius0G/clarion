@@ -104,3 +104,12 @@
 .dashboard-tiles .queue-band, .dashboard-tiles .queue-forecast { display: block; color: var(--cx-muted); font-size: 12px; margin-top: 2px; }
 
 .me-shell .crowd-action { width: 100%; margin-top: 16px; min-height: 52px; background: #0E2F57; color: #fff; font-size: 16px; }
+
+/* Keep personal-page controls readable above the global dark-theme states. */
+.me-shell button:not(:disabled):hover { background: #dedede; color: #161616; border-color: #6e6e6e; }
+.me-shell button:not(:disabled):active { background: #c8c8c8; color: #161616; }
+.me-shell button:focus-visible { outline: 3px solid #0e2f57; outline-offset: 2px; }
+.me-shell .report-action > button:not(:disabled):hover,
+.me-shell .crowd-action:not(:disabled):hover { background: #254b76; color: #fff; }
+.me-shell .report-action > button:not(:disabled):active,
+.me-shell .crowd-action:not(:disabled):active { background: #09213e; color: #fff; }
