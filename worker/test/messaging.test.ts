@@ -407,7 +407,7 @@ describe('urgent automatic delivery', () => {
     h.graph.length = 0;
     await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
     expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
-    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*Până la poarta 2 ~\d+ min de mers/);
+    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate până la poarta 2 ~\d+ min de mers/);
     expect(await h.store.get('msg:evacuation')).toBeUndefined();
  });
 
