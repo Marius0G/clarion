@@ -2,6 +2,10 @@ type Lang = 'ro' | 'en';
 const english: Record<string, string> = {
   "Evacuare": "Evacuation",
   "Zone:": "Areas:",
+  "Dacă sunteți încă pe drum, nu veniți acum.": "If you are still on the way, do not come now.",
+  "Vă scriem când zona se redeschide.": "We will message you when the area reopens.",
+  "Estimăm redeschiderea în": "Expected to reopen in",
+  "Ieși pe": "Exit via",
   "necunoscut": "unknown",
   "Urmează indicatoarele spre cea mai apropiată ieșire": "Follow signs to the nearest exit",
   "Situația din terminal": "Terminal conditions",

@@ -22,6 +22,8 @@ export const WINDOW_MS = 86400000;
 export const NON_URGENT_MS = 15 * 60 * 1000;
 /** How long an evacuate waits for vision's evac.plan before the generic message goes out. */
 export const EVAC_WAIT_MS = 3000;
+/** Added to evac.plan's clearSec for the sweep before an area reopens: the "how long to wait" told to people on the road. */
+export const REOPEN_MARGIN_MIN = 20;
 export type NotifyKind = 'arrive' | 'flight' | 'route' | 'evacuate' | 'admin';
 export interface SimSubscriber { lang?: Lang; agentId: string; role: string; flight: string; pageToken?: string; hasCheckedBag?: boolean }
 export type Subscriber = { channel: 'whatsapp'; phone: string } | ({ channel: 'sim' } & SimSubscriber);
@@ -176,7 +178,7 @@ export class Messaging {
     if (!f) return;
     const clock = this.deps.view.clock();
     // Unknown bag choice uses the same conservative assumption as WhatsApp.
-    const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag, this.deps.view.blocked?.());
+    const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history);
     return {
       lang: language(p.lang),
       simTime: clock.sim ? clock.now : null,
@@ -186,8 +188,30 @@ export class Messaging {
       queues: plan.queues.map(q => ({ ...q, label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
       steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.zone === 'walk' ? say(p.lang, 'walk', gateName(f.gate)) : nodeName(s.zone, p.lang), waitMin: s.min })),
       alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
-      evacuation: await this.deps.store.get<PassengerData['evacuation']>('msg:evacuation') ?? { active: false, zones: [] },
+      evacuation: await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang),
     };
+  }
+  /** D33: during an evacuation the page shows the exit route for his estimated place, or that he should not come yet. */
+  private async evacuationFor(s: { sub: Subscriber; hasCheckedBag?: boolean }, f: Flight, lang?: Lang): Promise<PassengerData['evacuation']> {
+    const state = await this.deps.store.get<{ active: boolean; zones: string[]; reopenInMin?: number | null }>('msg:evacuation');
+    if (!state?.active) return { active: false, zones: [] };
+    const now = this.deps.view.clock().now;
+    const plan = await this.deps.store.get<EvacPlan>('msg:evacPlan');
+    const r = plan?.routes.length ? routeFor(plan, f, now) : null;
+    return { active: true, zones: state.zones, ...(r && { route: { exit: nodeName(r.exit, lang), steps: r.nodes.map(n => nodeName(n, lang)) } }),
+      ...(this.onTheRoad(s, f, now) && { stayAway: { reopenInMin: state.reopenInMin ?? null } }) };
+  }
+  /**
+   * Pitch, D9: a WhatsApp passenger whose A6 entrance time is still ahead may still be on the road (clock only, no GPS),
+   * so he gets the route and also how long to stay away. Simulated subscribers are walking in Unity's terminal.
+   */
+  private onTheRoad(s: { sub: Subscriber; hasCheckedBag?: boolean }, f: Flight | undefined, now: number) {
+    if (s.sub.channel !== 'whatsapp' || !f || estimateStage(f, now) !== 'public') return false;
+    return now < closeAt(f) - arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), s.hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history).totalMin * 60;
+  }
+  private async evacuated(subs: Subscriber[]) {
+    const ids = await this.deps.store.get<string[]>('msg:evacuated') ?? [];
+    await this.deps.store.put('msg:evacuated', [...new Set([...ids, ...subs.map(s => this.identity(s))])]);
   }
   /** One-time site login, separate from the reusable personal map token. */
   connectLink(phone: string) {
@@ -277,7 +301,7 @@ export class Messaging {
   }
 
   private estimate(f: Flight, hasCheckedBag?: boolean) {
-    return { flight: flightKey(f.flight), totalMin: arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()).totalMin };
+    return { flight: flightKey(f.flight), totalMin: arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history).totalMin };
   }
 
   /** D22: compare with the last successfully delivered estimate, never with the previous report. */
@@ -302,7 +326,7 @@ export class Messaging {
   arriveText(f: Flight, hasCheckedBag?: boolean, lang?: Lang) {
     if (f.status === 'cancelled') return copy.cancelledFlight(lang, f);
     if (f.status === 'departed') return copy.departedFlight(lang, f);
-    return copy.flightSituation(lang, f, situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()), lang));
+    return copy.flightSituation(lang, f, situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history), lang));
   }
 
   /** D17: Unity's agents with a virtual phone. Each new one gets the arrive message, like a phone after START. */
@@ -328,7 +352,7 @@ export class Messaging {
     const change = f.delayMin > 0
       ? copy.delayedDeparture(lang, f)
       : copy.scheduledDeparture(lang, f);
-    return copy.flightChange(lang, f, change, situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.()), lang));
+    return copy.flightChange(lang, f, change, situationText(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history), lang));
   }
 
   /**
@@ -364,6 +388,12 @@ export class Messaging {
   adminChanged(command: OpsCommand) {
     return this.serial(async () => {
       if (command.type === 'staff' || command.type === 'evacuate') return 0;
+      if (command.type === 'open' && (await this.deps.store.get<{ active: boolean }>('msg:evacuation'))?.active) {
+        const left = this.deps.view.blocked?.() ?? [];
+        if (!left.length) return this.allClear();
+        const state = await this.deps.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
+        await this.deps.store.put('msg:evacuation', { ...state, zones: state!.zones.filter(z => left.includes(z)) });
+      }
       const zone = command.type === 'redirect' ? command.from : command.zone;
       let sent = 0;
       for (const s of await this.subscribers()) {
@@ -379,6 +409,21 @@ export class Messaging {
     });
   }
 
+  /** Pitch: open on the last blocked zone is the all clear. Everyone told to leave or stay away hears that it reopened, with the situation now. */
+  private async allClear() {
+    const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
+    for (const key of ['msg:evacuation', 'msg:evacPlan', 'msg:evacuated']) await this.deps.store.delete(key);
+    const flights = this.deps.view.flights();
+    let sent = 0;
+    for (const s of await this.subscribers()) {
+      if (!told.has(this.identity(s.sub))) continue;
+      const f = s.flight ? findFlight(flights, s.flight) : undefined;
+      const text = f ? `${say(s.lang, 'allClear')} ${this.arriveText(f, s.hasCheckedBag, s.lang)}` : say(s.lang, 'allClear');
+      if (await this.notify(s.sub, { kind: 'evacuate', text, ...(f && { estimate: this.estimate(f, s.hasCheckedBag) }) }) === 'sent') sent++;
+    }
+    console.log(JSON.stringify({ msg: 'all-clear', told: told.size, sent }));
+    return sent;
+  }
   /** Generic evacuation text, sent when vision's evac.plan does not arrive in time. */
   evacuateText(zones: string[], lang?: Lang) {
     return copy.evacuation(lang, zones);
@@ -398,7 +443,15 @@ export class Messaging {
     if (epoch !== this.epoch) return 'cancelled';
     if (this.planned.has(id)) return 'planned';
     await this.serial(async () => {
-      for (const s of await this.subscribers()) await this.notify(s.sub, { kind: 'evacuate', text: this.evacuateText(zones, s.lang) });
+      // D31: like the plan, only those estimated in or passing through the blocked zones.
+      const flights = this.deps.view.flights(), now = this.deps.view.clock().now, told: Subscriber[] = [];
+      for (const s of await this.subscribers()) {
+        const f = s.flight ? findFlight(flights, s.flight) : undefined;
+        if (!affectedByEvacuation(zones, f, now)) continue;
+        const text = this.evacuateText(zones, s.lang) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, null)}` : '');
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') told.push(s.sub);
+      }
+      await this.evacuated(told);
     });
     return 'generic';
   }
@@ -412,20 +465,23 @@ export class Messaging {
   plan(p: EvacPlan) {
     this.planned.add(p.id);
     return this.serial(async () => {
-      await this.deps.store.put('msg:evacuation', { active: true, zones: p.blocked });
+      const reopenInMin = Math.ceil(p.clearSec / 60) + REOPEN_MARGIN_MIN;
+      await this.deps.store.put('msg:evacuation', { active: true, zones: p.blocked, reopenInMin });
       // Kept for routeTo('exit') while the zones stay blocked. A plan over the storage value limit is skipped: the tool then uses the graph.
       try { await this.deps.store.put('msg:evacPlan', p); } catch { /* Too large. */ }
       const flights = this.deps.view.flights(), now = this.deps.view.clock().now;
       let sent = 0;
+      const told: Subscriber[] = [];
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
         if (!affectedByEvacuation(p.blocked, f, now)) continue;
         const r = routeFor(p, f, now);
         const blocked = p.blocked.length ? copy.blockedAreas(s.lang, p) : '';
-        const text = copy.evacuationRoute(s.lang, blocked, r);
-        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') sent++;
+        const text = copy.evacuationRoute(s.lang, blocked, r) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, reopenInMin)}` : '');
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { sent++; told.push(s.sub); }
         if (s.sub.channel === 'sim') this.deps.toUnity('agent.route', { agentId: s.sub.agentId, nodes: r.nodes, reason: 'evacuate' });
       }
+      await this.evacuated(told);
       console.log(JSON.stringify({ msg: 'evac-plan', id: p.id, routes: p.routes.length, sent }));
       return sent;
     });

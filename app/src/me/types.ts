@@ -15,5 +15,5 @@ export type PassengerData = {
   arriveBy: string
   steps: { zone: string; label: string; waitMin: number | null }[]
   alerts: { at: string; kind: 'arrive' | 'flight' | 'route' | 'evacuate' | 'admin'; text: string }[]
-  evacuation: { active: boolean; zones: string[] }
+  evacuation: { active: boolean; zones: string[]; route?: { exit: string; steps: string[] }; stayAway?: { reopenInMin: number | null } }
 }

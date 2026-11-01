@@ -66,6 +66,12 @@ export function normalizePassenger(value: unknown): PassengerViewData {
     evacuation: {
       active: evacuation.active === true,
       zones: Array.isArray(evacuation.zones) ? evacuation.zones.filter((zone): zone is string => typeof zone === 'string') : [],
+      ...(() => {
+        const route = record(evacuation.route), stay = record(evacuation.stayAway)
+        const steps = Array.isArray(route.steps) ? route.steps.filter((step): step is string => typeof step === 'string') : []
+        return { ...(typeof route.exit === 'string' && steps.length && { route: { exit: localText(route.exit), steps: steps.map(localText) } }),
+          ...(evacuation.stayAway !== undefined && { stayAway: { reopenInMin: nonnegative(stay.reopenInMin) } }) }
+      })(),
     },
   }
 }

@@ -79,7 +79,13 @@ describe('passenger page profiles', () => {
     expect(await offline.notify(sub, { kind: 'admin', text: 'Unsent' })).toBe('rate_limited');
     expect((await offline.passenger(token))?.alerts).toHaveLength(1);
     await h.m.plan({ id: 'page-evac', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
-    expect((await offline.passenger(token))?.evacuation).toEqual({ active: true, zones: ['security'] });
+    // D33: the page shows the exit route for his estimated place.
+    expect((await offline.passenger(token))?.evacuation).toEqual({ active: true, zones: ['security'],
+      route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] } });
+    // All clear: open on the last blocked zone clears the page.
+    view.blocked = () => [];
+    await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
+    expect((await offline.passenger(token))?.evacuation).toEqual({ active: false, zones: [] });
   });
 });
 
@@ -213,9 +219,10 @@ describe('staff reports (D11, D18 beat 4)', () => {
     expect((await h.store.get<Profile>('wa:profile:+40712345678'))!.role).toBe('staff');
     await h.inbound('Bagaj abandonat lângă check-in Wizz');
     const [r] = await h.agent.reports.list();
-    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2 });
-    expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status', 'etaMin']);
-    expect(h.texts().at(-1)!.text).toBe('Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min');
+    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
+    expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status', 'etaMin', 'policeEtaMin']);
+    // Pitch: the airport police's ETA too, from its nearest post, crowd-penalised like the team's.
+    expect(h.texts().at(-1)!.text).toBe(`Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min. Poliția aeroportului ajunge în ~${r!.policeEtaMin} min.`);
     expect((await h.agent.reports.close('R1'))!.status).toBe('closed');
     expect(await h.agent.reports.close('R9')).toBeUndefined();
   });
@@ -270,7 +277,8 @@ describe('evacuation (D10, A10)', () => {
     const generic = h.m.evacuate(['check_in:2'], 'ops-1');
     expect(await h.m.plan(plan())).toBe(2);
     expect(await generic).toBe('planned');
-    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Check-in, grupul 2 e închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul.' }]);
+    // 07:00 is before his A6 entrance time, so he may be on the road: the route plus how long to stay away (clearSec 140 s + 20 min).
+    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Check-in, grupul 2 e închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul. Dacă sunteți încă pe drum, nu veniți acum: estimăm că zona se redeschide în ~23 min. Vă scriem când se poate.' }]);
     expect(h.unity).toEqual([
       { type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining('Ieși pe Ieșirea 1') } },
       { type: 'agent.route', data: { agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' } },
@@ -384,6 +392,24 @@ describe('urgent automatic delivery', () => {
     }
   });
 });
+
+ it('sends the generic fallback only to those affected, and the all clear only to those told', async () => {
+    quiet();
+    const sim = fakeSim([row(), row({ flight: 'RO 1', gateCloseAt: hm(7, 10), gate: 'gate_3' })]);
+    const h = harness(sim.view);
+    await h.inbound('START W6 3751');
+    await h.inbound('START RO 1', '40799999999');
+    h.graph.length = 0;
+    // RO 1 closes in 10 min: estimated at its gate, so a blocked security does not concern it.
+    expect(await h.m.evacuate(['security'], 'ops-generic')).toBe('generic');
+    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
+    expect(h.texts()[0]!.text).toContain('Dacă sunteți încă pe drum, nu veniți acum. Vă scriem când zona se redeschide.');
+    h.graph.length = 0;
+    await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
+    expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
+    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate la poarta 2 faci ~\d+ min\./);
+    expect(await h.store.get('msg:evacuation')).toBeUndefined();
+ });
 
  it('limits partial evacuation to estimated locations and remaining routes on both channels', async () => {
     quiet();

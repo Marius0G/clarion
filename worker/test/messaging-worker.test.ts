@@ -104,7 +104,7 @@ describe('passenger messaging in the Tower', () => {
     expect((await api('/api/reports', undefined, '')).status).toBe(401);
     await expect.poll(async () => (await (await api('/api/reports')).json() as any[]).length, { timeout: 10000 }).toBe(1);
     const [report] = await (await api('/api/reports')).json() as any[];
-    expect(report).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2 });
+    expect(report).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
     expect(report.etaMin).toBe(2);
     expect((await api('/api/reports/R1/close', {}, '')).status).toBe(401);
     expect(await (await api('/api/reports/R1/close', {})).json()).toMatchObject({ id: 'R1', status: 'closed' });
@@ -126,7 +126,7 @@ describe('passenger messaging in the Tower', () => {
     // No evac.plan: the generic message after ~3 s.
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['security'] })).status).toBe(202);
     await expect.poll(() => u.of('agent.message').filter(m => m.kind === 'evacuate' && m.text.includes('Control de securitate e închisă')).length, { timeout: 8000 }).toBe(1);
-    await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).evacuation).toEqual({ active: true, zones: ['security'] });
+    await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).evacuation).toEqual({ active: true, zones: ['security'], route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] } });
     for (let delayMin = 31; delayMin <= 36; delayMin++) {
       u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin })] }));
       await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).alerts.at(-1)?.text).toContain(`întârziere de ${delayMin} min`);

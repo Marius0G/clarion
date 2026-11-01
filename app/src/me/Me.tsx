@@ -52,7 +52,9 @@ export default function Me() {
       <div>
         <h2>{t('Evacuare')}</h2>
         <p>{t('Zone:')} {evacuation.zones.join(', ') || t('necunoscut')}</p>
-        <p>{t('Urmează indicatoarele spre cea mai apropiată ieșire')}</p>
+        {evacuation.route ? <p data-testid="evac-route">{t('Ieși pe')} {evacuation.route.exit}: {evacuation.route.steps.join(' → ')}</p>
+          : <p>{t('Urmează indicatoarele spre cea mai apropiată ieșire')}</p>}
+        {evacuation.stayAway && <p data-testid="evac-stay-away">{t('Dacă sunteți încă pe drum, nu veniți acum.')} {evacuation.stayAway.reopenInMin == null ? t('Vă scriem când zona se redeschide.') : `${t('Estimăm redeschiderea în')} ~${evacuation.stayAway.reopenInMin} min.`}</p>}
       </div>
     </section>}
     <div className="me-page">
