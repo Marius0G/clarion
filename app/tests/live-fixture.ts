@@ -1,3 +1,4 @@
+import type { PersonalReport } from '../src/reports/types'
 import type { Page } from '@playwright/test'
 import { fixture } from '../src/me/fixture'
 
@@ -38,7 +39,7 @@ export function staffData(now = Date.now()) {
       { id: 'R1', isOwn: true, reporterRole: 'security_supervisor', at: iso(400), type: 'crowd', text: 'Prea multă lume aici', source: 'staff', state: 'sent', priority: 'P2', place: { node: 'U_SECURITY_QUEUE', name: 'Coadă securitate' }, etaMin: null, timestamps: { sent: iso(400) } },
       { id: 'R2', isOwn: false, reporterRole: 'hall_agent', at: iso(200), type: 'medical', text: 'Pasager căzut', source: 'staff', state: 'en_route', priority: 'P1', place: { node: 'U_GATE_3', name: 'Poarta 3' }, etaMin: 4, timestamps: { sent: iso(200), taken: iso(150), en_route: iso(90) } },
       { id: 'R3', isOwn: false, reporterRole: 'passenger', at: iso(900), type: 'cleaning', text: '', source: 'staff', state: 'resolved', priority: 'P3', place: { node: 'G_WC', name: 'Toalete parter' }, etaMin: 3, timestamps: { sent: iso(900), resolved: iso(120) } },
-    ],
+    ] as (PersonalReport & { timestamps: NonNullable<PersonalReport['timestamps']> })[],
   }
 }
 export const opsFixture = (now = Date.now()) => [

@@ -91,7 +91,8 @@ export function personalContract() {
       const response = await h.call('/api/reports', session, { ...h.input, source: 'staff', phone: '+40711111111', priority: 'P3' });
       expect(response?.status).toBe(201);
       const r = await response!.json() as any;
-      expect(r).toMatchObject({ phone: '+40712345678', source: 'passenger', priority: 'P1', state: 'sent' });
+      expect(r).toMatchObject({ isOwn: true, reporterRole: 'passenger', source: 'passenger', priority: 'P1', state: 'sent' });
+      expect(r).not.toHaveProperty('phone');
       expect(r.etaMin).toBeGreaterThanOrEqual(0);
       expect(h.sim.reportSnapshot()).toHaveLength(1);
       expect(h.sim.alertSnapshot().some(a => a.active && a.priority === 'P1')).toBe(true);
@@ -240,7 +241,7 @@ export function personalContract() {
       expect(data).toMatchObject({ zone: { id: 'G_CENTER', forecast: [] }, role: 'hall_agent' });
       expect(data).not.toHaveProperty('tasks');
       const response = await h.call('/api/reports', session, { ...h.input, photo: 'https://photos.example/incident.jpg' });
-      expect(await response!.json()).toMatchObject({ source: 'staff', phone, photo: 'https://photos.example/incident.jpg' });
+      expect(await response!.json()).toMatchObject({ source: 'staff', isOwn: true, reporterRole: 'hall_agent', photo: 'https://photos.example/incident.jpg' });
     });
     it('keeps legacy token reads, selects a real route image and caps only delivered timeline entries', async () => {
       const h = setup(); await h.login();

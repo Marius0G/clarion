@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { waitBand } from '../src/me/Me'
-import { ReportList, stateLabel } from '../src/reports/Reports'
+import { ReportAttribution, reporterLabel, ReportList, stateLabel } from '../src/reports/Reports'
 import Staff, { staffAlertLabel } from '../src/staff/Staff'
 import { normalizePassenger } from '../src/me/format'
 
@@ -40,4 +40,16 @@ it('preserves only string crowd observations on passenger queue tiles', () => {
   const queues = normalizePassenger({ queues: [{ zone: 'security', staffCrowd: 'Personalul semnalează aglomerație la securitate.' }, { zone: 'check_in:1', staffCrowd: { text: 'invalid' } }] }).queues!
   expect(queues[0].staffCrowd).toBe('Personalul semnalează aglomerație la securitate.')
   expect(queues[1].staffCrowd).toBeUndefined()
+})
+
+it('attributes reporters and only renders valid confirmation times', () => {
+  const report = { id: 'R1', at: '', type: 'medical', text: '', source: 'staff' as const, state: 'taken' as const, priority: 'P1' as const, place: { node: 'security', name: 'Securitate' }, isOwn: false, reporterRole: 'hall_agent' }
+  expect(reporterLabel(report)).toBe('Agent hol')
+  expect(reporterLabel({ ...report, isOwn: true })).toBe('Trimis de tine')
+  expect(reporterLabel({ ...report, reporterRole: 'security_supervisor' })).toBe('Supervizor securitate')
+  expect(reporterLabel({ ...report, reporterRole: 'passenger' }, true)).toBe('Passenger')
+  const markup = renderToStaticMarkup(ReportAttribution({ report: { ...report, timestamps: { taken: '2026-11-01T12:30:00Z' } } }))
+  expect(markup).toContain('Confirmat de dispecerat')
+  expect(markup).toContain('dateTime="2026-11-01T12:30:00Z"')
+  expect(renderToStaticMarkup(ReportAttribution({ report: { ...report, timestamps: { taken: 'invalid' } } }))).not.toContain('dispecerat')
 })
