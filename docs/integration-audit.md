@@ -52,3 +52,38 @@ Status: **works** = wired end to end. **Partly** = wired, but with a gap that sh
 ## Left for Bogdan
 
 The D5b same-hour history fallback, the route on `/m/<token>` during an evacuation, clearing `msg:evacuation` on all clear, and the generic evacuation fallback going to everyone. Also where the Camere and Acuratețe cards sit in the rail (at 1080p with two alerts, Acuratețe is below the fold).
+
+## Bogdan's parts against the spec and the pitch (1 Nov, morning)
+
+Checked on 6f4ac36 by reading the code and running every suite (worker 213/213, app vitest 93/93 + lint + build, Playwright 32/32 with Edge). **Fixed** names the commit from this pass.
+
+| Feature | Status | Evidence |
+|---|---|---|
+| D2 WhatsApp harness: signature, 200 then `waitUntil`, read + typing, reactions, bubbles, dedupe, 24h window, allowlist, `redact` | works | `worker/src/wa/index.ts:79-131`, `agent.ts:12-14` (sonnet/haiku), `transport.ts` |
+| D3 login: OTP, session, single-use link, reverse `LOGIN` | works | `backend/src/auth.ts`, `worker/src/index.ts:282` |
+| D3 "Continuă cu Google" | missing | `app/src/join/SignIn.tsx:115` is a TODO |
+| D4/D21 Wallet card, demo boarding pass, `wa.me` START link | works | `app/src/join/WalletButton.tsx`, `DemoBoardingPass.tsx`, `backend/src/wallet.ts` |
+| D5/A6 entrance-to-gate estimate from vision's forecast | works | `worker/src/wa/tools.ts` `arrivalPlan` + `waitAt` (forecast interpolated at the hour he gets there) |
+| D5b same-hour history fallback without vision | fixed (38ef7e7) | `worker/src/wa/history.ts`, `tools.ts` `waitAt(..., past)` |
+| D6b route image in WhatsApp | partly | the `/m/<token>` link is sent, no static image (`tools.ts` `routeTo`) |
+| D9 stage from the clock only | works | `messaging.ts` `estimateStage` |
+| D10/D12 decisions: +1/−1 lane, evacuate, redirect, close/open | works | `OpsDashboard.tsx` zone panel → `worker/src/index.ts` `/api/ops/command` |
+| D11 staff report, team ETA (A8) | works | `tools.ts` `reportIssue`, pins and journal in `OpsDashboard.tsx` |
+| Pitch: airport police ETA on staff reports | fixed (38ef7e7, 6f4ac36) | `tools.ts` `POLICE_POSTS`, pin label "poliția în ~N min" |
+| D14/D18-3 delay and cancellation messages | works | `messaging.ts` `flightsChanged` |
+| D15 tools `myFlight`, `whenToArrive`, `queues`, `routeTo`, `reportIssue` | works | `tools.ts` `toolsFor` |
+| Pitch: walk from security to the gate said explicitly | fixed (38ef7e7) | `texts.ts` `fromSecurity` in the situation and in `routeTo` |
+| D17 sim subscribers, `agent.message`, `agent.route` | works | `messaging.ts` `registerSims`, `plan` |
+| D18 four beats end to end | works | `worker/test/e2e-chain.test.ts` |
+| D20/D28/D29/D32 console: states, rail, alerts, journal | works | `OpsDashboard.tsx`, `alerts.ts` |
+| Acuratețe card visible at 1080p and 1536×960 | fixed (6f4ac36) | rail order Recomandare, Acuratețe, Alerte, Camere; `app/tests/smoke.spec.ts` checks it fits |
+| D22/D25 tone, emoji only on non-urgent | works | `agent.ts` prompt, `urgency.ts` |
+| D23 language | works | `texts.ts`, lab `languageSwitch` |
+| D24 reset | works | `worker/src/index.ts:142`, `npm run demo:reset` |
+| D31 partial evacuation targets only the affected | fixed (abc5c91) | `messaging.ts` `evacuate` fallback now uses `affectedByEvacuation` like `plan` |
+| D31 close code 1006, `SIM_SPEED` 10 | works | `worker/src/websocket-close.ts`, `wrangler.toml` |
+| D33 `/m/<token>` exit route during an evacuation | fixed (abc5c91) | `messaging.ts` `evacuationFor`, `app/src/me/Me.tsx` |
+| `msg:evacuation` cleared on all clear, "Terminalul s-a redeschis" message | fixed (abc5c91) | `messaging.ts` `allClear` (open on the last blocked zone) |
+| Pitch: people on the road told not to come and how long to wait | fixed (abc5c91) | `copy.evacuationRoad`: evac.plan `clearSec` + 20 min |
+| Pitch: landing page with «Abonează-te» | fixed (6dca38e) | `app/src/landing/Landing.tsx` at `/`; console moved to `/console` |
+| Pitch: arrivals in the arrival estimate | not used | vision's forecast is departures only; no wording claims arrivals |
