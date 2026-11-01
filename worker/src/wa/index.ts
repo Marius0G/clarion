@@ -1,3 +1,6 @@
+import { mapNodeId } from '../../../backend/src/mapIds.js';
+import { zoneDensities } from '../../../backend/src/routing.js';
+import { zoneAreas } from '../../../backend/src/terminal.js';
 import { RouteImages, resolveLandmark } from './airport-info.js';
 import { Auth, normalizePhone, parseLogin } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
@@ -264,10 +267,23 @@ export class WhatsAppAgent {
     const delivered = routeResult?.status === 'needs_location'
       ? (await this.wa.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
       : await this.wa.sendReplies(m.phone, bubbles, m.id);
-    if (delivered && routeResult?.status === 'ready') {
+    if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
-        const image = await this.images.image(routeResult.from, routeResult.to);
-        if (image) await this.wa.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
+        const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
+        if (evacuation?.active || routeResult.status === 'evacuation') {
+          const live = await this.messaging.evacRouteFor(profile.flight ? findFlight(this.view.flights(), profile.flight) : undefined);
+          const candidates = [routeResult.from, ...(evacuation?.zones ?? [])];
+          for (const zone of candidates) {
+            const image = await this.images.evacuation(zone);
+            if (!image?.link || (live && mapNodeId(image.exit) !== mapNodeId(live.exit))) continue;
+            await this.wa.sendImage(m.phone, image.link, profile.lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare');
+            break;
+          }
+        } else {
+          const blocked = [...(this.view.blocked?.() ?? []), ...Object.entries(zoneDensities(this.view.flow(), zoneAreas)).filter(([, density]) => density >= 5.4).map(([zone]) => zone)];
+          const image = await this.images.image(routeResult.from, routeResult.to, routeResult, blocked);
+          if (image) await this.wa.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
+        }
       } catch { /* Text delivery must never depend on a preview. */ }
     }
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });

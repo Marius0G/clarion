@@ -83,7 +83,8 @@ describe('WhatsApp passenger quality regressions', () => {
     expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('entrance');
   });
   it('8: missing index, missing route and present route attach/skip without disrupting text', async () => {
-    for (const index of [null, { points: [], routes: {} }, { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: [] } } }]) {
+    const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
+    for (const index of [null, { points: [], routes: {} }, { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: live.nodes } } }]) {
       const h = harness(index); await h.receive('Unde e toaleta? Sunt la Hol central.');
       const images = h.sends.filter(s => s.type === 'image');
       expect(images.length).toBe(index && Object.keys(index.routes).length ? 1 : 0);
@@ -93,6 +94,42 @@ describe('WhatsApp passenger quality regressions', () => {
         expect(images[0].image).toEqual({ link: 'https://site.test/routes/toilet.png', caption: 'Toalete · ~1 min' });
       }
     }
+  });
+  it('8: rejects blocked, changed, flagged and unrecorded static paths', async () => {
+    const nodes = ['G_CENTER', 'U_SECURITY', 'gate_10'];
+    const index = { points: [], routes: { G_CENTER__gate_10: { file: 'gate.png', walkSec: 42, steps: nodes } } };
+    const images = new RouteImages('https://site.test', async () => Response.json(index));
+    expect(await images.image('G_CENTER', 'gate_10', { nodes })).toMatchObject({ link: 'https://site.test/routes/gate.png' });
+    expect(await images.image('G_CENTER', 'gate_10', { nodes }, ['security'])).toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes }, ['U_SECURITY_QUEUE'])).toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes, rerouted: true })).toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes, reroute: true })).toBeNull();
+    expect(await images.image('G_CENTER', 'gate_10', { nodes: ['G_CENTER', 'gate_10'] })).toBeNull();
+    index.routes.G_CENTER__gate_10.steps = [];
+    expect(await new RouteImages('https://site.test', async () => Response.json(index)).image('G_CENTER', 'gate_10', { nodes })).toBeNull();
+  });
+  it('8: camera closures or impassable density suppress normal previews but preserve text', async () => {
+    const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
+    const index = { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: live.nodes } } };
+    for (const airport of [
+      { ...view, blocked: () => ['G_WC'] },
+      { ...view, flow: () => ({ ...view.flow(), G_WC: { waiting: 100, waitMin: 10, density: 5.4 } }) },
+    ]) {
+      const h = harness(index, airport);
+      await h.receive('Unde e toaleta? Sunt la Hol central.');
+      expect(h.sends.some(s => s.type === 'text')).toBe(true);
+      expect(h.sends.filter(s => s.type === 'image')).toHaveLength(0);
+    }
+  });
+  it('8: an active evacuation replaces a matching normal preview with evac[zone]', async () => {
+    const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
+    const index = { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: live.nodes } },
+      evac: { G_CENTER: { file: 'evac.png', exit: 'exit_west', assembly: 'ASSEMBLY_LANDSIDE_WEST' } } };
+    const h = harness(index);
+    await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+    await h.receive('Unde e toaleta? Sunt la Hol central.');
+    expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/evac.png']);
+    expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
   });
   it('8: caches indexes, accepts aliases, and handles network and malformed indexes', async () => {
     const fetcher = vi.fn(async () => Response.json({ points: [{ id: 'G_CENTER', name: { ro: 'Hol central', en: 'Central hall' }, aliases: ['lobby'] }], routes: {} }));

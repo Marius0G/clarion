@@ -249,11 +249,13 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       if (!best) return { status: 'unavailable', note: say(lang, 'noRoute') };
       await save({ pendingRoute: undefined });
       const minutes = Math.ceil(best.totalSec / 60), destination = best.nodes.at(-1)!;
+      const normal = route(graph, from, destination);
+      const rerouted = !normal || normal.nodes.length !== best.nodes.length || normal.nodes.some((n, i) => mapNodeId(n) !== mapNodeId(best.nodes[i]!));
       const amenity = amenities.find(a => a.id === destination);
       const name = (id: string) => amenities.find(a => a.id === id)?.name[lang === 'en' ? 'en' : 'ro'] ?? nodeName(id, lang);
       const walk = lang === 'en' ? `~${minutes} min walking` : `~${minutes} min de mers`;
       const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
-      return { status: 'ready', ...best, minutes, from, to: destination, destination: name(destination),
+      return { status: 'ready', ...best, rerouted, minutes, from, to: destination, destination: name(destination),
         steps: best.nodes.map(name), note, ...(pageLink && profile().flight && { link: await pageLink() }) };
     },
     async reportLostItem(input: { text?: string }) {

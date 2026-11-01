@@ -1,3 +1,4 @@
+import { terminalGraph } from '../../../backend/src/terminal.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import guide from './airport-guide.json' with { type: 'json' };
 import { normalize } from './context.js';
@@ -103,7 +104,7 @@ export function amenityDescription(a: typeof amenities[number], lang?: Lang) {
 export interface RouteIndex {
   points: { id: string; name: { ro: string; en: string }; aliases: string[] }[];
   evac?: Record<string, { file?: string; exit: string; assembly?: string; assemblyPoint?: string; nodes?: string[]; steps?: string[] }>;
-  routes: Record<string, { file: string; walkSec: number; steps: unknown }>;
+  routes: Record<string, { file: string; walkSec: number; steps: unknown; nodes?: string[] }>;
 }
 /** Per-agent cache includes absent indexes, so a missing deployment never floods the site. */
 export class RouteImages {
@@ -136,11 +137,22 @@ export class RouteImages {
     }
     return { from: zone, exit: entry.exit, assembly, nodes, link };
   }
-  async image(from: string, to: string) {
+  async image(from: string, to: string, live?: { nodes: string[]; rerouted?: boolean; reroute?: boolean }, blocked: readonly string[] = []) {
     const index = await this.index();
     const id = (node: string) => index?.points.find(p => p.id === node)?.id ?? index?.points.find(p => mapNodeId(p.id) === mapNodeId(node) || p.aliases.some(a => normalize(a) === normalize(node)))?.id ?? node;
     const entry = index?.routes[`${id(from)}__${id(to)}`];
     if (!entry || typeof entry.file !== 'string' || !Number.isFinite(entry.walkSec) || entry.walkSec < 0) return null;
+    // A PNG is safe only when its recorded path matches the current routing response.
+    // Older indexes with prose-only steps cannot establish that and stay text-only.
+    const staticNodes = entry.nodes ?? entry.steps;
+    if (!live || live.rerouted || live.reroute || !Array.isArray(staticNodes) || staticNodes.length < 2 ||
+      !staticNodes.every(n => typeof n === 'string') || !Array.isArray(live.nodes)) return null;
+    const canonical = (node: string) => mapNodeId(id(node));
+    const expected = staticNodes.map(canonical), actual = live.nodes.map(canonical);
+    if (expected.length !== actual.length || expected.some((n, i) => n !== actual[i])) return null;
+    const closed = new Set(blocked.map(canonical));
+    if (actual.some(n => closed.has(n) || closed.has(terminalGraph.nodes.find(p => p.id === n)?.zone ?? n) ||
+      (n === 'U_SECURITY' && closed.has('U_SECURITY_QUEUE')))) return null;
     const root = new URL(`${this.appUrl.replace(/\/$/, '')}/routes/`);
     const url = new URL(entry.file, root);
     if (!url.href.startsWith(root.href)) return null;
