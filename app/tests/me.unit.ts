@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { normalizePassenger, simTimeLabel, statusLabel } from '../src/me/format'
 
 describe('passenger formatting', () => {
+  it('shows the gate number, not the map id', () => {
+    expect(normalizePassenger({ flight: { gate: 'gate_3' }, steps: [], alerts: [] }).flight.gate).toBe('3')
+    expect(normalizePassenger({ flight: { gate: '7' }, steps: [], alerts: [] }).flight.gate).toBe('7')
+  })
   it('keeps the evacuation exit route and how long to stay away (D33)', () => {
     const page = normalizePassenger({ flight: {}, steps: [], alerts: [], evacuation: { active: true, zones: ['security'], route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1', 7] }, stayAway: { reopenInMin: 23 } } })
     expect(page.evacuation).toEqual({ active: true, zones: ['security'], route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] }, stayAway: { reopenInMin: 23 } })

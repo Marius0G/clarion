@@ -57,7 +57,8 @@ export function normalizePassenger(value: unknown): PassengerViewData {
     }),
     flight: {
       flight: localText(flight.flight), destination: localText(flight.destination), std: localText(flight.std),
-      gate: localText(flight.gate), gateCloseAt: localText(flight.gateCloseAt),
+      // The schedule may carry the map id (gate_3); passengers see the number.
+      gate: localText(flight.gate)?.replace(/^(?:U_)?gate_/i, ''), gateCloseAt: localText(flight.gateCloseAt),
       status: (statuses.includes(String(flight.status)) ? flight.status : undefined) as PassengerData['flight']['status'] | undefined,
       delayMin: nonnegative(flight.delayMin) ?? undefined,
     },
