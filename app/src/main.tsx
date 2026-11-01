@@ -4,14 +4,16 @@ import "./styles.css";
 
 const path = window.location.pathname;
 const query = new URLSearchParams(window.location.search);
-// Old operator links (`/?token=…`, `/?backend=…`) pointed at the console when it lived at `/`.
-const legacyConsole = path === "/" && (query.has("token") || query.has("backend"));
+// The console lived at `/`: old operator links (`/?token=…`, `/?backend=…`) and browsers that already hold an
+// operator token or backend override still land on it. `/acasa` always shows the landing page.
+const operator = () => { try { return Boolean(localStorage.getItem("clarion.token") || localStorage.getItem("clarion.backend")); } catch { return false; } };
+const legacyConsole = path === "/" && (query.has("token") || query.has("backend") || operator());
 if (legacyConsole) window.location.replace(`/console${window.location.search}${window.location.hash}`);
 
 const Page =
   path === "/join" || path.startsWith("/join/")
     ? lazy(() => import("./join/Join"))
-    : path === "/" ? lazy(() => import("./landing/Landing"))
+    : path === "/" || path === "/acasa" ? lazy(() => import("./landing/Landing"))
     : path === "/harta" ? lazy(() => import("./map/t2/MapPreview"))
     : path.startsWith("/m/") ? lazy(() => import("./me/Me"))
     : lazy(() => import("./App"));

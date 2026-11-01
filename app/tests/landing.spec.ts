@@ -25,3 +25,12 @@ test('old operator links on / open the console with the same query', async ({ pa
   await expect(page.getByTestId('top-band')).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('clarion.token'))).toBe('x')
 })
+
+test('a browser that already holds an operator token lands on the console; /acasa still shows the landing page', async ({ page }) => {
+  await page.goto('/acasa')
+  await page.evaluate(() => localStorage.setItem('clarion.token', 'x'))
+  await page.goto('/#zone')
+  await expect(page).toHaveURL(/\/console#zone$/)
+  await page.goto('/acasa')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(tagline)
+})

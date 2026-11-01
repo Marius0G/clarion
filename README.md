@@ -47,8 +47,11 @@ Tabelul se actualizează până la predarea finală, duminică la 15:00.
 
 | Ecran | URL |
 |---|---|
-| Ecranul adminului | https://clarion-craiova.pages.dev |
+| Pagina principală (Abonează-te) | https://clarion-craiova.pages.dev |
+| Ecranul adminului | https://clarion-craiova.pages.dev/console |
 | Abonare pasager | https://clarion-craiova.pages.dev/join |
+
+Linkurile vechi spre consolă (`/?token=…`) și browserele care au deschis-o deja cu token ajung tot la `/console`; pe ele, pagina principală e la `/acasa`.
 
 WhatsApp folosește un număr de test Meta, **+1 555 631 8672**, care trimite doar către numerele adăugate în consola Meta. De aceea, demo-ul de pe scenă se face pe telefoanele echipei.
 
