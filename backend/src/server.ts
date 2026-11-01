@@ -1,4 +1,4 @@
-import { personalRoute } from './personal-routes.js';
+import { personalRoute, consumeChatTicket, personAuthorized, chatTurn, type PersonSocket } from './personal-routes.js';
 import { Auth, bearer } from './auth.js';
 import { authRoute } from './auth-routes.js';
 import { FileAuthStore } from './auth-store.js';
@@ -61,6 +61,10 @@ export function createControlTower() {
     maxPayload: 1024 * 1024,
   });
   const clients = new Map<WebSocket, Client>();
+  const people = new Map<WebSocket, PersonSocket>();
+  const toPerson = (phone: string, event: unknown) => {
+    for (const [ws, person] of people) if (person.phone === phone && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
+  };
   const emit = (type: string, data: any) => {
     const packet = JSON.stringify({ type, ts: new Date().toISOString(), data });
     for (const [ws, kind] of clients)
@@ -84,7 +88,7 @@ export function createControlTower() {
   const authStore = new FileAuthStore(`${stateFile}.auth.json`);
   const auth = new Auth(authStore);
   const view = airportView(engine.sim, () => [...clients.values()].includes('twin'));
-  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, reportsChanged: rows => engine.updateStaffReports(rows) });
+  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, personEvent: toPerson, reportsChanged: rows => engine.updateStaffReports(rows) });
   const reportsReady = waAgent.reports.list().then(rows => engine.updateStaffReports(rows));
   const webhookWork = new Set<Promise<void>>();
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.
@@ -132,7 +136,7 @@ export function createControlTower() {
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
       await reportsReady;
-      if (url.pathname === '/api/chat' || url.pathname === '/api/me' || url.pathname === '/api/staff' || url.pathname.startsWith('/api/staff/tasks/') ||
+      if (url.pathname === '/api/chat' || url.pathname === '/api/chat/ticket' || url.pathname === '/api/me' || url.pathname === '/api/staff' || url.pathname.startsWith('/api/staff/tasks/') ||
         (url.pathname === '/api/reports' && req.method === 'POST') || /^\/api\/reports\/[^/]+\/(state|close)$/.test(url.pathname)) {
         const personalBody = req.method === 'POST' ? await rawBody(req) : undefined;
         const response = await ordered(() => personalRoute(new Request(url, { method: req.method,
@@ -172,6 +176,7 @@ export function createControlTower() {
           await authStore.put(`wa:profile:${phone}`, { phone, role: 'passenger', ...await waAgent.profile(phone),
             flight: flight.flight, lang: input.lang ?? 'ro', token, verified: true });
           await waAgent.messaging.addPhone(phone);
+          toPerson(phone, { type: 'me' });
         }
         res.writeHead(201); res.end(JSON.stringify({ token, waLink: waLink(flight.flight, token, process.env.WHATSAPP_NUMBER) })); return;
       }
@@ -313,6 +318,33 @@ export function createControlTower() {
   http.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const kind = url.searchParams.get("client");
+    if (url.pathname === '/ws' && kind === 'person') {
+      void ordered(async () => {
+        const person = await consumeChatTicket(authStore, url.searchParams.get('ticket'), process.env);
+        const entries = person ? (await waAgent.chatHistory(person.phone)).slice(-50) : [];
+        sockets.handleUpgrade(req, socket, head, ws => {
+          if (!person) { ws.close(4401, 'Session required'); return; }
+          people.set(ws, person);
+          ws.send(JSON.stringify({ type: 'history', entries }));
+          ws.on('message', raw => {
+            void ordered(async () => {
+              try {
+                if (!await personAuthorized(authStore, person, process.env)) { ws.close(4401, 'Session required'); return; }
+                if (Buffer.byteLength(raw.toString()) > 16384) throw new Error('Invalid message');
+                const event = JSON.parse(raw.toString());
+                if (event?.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
+                if (event?.type !== 'chat') throw new Error('Invalid message');
+                const result = await chatTurn(authStore, waAgent, person.phone, person.session, event);
+                if (result.status !== 200) ws.send(JSON.stringify({ type: 'error', status: result.status, ...result.body }));
+              } catch (error) { ws.send(JSON.stringify({ type: 'error', status: 400, error: error instanceof Error ? error.message : 'Invalid message' })); }
+            });
+          });
+          ws.on('close', () => people.delete(ws));
+          ws.on('error', () => people.delete(ws));
+        });
+      }).catch(() => socket.destroy());
+      return;
+    }
     if (
       url.pathname !== "/ws" ||
       !["twin", "vision", "console", "viewer"].includes(kind ?? "")
@@ -340,6 +372,9 @@ export function createControlTower() {
             const event = JSON.parse(raw.toString());
             const client = clients.get(ws);
             await wallet.handle(engine, event, client);
+            if (event.type === 'sim.status' || event.type === 'flight.update') for (const [peer] of people) {
+              if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: 'me' }));
+            }
             if (client === 'vision' && event.type === 'flow.report') await waAgent.messaging.flowChanged();
             if (client === 'twin' && event.type === 'flight.update') await waAgent.messaging.flightsChanged();
             if (client === 'vision' && event.type === 'evac.plan') await waAgent.messaging.plan(event.data);
@@ -392,6 +427,7 @@ export function createControlTower() {
     clearInterval(tick);
     clearInterval(expiry);
     clearInterval(flights);
+    for (const ws of people.keys()) ws.terminate();
     for (const ws of clients.keys()) ws.terminate();
     sockets.close();
     await queue;

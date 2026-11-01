@@ -19,7 +19,7 @@ import { arrivalPlan, situationText, ownZones, MARGIN_MIN, type AirportView, typ
 export { nodeName } from './tools.js';
 import type { PassengerData } from '../../../app/src/me/types.js';
 import { passengerBubbles, masked, type WhatsAppClient } from './transport.js';
-import type { WaStore } from './index.js';
+import type { WaStore, ChatEntry } from './index.js';
 import type { OpsCommand } from '../../../backend/src/sim.js';
 
 export const WINDOW_MS = 86400000;
@@ -112,6 +112,7 @@ export interface MessagingDeps {
   evacWaitMs?: number;
   now?: () => number;
   images?: RouteImages;
+  historyAppended?: (phone: string, entry: ChatEntry) => void | Promise<void>;
 }
 
 type Estimate = { flight: string; totalMin: number; queues?: ReturnType<typeof arrivalPlan>['queues'] };
@@ -323,7 +324,9 @@ export class Messaging {
       }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
-      await this.deps.store.put(key, [...alerts, ...(sub.channel === 'whatsapp' ? passengerBubbles(m.text) : [m.text]).map(text => ({ at: clockText(this.deps.view.clock().now), timestamp: Date.now(), ...m, text }))].slice(-50));
+      const entries = (sub.channel === 'whatsapp' ? passengerBubbles(m.text) : [m.text]).map(text => ({ id: crypto.randomUUID(), at: clockText(this.deps.view.clock().now), timestamp: Date.now(), ...m, text }));
+      await this.deps.store.put(key, [...alerts, ...entries].slice(-50));
+      if (sub.channel === 'whatsapp') for (const entry of entries) await this.deps.historyAppended?.(sub.phone, { ...entry, role: 'clarion', channel: 'whatsapp' });
     });
     return delivery;
   }
@@ -563,7 +566,9 @@ export class Messaging {
     await this.pageSerial(async () => {
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
-      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), timestamp: Date.now(), kind: 'route', text: caption, image: link }].slice(-50));
+      const entry = { id: crypto.randomUUID(), at: clockText(this.deps.view.clock().now), timestamp: Date.now(), kind: 'route' as const, text: caption, image: link };
+      await this.deps.store.put(key, [...alerts, entry].slice(-50));
+      await this.deps.historyAppended?.(sub.phone, { ...entry, role: 'clarion', channel: 'whatsapp' });
     });
   }
   private async evacuationImage(sub: Subscriber, link: string | undefined, lang?: Lang, caption?: string) {

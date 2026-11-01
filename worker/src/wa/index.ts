@@ -47,6 +47,9 @@ export function parseStart(text: string) {
   return m ? { flight: `${m[1]!.toUpperCase()} ${m[2]}`, token: m[3] } : undefined;
 }
 
+export type ChatEntry = HistoryEntry & { id: string; channel: 'web' | 'whatsapp' };
+export type PersonEvent = { type: 'chat'; entry: ChatEntry } | { type: 'report'; report: import('./reports.js').Report } | { type: 'me' } | { type: 'typing'; on: boolean };
+
 export class WhatsAppAgent {
   readonly wa: WhatsAppClient;
   readonly messaging: Messaging;
@@ -55,9 +58,11 @@ export class WhatsAppAgent {
   private fetcher: Fetch;
   private observe?: Observe;
   private images: RouteImages;
+  private personEvent?: (phone: string, event: PersonEvent) => void;
   private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
-    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
+    opts: { personEvent?: (phone: string, event: PersonEvent) => void; fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
+    this.personEvent = opts.personEvent;
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.observe = opts.observe;
     this.images = new RouteImages(env.APP_URL ?? 'https://clarion-craiova.pages.dev', this.fetcher);
@@ -66,8 +71,16 @@ export class WhatsAppAgent {
       if (trace && (event.type === 'text' || event.type === 'interactive')) trace.bubbles++;
       await this.observe?.(event);
     });
-    this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs, images: this.images });
-    this.reports = new Reports(store, opts.reportsChanged, async r => {
+    this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs, images: this.images, historyAppended: async (phone, entry) => this.emit(phone, { type: 'chat', entry: { ...entry, text: await this.historyText(phone, entry.text) } }) });
+    const versions = new Map<string, string>();
+    this.reports = new Reports(store, rows => {
+      opts.reportsChanged?.(rows);
+      for (const report of rows) {
+        const version = JSON.stringify(report);
+        if (report.phone && versions.get(report.id) !== version) this.emit(report.phone, { type: 'report', report: { ...report, text: redact(report.text) } });
+        versions.set(report.id, version);
+      }
+    }, async r => {
       if (!r.phone) return;
       const en = (await this.profile(r.phone))?.lang === 'en';
       await this.messaging.notify({ channel: 'whatsapp', phone: r.phone }, { kind: 'admin', requested: true,
@@ -110,12 +123,13 @@ export class WhatsAppAgent {
 
   /** Parsed webhook messages and isolated lab messages enter the same serialized turn. */
   receive(m: InboundMessage, channel: 'whatsapp' | 'web' = 'whatsapp', output: HistoryEntry[] = []) {
-    const next = (this.chains.get(m.phone) ?? Promise.resolve())
+    const next = (this.chains.get(m.phone) ?? Promise.resolve()).catch(() => {})
       .then(async () => {
         const started = Date.now();
         const trace = { tools: [] as string[], bubbles: 0 };
         this.traces.set(m.phone.replace(/^\+/, ''), trace);
         await this.observe?.({ kind: 'inbound', phone: m.phone, type: m.type, text: redact(m.text ?? '') });
+        this.emit(m.phone, { type: 'typing', on: true });
         try { await this.conversationTurn(m, channel, output); }
         catch (e) {
           const error = String((e as Error)?.message ?? e);
@@ -124,6 +138,8 @@ export class WhatsAppAgent {
           if (channel === 'web') throw e;
           await this.wa.sendText(m.phone, say((await this.profile(m.phone))?.lang, 'fallback')).catch(() => {});
         } finally {
+          this.emit(m.phone, { type: 'typing', on: false });
+          this.emit(m.phone, { type: 'me' });
           this.traces.delete(m.phone.replace(/^\+/, ''));
           await this.observe?.({ kind: 'turn', phone: m.phone, ...trace, ms: Date.now() - started });
         }
@@ -139,12 +155,28 @@ export class WhatsAppAgent {
     return output;
   }
 
-  async chatHistory(phone: string) {
+  private emit(phone: string, event: PersonEvent) {
+    // A disconnected browser must never break durable history or WhatsApp delivery.
+    try { this.personEvent?.(phone, event); } catch { /* Closed peer. */ }
+  }
+
+  private async historyText(phone: string, text: string) {
+    const token = (await this.profile(phone))?.pageToken;
+    const link = token ? `${(this.env.APP_URL ?? 'https://clarion-craiova.pages.dev').replace(/\/$/, '')}/m/${token}` : undefined;
+    // Only this phone's generated personal link survives the API-key redactor.
+    return link ? text.split(link).map(redact).join(link) : redact(text);
+  }
+
+  async chatHistory(phone: string): Promise<ChatEntry[]> {
     const ctx = await this.store.get<PassengerContext>(`wa:ctx:${phone}`);
-    const alerts = await this.store.get<{ at: string; text: string; timestamp?: number }[]>(`msg:alerts:wa:${phone}`) ?? [];
-    return [...(ctx?.history ?? []).map(e => ({ ...e, channel: e.channel ?? 'whatsapp' })),
-      ...alerts.map(e => ({ ...e, role: 'clarion' as const, channel: 'whatsapp' as const }))]
-      .sort((a, b) => a.timestamp !== undefined && b.timestamp !== undefined ? a.timestamp - b.timestamp : a.at.localeCompare(b.at));
+    const alerts = await this.store.get<(HistoryEntry & { id?: string })[]>(`msg:alerts:wa:${phone}`) ?? [];
+    const entries = [...(ctx?.history ?? []), ...alerts.map(e => ({ ...e, role: 'clarion' as const, channel: 'whatsapp' as const }))];
+    return Promise.all(entries.map(async e => {
+      // Older history has no id. A content digest survives reconnects and history folding.
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([phone, e.role, e.channel ?? 'whatsapp', e.timestamp, e.at, e.text, e.image, e.buttons])));
+      const id = (e as ChatEntry).id ?? 'legacy:' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+      return { ...e, id, text: await this.historyText(phone, e.text), channel: e.channel ?? 'whatsapp' };
+    })).then(rows => rows.sort((a, b) => a.timestamp !== undefined && b.timestamp !== undefined ? a.timestamp - b.timestamp : a.at.localeCompare(b.at)));
   }
 
   private async conversationTurn(m: InboundMessage, channel: 'whatsapp' | 'web', output: HistoryEntry[]) {
@@ -156,8 +188,8 @@ export class WhatsAppAgent {
         const image = body.image as { link: string; caption: string } | undefined;
         const reaction = body.reaction as { emoji?: string } | undefined;
         const text = (body.text as { body?: string } | undefined)?.body ?? interactive?.body?.text ?? image?.caption ?? (reaction?.emoji ? `[react]${reaction.emoji}` : undefined);
-        if (text) output.push({ role: 'clarion', text: redact(text), at: clockText(this.view.clock().now), timestamp: Date.now(), channel,
-          ...(interactive && { buttons: interactive.action?.buttons.map(b => b.reply) }), ...(image && { image: image.link }) });
+        if (text) output.push({ id: crypto.randomUUID(), role: 'clarion', text: redact(text), at: clockText(this.view.clock().now), timestamp: Date.now(), channel,
+          ...(interactive && { buttons: interactive.action?.buttons.map(b => b.reply) }), ...(image && { image: image.link }) } as ChatEntry);
       }
       return result;
     };
@@ -167,8 +199,9 @@ export class WhatsAppAgent {
     await this.turn(m, transport, channel);
     if (m.text && !(channel === 'whatsapp' && parseLogin(m.text)) && !DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
       const key = `wa:ctx:${m.phone}`, ctx = await this.store.get<PassengerContext>(key) ?? { history: [] };
-      const entries: HistoryEntry[] = [{ role: 'user', text: parseStaff(m.text) !== undefined ? 'STAFF ***' : redact(m.text), at: clockText(this.view.clock().now), timestamp: m.at, channel }, ...output];
+      const entries: ChatEntry[] = [{ id: m.id, role: 'user', text: parseStaff(m.text) !== undefined ? 'STAFF ***' : redact(m.text), at: clockText(this.view.clock().now), timestamp: m.at, channel }, ...output as ChatEntry[]];
       await this.store.put(key, { ...ctx, ...await foldHistory(this.env, this.fetcher, ctx, entries) });
+      for (const entry of entries) this.emit(m.phone, { type: 'chat', entry });
     }
   }
 

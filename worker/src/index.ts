@@ -1,4 +1,4 @@
-import { personalRoute } from '../../backend/src/personal-routes.js';
+import { personalRoute, consumeChatTicket, personAuthorized, chatTurn, type PersonSocket } from '../../backend/src/personal-routes.js';
 import { Auth, bearer } from '../../backend/src/auth.js';
 import { authRoute, type AuthEnv } from '../../backend/src/auth-routes.js';
 import { allowed } from './wa/transport.js';
@@ -106,7 +106,7 @@ export class Tower extends DurableObject<Env> {
     this.waEvents = new WaEvents(ctx.storage);
     this.history = new WaitHistory(ctx.storage);
     this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0, this.history),
-      { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
+      { personEvent: (phone, event) => this.toPerson(phone, event), toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
       const row = ctx.storage.sql.exec<{ value: string }>('SELECT value FROM engine_snapshot WHERE id = 1').toArray()[0];
@@ -173,6 +173,11 @@ export class Tower extends DurableObject<Env> {
       const write = this.history.record(snapshot.flow, snapshot.simTime);
       if (write) this.background(write);
     }
+    if (event.type === 'sim.status' || event.type === 'flight.update') {
+      for (const ws of this.ctx.getWebSockets()) if (ws.deserializeAttachment()?.client === 'person') {
+        try { ws.send(JSON.stringify({ type: 'me' })); } catch { /* Closed peer. */ }
+      }
+    }
     if (event.type === 'flight.update') this.background(msg.flightsChanged());
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
@@ -190,9 +195,15 @@ export class Tower extends DurableObject<Env> {
     for (const ws of twins) ws.send(packet(type, data));
     return twins.length > 0;
   }
+  private toPerson(phone: string, event: unknown) {
+    for (const ws of this.ctx.getWebSockets(`person:${phone}`)) {
+      try { ws.send(JSON.stringify(event)); } catch { /* Closed peer. */ }
+    }
+  }
   private broadcast(type: string, data: unknown) {
     const value = packet(type, data);
     for (const ws of this.ctx.getWebSockets()) {
+      if (ws.deserializeAttachment()?.client === 'person') continue;
       if (type !== 'state' && ws.deserializeAttachment()?.client === 'viewer') continue;
       try { ws.send(value); } catch { /* Closed peer; runtime removes it. */ }
     }
@@ -296,6 +307,18 @@ export class Tower extends DurableObject<Env> {
         if (personal) return personal;
         if (path.startsWith('/api/reports') && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
         if (request.method === 'POST' && ['/api/action', '/api/sim/command', '/api/ops/command', '/api/alerts/command', '/api/agent/route', '/api/demo/reset'].includes(path) && this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`)) return json({ error: 'Operator token required' }, 401);
+        if (path === '/ws' && url.searchParams.get('client') === 'person') {
+          if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'WebSocket upgrade required' }, 426);
+          const person = await consumeChatTicket(this.ctx.storage, url.searchParams.get('ticket'), this.env);
+          const pair = new WebSocketPair();
+          if (!person) { pair[1].accept(); pair[1].close(4401, 'Session required'); }
+          else {
+            this.ctx.acceptWebSocket(pair[1], [`person:${person.phone}`]);
+            pair[1].serializeAttachment({ client: 'person', ...person });
+            pair[1].send(JSON.stringify({ type: 'history', entries: (await this.whatsapp.chatHistory(person.phone)).slice(-50) }));
+          }
+          return new Response(null, { status: 101, webSocket: pair[0] });
+        }
         if (path === '/ws') {
           const client = url.searchParams.get('client') as Client;
           if (!['twin', 'vision', 'console', 'viewer'].includes(client)) return json({ error: 'Invalid client' }, 400);
@@ -349,6 +372,7 @@ export class Tower extends DurableObject<Env> {
               await this.ctx.storage.put(key, { phone, role: 'passenger', ...await this.whatsapp.profile(phone),
                 flight: flight.flight, lang: pending.lang, token, verified: true });
               await this.whatsapp.messaging.addPhone(phone);
+              this.toPerson(phone, { type: 'me' });
             }
             return json({ token, waLink: link, ...(boarding && { bcbp: boarding.bcbp, walletUrl: pass!.saveUrl }) }, 201);
           }
@@ -456,6 +480,22 @@ export class Tower extends DurableObject<Env> {
     }
   }
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    const attachment = ws.deserializeAttachment();
+    if (attachment?.client === 'person') {
+      await this.ordered(async () => {
+        try {
+          const person = attachment as PersonSocket;
+          if (!await personAuthorized(this.ctx.storage, person, this.env)) { ws.close(4401, 'Session required'); return; }
+          if (typeof message !== 'string' || message.length > 16384) throw new Error('Invalid message');
+          const event = JSON.parse(message);
+          if (event?.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
+          if (event?.type !== 'chat') throw new Error('Invalid message');
+          const result = await chatTurn(this.ctx.storage, this.whatsapp, person.phone, person.session, event);
+          if (result.status !== 200) ws.send(JSON.stringify({ type: 'error', status: result.status, ...result.body }));
+        } catch (error) { ws.send(JSON.stringify({ type: 'error', status: 400, error: error instanceof Error ? error.message : 'Invalid message' })); }
+      });
+      return;
+    }
     if (typeof message === 'string' && message.length <= 1048576 && message.includes('"camera.frame"')) {
       let event: Envelope | undefined;
       try { event = JSON.parse(message); } catch { /* Reported below like any invalid payload. */ }

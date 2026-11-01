@@ -19,7 +19,7 @@ const json = (value: unknown, status = 200) => Response.json(value, { status, he
 export async function personalRoute(request: Request, deps: PersonalRoutes): Promise<Response | undefined> {
   const url = new URL(request.url), path = url.pathname;
   const state = /^\/api\/reports\/([A-Za-z0-9_-]{1,40})\/(state|close)$/.exec(path);
-  if (path !== '/api/chat' && path !== '/api/me' && path !== '/api/staff' && !path.startsWith('/api/staff/tasks/') && !(path === '/api/reports' && request.method === 'POST') && !state) return;
+  if (path !== '/api/chat' && path !== '/api/chat/ticket' && path !== '/api/me' && path !== '/api/staff' && !path.startsWith('/api/staff/tasks/') && !(path === '/api/reports' && request.method === 'POST') && !state) return;
   try {
     if (state && request.method === 'POST') {
       if (!deps.operator) return json({ error: 'Operator token required' }, 401);
@@ -53,6 +53,12 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
     const stored = await deps.agent.profile(phone);
     const staff = stored?.role === 'staff' || (deps.env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === phone);
     const profile: Profile = { phone, ...stored, role: staff ? 'staff' : 'passenger' };
+    if (path === '/api/chat/ticket') {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+      const ticket = crypto.randomUUID();
+      await deps.store.put(`chat:ticket:${ticket}`, { phone, role: profile.role, session: bearer(request.headers)!, expiresAt: Date.now() + 60_000 });
+      return json({ ticket, expiresIn: 60 });
+    }
     if (path === '/api/reports' && request.method === 'POST') {
       const input = await request.json() as { type: ReportType; place: { node: string; name: string }; text: string; photo?: string };
       if (!input || !REPORT_TYPES.includes(input.type) || typeof input.text !== 'string' || input.text.length > 500 ||
@@ -66,11 +72,9 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
     if (path === '/api/chat') {
       if (request.method === 'GET') return json({ history: await deps.agent.chatHistory(phone) });
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-      const input = await request.json() as { text?: unknown; replyId?: unknown };
-      if (!input || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 2000 ||
-        (input.replyId !== undefined && (typeof input.replyId !== 'string' || input.replyId.length > 120))) throw new Error('Invalid message');
-      if (!await chatAllowance(deps.store, bearer(request.headers)!)) return json({ error: 'Message limit', retryAfter: 60 }, 429);
-      const bubbles = await deps.agent.chat(phone, input.text.trim(), typeof input.replyId === 'string' ? input.replyId : null);
+      const result = await chatTurn(deps.store, deps.agent, phone, bearer(request.headers)!, await request.json());
+      if (result.status !== 200) return json(result.body, result.status);
+      const bubbles = result.body.bubbles;
       return json({ bubbles, history: await deps.agent.chatHistory(phone) });
     }
     if (!staff) return json({ error: 'Staff role required' }, 403);
@@ -105,4 +109,37 @@ async function chatAllowance(store: WaStore, session: string) {
   });
   chatLocks.set(store, next.catch(() => {}));
   return next;
+}
+
+/** Ticket consumption is atomic across concurrent upgrades, including Node's asynchronous storage. */
+export interface PersonSocket { phone: string; role: 'staff' | 'passenger'; session: string }
+const ticketLocks = new WeakMap<WaStore, Promise<unknown>>();
+export function consumeChatTicket(store: WaStore, ticket: string | null, env: PersonalRoutes['env']): Promise<PersonSocket | null> {
+  if (!ticket || !/^[a-f0-9-]{36}$/.test(ticket)) return Promise.resolve(null);
+  const next = (ticketLocks.get(store) ?? Promise.resolve()).then(async () => {
+    const key = `chat:ticket:${ticket}`;
+    const value = await store.get<PersonSocket & { expiresAt: number }>(key);
+    if (!value) return null;
+    await store.delete(key);
+    if (value.expiresAt <= Date.now() || !await personAuthorized(store, value, env)) return null;
+    return { phone: value.phone, role: value.role, session: value.session };
+  });
+  ticketLocks.set(store, next.catch(() => {}));
+  return next;
+}
+export async function personAuthorized(store: WaStore, person: PersonSocket, env: PersonalRoutes['env']) {
+  if (await new Auth(store).currentPhone(person.session) !== person.phone) return false;
+  const profile = await store.get<Profile>(`wa:profile:${person.phone}`);
+  const staff = profile?.role === 'staff' || (env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === person.phone);
+  return person.role === (staff ? 'staff' : 'passenger');
+}
+/** HTTP and socket turns share validation and the D3 session's existing rate bucket. */
+export async function chatTurn(store: WaStore, agent: WhatsAppAgent, phone: string, session: string, value: unknown) {
+  const input = value as { text?: unknown; replyId?: unknown } | null;
+  if (!input || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 2000 ||
+    (input.replyId !== undefined && (typeof input.replyId !== 'string' || input.replyId.length > 120))) {
+    return { status: 400, body: { error: 'Invalid message' } };
+  }
+  if (!await chatAllowance(store, session)) return { status: 429, body: { error: 'Message limit', retryAfter: 60 } };
+  return { status: 200, body: { bubbles: await agent.chat(phone, input.text.trim(), typeof input.replyId === 'string' ? input.replyId : null) } };
 }
