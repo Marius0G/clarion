@@ -41,7 +41,11 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       if (!data) return json({ error: 'Unknown passenger' }, 404);
       // The legacy bearer page token can read its own data, but cannot submit reports.
       const legacy = !phone ? await deps.store.get<{ phone?: string }>(`page:${token}`) : undefined;
-      return json({ ...data, reports: phone || legacy?.phone ? await deps.agent.reports.own(phone ?? legacy!.phone!) : [] });
+      // Where the passenger last said he is on WhatsApp (D9 self-reported landmark), with its age in sim seconds.
+      const position = phone ? (await deps.agent.profile(phone))?.position : undefined;
+      const ageSec = position ? Math.round(deps.view.clock().now - position.at / 1000) : null;
+      const here = position && ageSec !== null && ageSec >= 0 && ageSec <= 3600 ? { node: position.node, ageSec } : undefined;
+      return json({ ...data, ...(here && { here }), reports: phone || legacy?.phone ? await deps.agent.reports.own(phone ?? legacy!.phone!) : [] });
     }
     if (!phone && deps.operator && path === '/api/reports' && request.method === 'POST') {
       const input = await request.json() as { id?: string; kind: import('../../worker/src/wa/reports.js').IssueKind; node: string | null; text: string; status?: string };
