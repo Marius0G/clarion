@@ -2,7 +2,7 @@
  * Every ordered pair of landmarks routed with the backend's own `route()` on its terminal graph,
  * so the picture matches the WhatsApp text. Free flow (no live density), nothing blocked.
  */
-import { route, type Route } from '../../../backend/src/routing.ts'
+import { route, FREE_SPEED, type Route } from '../../../backend/src/routing.ts'
 import { terminalGraph, zones } from '../../../backend/src/terminal.ts'
 import { evacuationRoute } from '../../../backend/src/evacuation.ts'
 import { landmarks, type Area, type Landmark } from './landmarks.ts'
@@ -74,7 +74,7 @@ export function planRoutes(list: Landmark[] = landmarks) {
     if (a.id === b.id) continue
     const rule = allowed(a.area, b.area)
     if (rule) { skipped.push({ from: a.id, to: b.id, reason: rule }); continue }
-    const r = route(terminalGraph, a.id, b.id)
+    const r = route(terminalGraph, a.graphNode, b.graphNode)
     if (!r) { skipped.push({ from: a.id, to: b.id, reason: 'no_route' }); continue }
     // Every node on the way must be somewhere this passenger may be: never back through security,
     // never through the arrivals hall unless coming from it.
@@ -83,7 +83,19 @@ export function planRoutes(list: Landmark[] = landmarks) {
       || (a.area !== 'arrivals' && areas.includes('arrivals'))
     if (bad) { skipped.push({ from: a.id, to: b.id, reason: 'crosses_restricted_area' }); continue }
     if (r.nodes.some((id, i) => i > 0 && !normalHops.has(`${r.nodes[i - 1]}>${id}`))) { skipped.push({ from: a.id, to: b.id, reason: 'emergency_only' }); continue }
-    routes.push({ from: a.id, to: b.id, walkSec: Math.round(r.totalSec), ...toPath(r) })
+    const converted = toPath(r)
+    // Symbols without navigation nodes keep their real position and expose their graph anchor in index.points.
+    const endpoint = (l: Landmark) => ({ id: l.id, level: l.level, x: l.x, z: l.z })
+    const step = (l: Landmark) => ({ node: l.id, name: l.name, level: l.level, sec: 0 })
+    if (a.id !== r.nodes[0]) { converted.path.unshift(endpoint(a)); converted.steps.unshift(step(a)) }
+    if (b.id !== r.nodes.at(-1)) { converted.path.push(endpoint(b)); converted.steps.push(step(b)) }
+    const startNode = nodes.get(a.graphNode)!, endNode = nodes.get(b.graphNode)!
+    const startSec = a.id === a.graphNode ? 0 : Math.hypot(a.x-startNode.x, a.z-startNode.y) / FREE_SPEED
+    const endSec = b.id === b.graphNode ? 0 : Math.hypot(b.x-endNode.x, b.z-endNode.y) / FREE_SPEED
+    if (startSec) converted.steps[1]!.sec = Math.ceil(startSec)
+    if (endSec) converted.steps.at(-1)!.sec = Math.ceil(endSec)
+    const walkSec = Math.max(1, Math.ceil(r.totalSec + startSec + endSec))
+    routes.push({ from: a.id, to: b.id, walkSec, ...converted })
   }
   return { routes, skipped }
 }
