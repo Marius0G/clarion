@@ -1,3 +1,4 @@
+import { staffForecast, staffNotices } from '../../worker/src/wa/staff-notices.js';
 import { staffAssignment } from '../../worker/src/wa/staff.js';
 import { flowRow } from './mapIds.js';
 import { waitTarget } from './alerts.js';
@@ -83,11 +84,12 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       const row = flowRow(deps.view.flow(), zone);
       const known = row && row.source === 'vision' && !row.stale && row.coverage !== 0;
       const target = waitTarget(zone);
-      const forecast = known ? (row.forecast ?? []).filter(p => p.inMin > 0 && p.inMin <= 60) : [];
+      const forecast = staffForecast(deps.view, zone);
       const state = !known ? 'unknown' : target !== null
         ? row.waitMin == null ? 'unknown' : row.waitMin >= 2 * target ? 'full' : row.waitMin > target || forecast.some(p => p.waitMin > target) ? 'busy' : 'normal'
         : row.density == null ? 'unknown' : row.density > 2 ? 'full' : row.density >= 1 ? 'busy' : 'normal';
-      return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone, situation: {
+      // TODO(staff-notices): app/src/staff/Staff.tsx must read zone.id when adopting zone.forecast.
+      return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone: { id: zone, forecast }, notices: await staffNotices(deps.store, phone), situation: {
         waitMin: known ? row.waitMin : null, people: known ? row.waiting : null, forecast, state,
       }, reports: await deps.agent.reports.own(phone),
         alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });

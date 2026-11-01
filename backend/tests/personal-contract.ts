@@ -107,6 +107,17 @@ export function personalContract() {
       const h = setup(), session = await h.login('+40711111111', { role: 'staff', lang: 'en' });
       expect(await (await h.call('/api/staff', session))!.json()).toMatchObject({ lang: 'en' });
     });
+    it('exposes only this staff phone notices and its camera forecast', async () => {
+      const h = setup(), phone = '+40711111111', session = await h.login(phone, { role: 'staff', zone: 'security' });
+      const notice = { id: 'A', at: '07:00', zone: 'security', type: 'staff', text: 'Dispeceratul a deschis o linie în plus la securitate.' };
+      await h.store.put(`msg:staffNotices:${phone}`, [notice]);
+      await h.store.put('msg:staffNotices:+40700000000', [{ ...notice, id: 'private' }]);
+      h.sim.flow({ zones: [{ zone: 'security', waiting: 1, waitMin: 2, coverage: 1, forecast: [{ inMin: 30, waitMin: 4 }, { inMin: 60, waitMin: 6 }, { inMin: 90, waitMin: 8 }] }] }, 'vision');
+      const data = await (await h.call('/api/staff', session))!.json() as any;
+      expect(data.notices).toEqual([notice]);
+      expect(data.zone).toEqual({ id: 'security', forecast: [{ inMin: 30, waitMin: 4 }, { inMin: 60, waitMin: 6 }] });
+      expect(data.situation.forecast).toEqual(data.zone.forecast);
+    });
     it('keeps admin tasks private and rejects staff confirm and done actions', async () => {
       const h = setup(), staff = await h.login('+40711111111', { role: 'staff' });
       const lane = h.sim.sent({ type: 'staff', zone: 'security', delta: 1 });
@@ -123,9 +134,13 @@ export function personalContract() {
       h.sim.truth({ zones: [{ zone: 'security', waiting: 40, waitMin: 20 }, { zone: 'check_in:2', waiting: 40, waitMin: 20 }] });
       let data = await (await h.call('/api/staff', session))!.json() as any;
       expect(data.situation).toMatchObject({ people: null, waitMin: null, state: 'unknown' });
+      expect(data.zone).toEqual({ id: 'security', forecast: [] });
+      expect(data.notices).toEqual([]);
       h.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }] }, 'twin');
       data = await (await h.call('/api/staff', session))!.json() as any;
       expect(data.situation).toMatchObject({ people: null, waitMin: null, state: 'unknown' });
+      expect(data.zone).toEqual({ id: 'security', forecast: [] });
+      expect(data.notices).toEqual([]);
       h.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }, { zone: 'check_in:2', waiting: 40, waitMin: 20, coverage: 1 }] }, 'vision');
       data = await (await h.call('/api/staff', session))!.json() as any;
       expect(data.alerts.length).toBeGreaterThan(0);
@@ -181,7 +196,7 @@ export function personalContract() {
       h.env.STAFF_ASSIGNMENTS = JSON.stringify({ [phone]: { role: 'hall_agent', zone: 'G_CENTER' } });
       h.sim.sent({ type: 'redirect', from: 'G_CENTER', to: 'entrance' });
       const data = await (await h.call('/api/staff', session))!.json() as any;
-      expect(data).toMatchObject({ zone: 'G_CENTER', role: 'hall_agent' });
+      expect(data).toMatchObject({ zone: { id: 'G_CENTER', forecast: [] }, role: 'hall_agent' });
       expect(data).not.toHaveProperty('tasks');
       const response = await h.call('/api/reports', session, { ...h.input, photo: 'https://photos.example/incident.jpg' });
       expect(await response!.json()).toMatchObject({ source: 'staff', phone, photo: 'https://photos.example/incident.jpg' });
