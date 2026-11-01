@@ -99,14 +99,14 @@ export default function Me() {
   const route: RouteDraw | null = useMemo(() => {
     if (!index) return null
     if (evacuation.active) {
-      return evacuationDraw(index, data, hereId, live.blocked, lang)
+      return evacuationDraw(index, data, hereId, live.blocked, lang, live.flow)
     }
     if (!hereId || !target) return null
     const r = routeBetween(index, hereId, target, lang)
     if (!r.ok) return null
     const end = points.find(p => p.id === target)
     return { path: r.path, changes: floorChanges(r.path, lang), endLabel: end ? shortName(end, lang) : undefined }
-  }, [index, evacuation.active, data, live.blocked, points, hereId, target, lang])
+  }, [index, evacuation.active, data, live.blocked, live.flow, points, hereId, target, lang])
 
   const sel = points.find(p => p.id === selected)
   const focus: Focus | null = useMemo(() => {

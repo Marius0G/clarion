@@ -27,6 +27,14 @@ describe('passenger evacuation routing', () => {
       expect(terminalGraph.edges.some(e => e.from === a && e.to === b || !e.oneWay && e.from === b && e.to === a)).toBe(true)
     }
   })
+  it('avoids a jammed zone using the same live crowding as the backend planner', () => {
+    const free = evacuationDraw(index, data, 'U_SECURITY_QUEUE', ['G_CENTER'], 'ro')!
+    const zoneOf = (id: string) => terminalGraph.nodes.find(n => n.id === id)?.zone
+    const jammed = free.path.slice(1, -2).map(n => zoneOf(n.id)).find(z => z && z !== 'U_SECURITY_QUEUE' && z.startsWith('U_') || z?.startsWith('G_'))!
+    expect(jammed).toBeTruthy()
+    const draw = evacuationDraw(index, data, 'U_SECURITY_QUEUE', ['G_CENTER'], 'ro', { [jammed]: { waiting: 5000, density: 9 } })
+    expect(draw === null || draw.path.map(n => n.id).join() !== free.path.map(n => n.id).join()).toBe(true)
+  })
   it('uses named steps if no position is known and supports an absolute preview URL', () => {
     const draw = evacuationDraw(index, { ...data, routeImage: 'https://airport.test/routes/evac/current.png' }, null, [], 'en')!
     expect(draw.path[0]!.id).toBe('U_SECURITY_QUEUE')

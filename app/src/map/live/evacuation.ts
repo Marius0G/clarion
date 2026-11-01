@@ -1,5 +1,5 @@
-import { mapNodeId, terminalGraph, points as terminalPoints, zones } from '../../../../backend/src/terminal'
-import { route } from '../../../../backend/src/routing'
+import { mapNodeId, terminalGraph, points as terminalPoints, zones, zoneAreas } from '../../../../backend/src/terminal'
+import { route, zoneDensities } from '../../../../backend/src/routing'
 import type { PassengerData } from '../../me/types'
 import { evacFor, floorChanges, landmarkFor, shortName, type Lang, type PathNode, type RouteIndex } from './catalogue'
 import type { RouteDraw } from './LiveMap'
@@ -26,7 +26,7 @@ function resolveNode(index: RouteIndex, value: string | undefined): string | und
 }
 
 /** Recompute both legs on the shared terminal graph; a preview URL is only a fallback for metadata. */
-export function evacuationDraw(index: RouteIndex, data: Pick<PassengerData, 'evacuation' | 'routeImage' | 'assembly'>, here: string | null, blocked: readonly string[], lang: Lang): RouteDraw | null {
+export function evacuationDraw(index: RouteIndex, data: Pick<PassengerData, 'evacuation' | 'routeImage' | 'assembly'>, here: string | null, blocked: readonly string[], lang: Lang, flow: Parameters<typeof zoneDensities>[0] = {}): RouteDraw | null {
   const preview = evacFor(index, data.routeImage) ?? evacFor(index, here ?? undefined)
   const from = resolveNode(index, here ?? undefined) ?? resolveNode(index, data.evacuation.route?.steps[0]) ?? preview?.steps[0]?.node
   const exit = data.evacuation.route?.exit ? resolveNode(index, data.evacuation.route.exit) : preview?.exit
@@ -35,8 +35,10 @@ export function evacuationDraw(index: RouteIndex, data: Pick<PassengerData, 'eva
   const start = terminalGraph.nodes.find(n => n.id === from)
   // As in the backend evacuation planner, the occupied zone must permit escape.
   const closed = [...data.evacuation.zones, ...blocked].map(mapNodeId).filter(id => id !== from && id !== start?.zone)
-  const toExit = route(terminalGraph, from, exit, {}, closed, { evacuation: true })
-  const toAssembly = route(terminalGraph, exit, assembly, {}, closed, { evacuation: true })
+  // Same live crowding as the backend planner, so the drawn path avoids jammed zones too.
+  const density = zoneDensities(flow, zoneAreas)
+  const toExit = route(terminalGraph, from, exit, density, closed, { evacuation: true })
+  const toAssembly = route(terminalGraph, exit, assembly, density, closed, { evacuation: true })
   if (!toExit || !toAssembly) return null
   const nodes = new Map(terminalGraph.nodes.map(n => [n.id, n]))
   const at = (id: string): PathNode => {
