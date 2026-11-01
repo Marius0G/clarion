@@ -103,7 +103,7 @@ export class Reports {
     return this.serial(async () => {
       const all = await this.list();
       const type = input.type ?? typeForKind(input.kind);
-      if (!REPORT_TYPES.includes(type) || !isIssueKind(input.kind) || !input.text.trim() || input.text.length > 500) throw new Error('Invalid report');
+      if (!REPORT_TYPES.includes(type) || !isIssueKind(input.kind) || typeof input.text !== 'string' || input.text.length > 500) throw new Error('Invalid report');
       const n = all.reduce((m, r) => Math.max(m, Number(r.id.replace(/^R/, '')) || 0), 0) + 1;
       const at = new Date(now).toISOString();
       const report: Report = { ...input, id: `R${n}`, at, type, source: input.source ?? 'staff', phone: input.phone ?? '',

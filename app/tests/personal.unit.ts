@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { waitBand } from '../src/me/Me'
 import { ReportList, stateLabel } from '../src/reports/Reports'
-import Staff from '../src/staff/Staff'
+import Staff, { staffAlertLabel } from '../src/staff/Staff'
 import { normalizePassenger } from '../src/me/format'
 
 describe('personal pages', () => {
@@ -17,7 +17,7 @@ describe('personal pages', () => {
   it('renders report state, landmark, priority and ETA in both languages', () => {
     const reports = [{ id: 'R1', at: '14:00', type: 'medical', source: 'staff' as const, priority: 'P1' as const, state: 'en_route' as const, text: 'Incident', place: { node: 'gate_2', name: 'Poarta 2' }, etaMin: 3 }]
     const ro = renderToStaticMarkup(ReportList({ reports }))
-    expect(ro).toContain('Echipa pe drum'); expect(ro).toContain('Poarta 2'); expect(ro).toContain('ETA ~3')
+    expect(ro).toContain('Echipa vine'); expect(ro).toContain('Poarta 2'); expect(ro).toContain('· ~3 min')
     expect(renderToStaticMarkup(ReportList({ reports, en: true }))).toContain('Team en route')
     expect(stateLabel('resolved')).toBe('Rezolvat')
     expect(renderToStaticMarkup(ReportList({ reports: [] }))).toContain('Niciun raport')
@@ -25,4 +25,12 @@ describe('personal pages', () => {
   it('requires a session on staff page', () => {
     expect(renderToStaticMarkup(createElement(Staff))).toContain('Conectează-te cu WhatsApp')
   })
+})
+
+it('describes excess wait above target rather than the full wait', () => {
+  const alert = { id: 'A1', priority: 'P2', text: 'Țintă depășită', kind: 'zone-target', zoneId: 'security', numbers: { waitMin: 22, targetMin: 10 } }
+  expect(staffAlertLabel(alert, 'security')).toBe('Securitate · 12 min peste țintă')
+  expect(staffAlertLabel(alert, 'security', true)).toBe('Security · 12 min over target')
+  expect(staffAlertLabel({ ...alert, numbers: { waitMin: 5, targetMin: 10 } }, 'security')).toBe('Securitate · 0 min peste țintă')
+  expect(staffAlertLabel({ id: 'A2', priority: 'P1', text: 'Evacuare' }, 'security')).toBe('Evacuare')
 })

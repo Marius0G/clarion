@@ -16,14 +16,14 @@ describe('passenger formatting', () => {
   })
 
   it('translates every flight status and handles missing delay/status', () => {
-    expect(statusLabel('scheduled')).toBe('Programat')
+    expect(statusLabel('scheduled')).toBe('La timp')
     expect(statusLabel('boarding')).toBe('Îmbarcare')
-    expect(statusLabel('delayed', 25)).toBe('Întârziat +25 min')
-    expect(statusLabel('delayed', 0)).toBe('Întârziat +0 min')
+    expect(statusLabel('delayed', 25)).toBe('Întârziat 25 min')
+    expect(statusLabel('delayed', 0)).toBe('Întârziat 0 min')
     expect(statusLabel('delayed')).toBe('Întârziat')
     expect(statusLabel('delayed', -1)).toBe('Întârziat')
     expect(statusLabel('cancelled')).toBe('Anulat')
-    expect(statusLabel('departed')).toBe('Plecat')
+    expect(statusLabel('departed')).toBe('Poartă închisă')
     expect(statusLabel()).toBe('necunoscut')
   })
 
@@ -46,5 +46,5 @@ it('defaults absent/invalid language to Romanian and keeps missing English data 
   expect(normalizePassenger({}).lang).toBe('ro')
   expect(normalizePassenger({ lang: 'fr' }).lang).toBe('ro')
   expect(normalizePassenger({ lang: 'en' })).toMatchObject({ lang: 'en', flight: { gate: 'unknown' } })
-  expect(statusLabel('delayed', 15, 'en')).toBe('Delayed +15 min')
+  expect(statusLabel('delayed', 15, 'en')).toBe('Delayed 15 min')
 })

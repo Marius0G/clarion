@@ -9,12 +9,12 @@ export function simTimeLabel(seconds: number | null | undefined): string {
 
 export function statusLabel(status?: PassengerData['flight']['status'], delayMin?: number, lang: 'ro' | 'en' = 'ro'): string {
   switch (status) {
-    case 'scheduled': return pageText('Programat', lang)
+    case 'scheduled': return pageText('La timp', lang)
     case 'boarding': return pageText('Îmbarcare', lang)
     case 'delayed': return typeof delayMin === 'number' && Number.isFinite(delayMin) && delayMin >= 0
-      ? `${pageText('Întârziat', lang)} +${Math.round(delayMin)} min` : pageText('Întârziat', lang)
+      ? `${pageText('Întârziat', lang)} ${Math.round(delayMin)} min` : pageText('Întârziat', lang)
     case 'cancelled': return pageText('Anulat', lang)
-    case 'departed': return pageText('Plecat', lang)
+    case 'departed': return pageText('Poartă închisă', lang)
     default: return pageText('necunoscut', lang)
   }
 }
@@ -25,7 +25,7 @@ const text = (value: unknown): string => typeof value === 'string' && value.trim
 const nonnegative = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
 
-// Treat absent fields as unknown; never fill gaps in live data with invented demo values.
+// Keep absent fields unknown.
 export type PassengerViewData = Omit<PassengerData, 'flight'> & {
   flight: Omit<PassengerData['flight'], 'status' | 'delayMin'> & {
     status?: PassengerData['flight']['status']; delayMin?: number

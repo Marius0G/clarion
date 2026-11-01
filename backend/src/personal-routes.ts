@@ -52,7 +52,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
     const profile: Profile = { phone, ...stored, role: staff ? 'staff' : 'passenger' };
     if (path === '/api/reports' && request.method === 'POST') {
       const input = await request.json() as { type: ReportType; place: { node: string; name: string }; text: string; photo?: string };
-      if (!input || !REPORT_TYPES.includes(input.type) || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 500 ||
+      if (!input || !REPORT_TYPES.includes(input.type) || typeof input.text !== 'string' || input.text.length > 500 ||
         !input.place || typeof input.place.node !== 'string' || !terminalGraph.nodes.some(n => n.id === mapNodeId(input.place.node)) ||
         typeof input.place.name !== 'string' || !input.place.name.trim() || input.place.name.length > 120 ||
         (input.photo !== undefined && (typeof input.photo !== 'string' || input.photo.length > 2000 || !/^https:\/\//.test(input.photo)))) throw new Error('Invalid report');
@@ -72,7 +72,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
     }
     if (!staff) return json({ error: 'Staff role required' }, 403);
     const { role, zone, tasks } = assignedTasks(deps.sim, deps.env, profile);
-    if (path === '/api/staff' && request.method === 'GET') return json({ role, zone, reports: await deps.agent.reports.own(phone),
+    if (path === '/api/staff' && request.method === 'GET') return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone, reports: await deps.agent.reports.own(phone),
       tasks, alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });
     const task = /^\/api\/staff\/tasks\/([^/]+)\/(confirm|done)$/.exec(path);
     if (task && request.method === 'POST') {

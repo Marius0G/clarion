@@ -81,10 +81,20 @@ export function personalContract() {
     });
     it('validates graph places, type, text and photo before storing', async () => {
       const h = setup(), session = await h.login();
-      for (const patch of [{ type: 'invalid' }, { text: '' }, { text: 'x'.repeat(501) }, { place: { node: 'unknown', name: 'x' } }, { photo: 'javascript:evil' }]) {
+      for (const patch of [{ type: 'invalid' }, { text: null }, { text: 'x'.repeat(501) }, { place: { node: 'unknown', name: 'x' } }, { photo: 'javascript:evil' }]) {
         expect((await h.call('/api/reports', session, { ...h.input, ...patch }))?.status).toBe(400);
       }
       expect(await h.agent.reports.list()).toEqual([]);
+    });
+    it('accepts optional details while preserving type, place and priority', async () => {
+      const h = setup(), session = await h.login();
+      const response = await h.call('/api/reports', session, { ...h.input, text: '' });
+      expect(response?.status).toBe(201);
+      expect(await response!.json()).toMatchObject({ type: 'medical', text: '', priority: 'P1', place: h.input.place });
+    });
+    it('returns the staff profile language', async () => {
+      const h = setup(), session = await h.login('+40711111111', { role: 'staff', lang: 'en' });
+      expect(await (await h.call('/api/staff', session))!.json()).toMatchObject({ lang: 'en' });
     });
     it('assigns tasks by executor and zone, validates completion, and updates console records without changing Unity wire', async () => {
       const h = setup(), staff = await h.login('+40711111111', { role: 'staff' });
