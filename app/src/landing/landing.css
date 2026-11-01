@@ -70,11 +70,11 @@
 .lp-chip small { font-family:var(--mono); font-size:11px; color:var(--muted) }
 .lp-chip-from { font-family:var(--mono); font-size:12px; color:var(--taxi-2) }
 .lp-chip-msg { right:clamp(16px,6vw,110px); top:12%; width:270px; border-top-right-radius:4px }
-.lp-chip-fc { right:clamp(24px,30vw,520px); bottom:16%; width:250px }
+.lp-chip-fc { right:clamp(24px,30vw,520px); bottom:16%; width:290px }
 .lp-fc { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:4px }
 .lp-fc > span { display:flex; flex-direction:column; align-items:flex-start }
 .lp-fc b { font-family:var(--display); font-size:30px; line-height:1; color:var(--sign) }
-.lp-fc i { font-style:normal; font-family:var(--mono); font-size:11px; color:var(--muted) }
+.lp-fc i { white-space:nowrap; font-style:normal; font-family:var(--mono); font-size:11px; color:var(--muted) }
 .lp-chip-exit { right:clamp(16px,4vw,64px); bottom:20%; flex-direction:row; align-items:center; gap:12px; width:250px }
 .lp-exit-sign { flex:none; display:grid; place-items:center; width:44px; height:44px; border-radius:8px; background:#0bb35b; color:#fff; font-family:var(--display); font-weight:800; font-size:22px }
 
