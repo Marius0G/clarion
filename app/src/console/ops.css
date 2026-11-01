@@ -167,5 +167,5 @@
 .ops-panel .ops-cmd-status { border-color:var(--rule) }
 .ops-cmd-done { color:var(--ok) }
 /* Map dots: a new person fades in, one who left fades out; moves glide over the update interval (map CSS). */
-.ops .t2-dots circle,.ops .t2-dots-other circle { animation:t2-dot-in .45s ease-out }
+.ops .t2-dots circle,.ops .t2-dots-other circle { animation:none }
 @media(prefers-reduced-motion:reduce) { .ops .ops-cmd-status i,.ops .t2-dots circle,.ops .t2-dots-other circle { animation:none } }

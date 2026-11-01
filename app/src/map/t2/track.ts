@@ -14,7 +14,17 @@ export const dotSig = (dots: readonly Dot[]) => dots.map(d => `${d.id ?? ''}|${d
 export function trackDots<T extends Dot>(prev: TrackState<T> | null, dots: readonly T[], radius = 4): TrackState<T> {
   const live = (prev?.items ?? []).filter(i => !i.leaving)
   let next = prev?.next ?? 0
-  const keys: (string | null)[] = dots.map(d => d.id != null ? `i:${d.id}` : null)
+  // By id; but a dot whose id jumped more than `radius` (a noisy detection, an id passed to someone else) or changed floor
+  // gets a new key: the old one fades where it was and the new one appears in place, instead of gliding through walls.
+  const byId = new Map<string, Tracked<T>>()
+  for (const i of live) if (i.dot.id != null) byId.set(String(i.dot.id), i)
+  const used = new Set((prev?.items ?? []).map(i => i.key))
+  const keys: (string | null)[] = dots.map(d => {
+    if (d.id == null) return null
+    const p = byId.get(String(d.id))
+    if (p) return p.dot.level === d.level && Math.hypot(p.dot.x - d.x, p.dot.z - d.z) <= radius ? p.key : `i:${d.id}~${next++}`
+    return used.has(`i:${d.id}`) ? `i:${d.id}~${next++}` : `i:${d.id}`
+  })
   const taken = new Set(keys.filter((k): k is string => k != null))
   const free = live.filter(i => i.dot.id == null && !taken.has(i.key))
   const pairs: [number, number, number][] = []

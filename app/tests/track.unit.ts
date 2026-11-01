@@ -17,4 +17,12 @@ describe('map dots keep their key across updates', () => {
     const c = trackDots(b, [dot(10.6, 0)])
     expect(c.items.some(i => i.key === a.items[0]!.key)).toBe(false)
   })
+  it('does not glide a dot whose id jumped or changed floor: the old one fades, the new one appears in place', () => {
+    const a = trackDots(null, [dot(0, 0, 'c:1')])
+    const b = trackDots(a, [dot(9, 0, 'c:1')])
+    expect(b.items.find(i => !i.leaving)!.key).not.toBe('i:c:1')
+    expect(b.items.filter(i => i.leaving).map(i => i.key)).toEqual(['i:c:1'])
+    const c = trackDots(b, [dot(9.5, 0, 'c:1')])
+    expect(c.items[0]!.key).toBe(b.items.find(i => !i.leaving)!.key)
+  })
 })
