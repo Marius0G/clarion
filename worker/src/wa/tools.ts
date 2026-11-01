@@ -293,11 +293,7 @@ export function toolsFor({ view, profile, save, report, reports, evacRoute, rout
       if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const node = resolveLandmark(text, await routeIndex?.() ?? null) ?? matchNode(text, view.flights());
       const r = await report({ kind: 'altele', type: 'lost item', node, text, etaMin: null });
-      const security = /securitate|security|screening/i.test(text);
-      const en = profile().lang === 'en';
-      return { status: 'sent', id: r.id, note: en
-        ? `${security ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
-        : `${security ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.` };
+      return { status: 'sent', id: r.id, note: say(profile().lang, 'lostItemSent') };
     },
     async reportIssue(input: { text?: string; kind?: string; type?: string; location?: string }) {
       const text = String(input?.text ?? '').trim();

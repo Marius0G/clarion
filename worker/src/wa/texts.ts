@@ -7,6 +7,7 @@ import type { EvacPlan, EvacRoute } from './messaging.js';
 export type Lang = 'ro' | 'en';
 export const language = (value: unknown): Lang => value === 'en' ? 'en' : 'ro';
 const texts = {
+  lostItemSent: ["Am transmis la obiecte pierdute. Te anunțăm aici dacă apare.", "I passed it on to lost property. We’ll let you know here if it turns up."],
   margin: ['Marjă', 'Margin'],
   provisional: ['', ''],
   flightHint: ['Cere-i numărul zborului (ex: W6 3751).', 'Ask for the flight number (for example W6 3751).'],

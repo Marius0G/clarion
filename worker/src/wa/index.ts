@@ -365,8 +365,7 @@ export class WhatsAppAgent {
         : await this.reports.add(reportInput, Date.now(), !(profile.role === 'staff' && draft.type === 'crowd'));
       if (profile.role === 'staff' && draft.type === 'crowd') await transport.sendText(m.phone, en ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.');
       if (channel === 'web' && !(profile.role === 'staff' && draft.type === 'crowd')) await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
-      if (draft.type === 'lost item') await transport.sendText(m.phone, en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
-          : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.`);
+      if (draft.type === 'lost item') await transport.sendText(m.phone, say(profile.lang, 'lostItemSent'));
       await this.store.delete(reportKey);
       return;
     }

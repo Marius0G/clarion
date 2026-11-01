@@ -290,8 +290,7 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]).toMatchObject({ kind: 'altele', node: 'security', text: 'Am pierdut un rucsac negru la securitate' });
     const text = h.sends.filter(s => s.text).map(s => s.text.body).join(' ');
-    expect(text).toContain('personalul de securitate');
-    expect(text).toContain('Lost & Found este la Informații');
+    expect(text).toContain('Am transmis la obiecte pierdute. Te anunțăm aici dacă apare.');
     expect(text).toContain('Am transmis');
     expect(text).not.toContain('Recuperarea nu este garantată');
     expect(await tools().tools.reportIssue!({ text: 'incident' })).toMatchObject({ error: 'unavailable' });
