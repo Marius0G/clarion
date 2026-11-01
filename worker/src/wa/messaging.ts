@@ -23,7 +23,7 @@ import type { OpsCommand } from '../../../backend/src/sim.js';
 
 export const WINDOW_MS = 86400000;
 export const NON_URGENT_MS = 15 * 60 * 1000;
-/** How long an evacuate waits for vision's evac.plan before the generic message goes out. */
+/** How long an evacuate waits for vision before backend fallback routes go out. */
 export const EVAC_WAIT_MS = 3000;
 /** Added to evac.plan's clearSec for the sweep before an area reopens: the "how long to wait" told to people on the road. */
 export const REOPEN_MARGIN_MIN = 20;
@@ -250,6 +250,8 @@ export class Messaging {
     return new Auth(this.deps.store).createLink(phone.startsWith('+') ? phone : `+${phone}`, this.deps.appUrl ?? 'https://clarion-craiova.pages.dev');
   }
   async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean, requested = false) {
+    const gates = await this.deps.store.get<Record<string, string>>('msg:gates') ?? {};
+    if (!gates[flightKey(f.flight)]) await this.deps.store.put('msg:gates', { ...gates, [flightKey(f.flight)]: f.gate });
     const map = await this.pageLink(sub);
     const link = map;
     return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag, (await this.subscriberProfile(sub))?.lang)}\n${link}`, estimate: this.estimate(f, hasCheckedBag), requested });
@@ -271,7 +273,7 @@ export class Messaging {
   }
   private async deliver(sub: Subscriber, { estimate, requested, ...m }: { kind: NotifyKind; text: string; requested?: boolean; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
     if (m.kind === 'flight' || m.kind === 'evacuate') m.text = urgentBubbles(toBubbles(m.text)).join('\n');
-    const now = this.deps.now?.() ?? Date.now();
+    const now = this.deps.now?.() ?? (this.deps.view.clock().sim ? this.deps.view.clock().now * 1000 : Date.now());
     const nonUrgent = m.kind !== 'flight' && m.kind !== 'evacuate';
     const lastKey = `msg:last:${this.identity(sub)}`;
     const last = await this.deps.store.get<number>(lastKey);
@@ -343,6 +345,8 @@ export class Messaging {
       for (const s of await this.subscribers()) {
         const f = s.flight && flights.get(flightKey(s.flight));
         if (!f || f.status === 'cancelled' || f.status === 'departed') continue;
+        const staff = await this.staffFollowup(s, f);
+        if (staff) { if (staff === 'sent') sent++; continue; }
         const previous = await this.deps.store.get<{ flight: string; totalMin: number }>(`msg:estimate:${this.identity(s.sub)}`);
         const next = this.estimate(f, s.hasCheckedBag);
         if (!previous || previous.flight !== next.flight || Math.abs(next.totalMin - previous.totalMin) >= 10) {
@@ -351,6 +355,26 @@ export class Messaging {
       }
       return sent;
     });
+  }
+
+  private async staffFollowup(s: { sub: Subscriber; hasCheckedBag?: boolean; lang?: Lang }, f: Flight): Promise<Delivery | null> {
+    if (estimateStage(f, this.deps.view.clock().now) !== 'public') return null;
+    for (const zone of ['security', ...ownZones(f)]) {
+      const command = await this.deps.store.get<{ id: string; at: number }>(`msg:staff:${mapNodeId(zone)}`);
+      if (!command || this.deps.view.clock().now < command.at || this.deps.view.clock().now - command.at > 30 * 60) continue;
+      const key = `msg:staffSent:${this.identity(s.sub)}:${mapNodeId(zone)}`;
+      if (await this.deps.store.get(key) === command.id) continue;
+      const row = Object.entries(this.deps.view.flow()).find(([id]) => mapNodeId(id) === mapNodeId(zone))?.[1];
+      const fall = row?.forecast?.find(p => p.inMin > 0 && row.waitMin != null && p.waitMin < row.waitMin);
+      if (!fall) continue;
+      const by = clockText(this.deps.view.clock().now + fall.inMin * 60);
+      const text = s.lang === 'en' ? `${nodeName(zone, s.lang)}: an extra lane is open. The queue is expected to shrink to ~${Math.round(fall.waitMin)} min by ${by}.`
+        : `${nodeName(zone, s.lang)}: s-a deschis o linie în plus. Coada este așteptată să scadă la ~${Math.round(fall.waitMin)} min până la ${by}.`;
+      const result = await this.notify(s.sub, { kind: 'admin', text, estimate: this.estimate(f, s.hasCheckedBag) });
+      if (result === 'sent') await this.deps.store.put(key, command.id);
+      return result;
+    }
+    return null;
   }
 
   /** The current situation and forecast for one passenger. */
@@ -394,21 +418,38 @@ export class Messaging {
     return this.serial(async () => {
       if (this.deps.view.provisional()) return [];
       const seen = (await this.deps.store.get<Record<string, string>>('msg:flights')) ?? {};
+      const gates = await this.deps.store.get<Record<string, string>>('msg:gates') ?? {};
       const changed: Flight[] = [];
+      const moved = new Set<string>(), statusChanged = new Set<string>();
       for (const f of this.deps.view.flights()) {
         const key = flightKey(f.flight), sig = `${f.status}:${f.delayMin}`;
         const [prevStatus = 'scheduled', prevDelay = '0'] = (seen[key] ?? '').split(':').filter(Boolean);
         seen[key] = sig;
-        if (prevStatus === f.status && Number(prevDelay) === f.delayMin) continue;
-        if (f.status === 'cancelled' || (f.status === 'delayed' && prevStatus !== 'delayed') || Number(prevDelay) !== f.delayMin) changed.push(f);
+        if (gates[key] && mapNodeId(gates[key]!) !== mapNodeId(f.gate)) moved.add(key);
+        gates[key] = f.gate;
+        if ((prevStatus !== f.status || Number(prevDelay) !== f.delayMin) && (f.status === 'cancelled' || (f.status === 'delayed' && prevStatus !== 'delayed') || Number(prevDelay) !== f.delayMin)) statusChanged.add(key);
+        if (moved.has(key) || statusChanged.has(key)) changed.push(f);
       }
       await this.deps.store.put('msg:flights', seen);
+      await this.deps.store.put('msg:gates', gates);
       if (!changed.length) return [];
       const subs = await this.subscribers();
       for (const f of changed) {
         let sent = 0;
-        for (const s of subs.filter(s => s.flight && flightKey(s.flight) === flightKey(f.flight)))
-          if (await this.notify(s.sub, { kind: 'flight', text: this.flightText(f, s.hasCheckedBag, s.lang), estimate: this.estimate(f, s.hasCheckedBag) }) === 'sent') sent++;
+        for (const s of subs.filter(s => s.flight && flightKey(s.flight) === flightKey(f.flight))) {
+          const gateChange = moved.has(flightKey(f.flight));
+          const gateText = gateChange ? (s.lang === 'en' ? `Flight ${f.flight}: gate changed to ${gateName(f.gate)}.` : `Zborul ${f.flight}: poarta s-a schimbat la ${gateName(f.gate)}.`) : '';
+          const text = [statusChanged.has(flightKey(f.flight)) ? this.flightText(f, s.hasCheckedBag, s.lang) : '', gateText].filter(Boolean).join(' ');
+          if (await this.notify(s.sub, { kind: 'flight', text, estimate: this.estimate(f, s.hasCheckedBag) }) === 'sent') {
+            sent++;
+            if (gateChange && f.status !== 'cancelled' && f.status !== 'departed') {
+              const from = await this.estimatedPlace(s.sub, f);
+              const path = route(terminalGraph, from, f.gate, zoneDensities(this.deps.view.flow(), zoneAreas), this.deps.view.blocked?.());
+              const image = path ? await this.deps.images?.image(from, f.gate, path, this.deps.view.blocked?.()) : null;
+              if (image) await this.sendImage(s.sub, image.link, s.lang === 'en' ? `Route to gate ${gateName(f.gate)}` : `Traseu spre poarta ${gateName(f.gate)}`);
+            }
+          }
+        }
         console.log(JSON.stringify({ msg: 'flight-change', flight: f.flight, status: f.status, delayMin: f.delayMin, sent }));
       }
       return changed.map(f => f.flight);
@@ -416,9 +457,14 @@ export class Messaging {
   }
 
   /** D22: describe an admin decision only to passengers whose queues/gate it affects. */
-  adminChanged(command: OpsCommand) {
+  adminChanged(command: OpsCommand & { id?: string }) {
     return this.serial(async () => {
-      if (command.type === 'staff' || command.type === 'evacuate') return 0;
+      if (command.type === 'evacuate') return 0;
+      if (command.type === 'staff') {
+        if (command.delta > 0) await this.deps.store.put(`msg:staff:${mapNodeId(command.zone)}`, { id: command.id ?? crypto.randomUUID(), at: this.deps.view.clock().now });
+        else await this.deps.store.delete(`msg:staff:${mapNodeId(command.zone)}`);
+        return 0;
+      }
       if (command.type === 'open' && (await this.deps.store.get<{ active: boolean }>('msg:evacuation'))?.active) {
         const left = (this.deps.view.blocked?.() ?? []).filter(z => mapNodeId(z) !== mapNodeId(command.zone));
         if (!left.length) return this.allClear();
@@ -484,13 +530,13 @@ export class Messaging {
     if (sub.channel !== 'whatsapp' || !link) return;
     try { await this.sendImage(sub, link, caption ?? (lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare')); } catch { /* Text must stand alone. */ }
   }
-  /** Generic evacuation text, sent when vision's evac.plan does not arrive in time. */
+  /** Last resort when neither vision nor the fallback graph has a usable exit. */
   evacuateText(zones: string[], lang?: Lang) {
     return copy.evacuation(lang, zones);
   }
   /**
    * D10, D18 beat 4: an evacuate ops.command. Waits up to evacWaitMs for vision's evac.plan (routes per node);
-   * without it, everyone gets the generic message. Returns what went out.
+   * without it, affected subscribers get the backend route for their estimated place. Returns what went out.
    */
   async evacuate(zones: string[], id: string): Promise<'planned' | 'generic' | 'cancelled'> {
     const epoch = this.epoch;

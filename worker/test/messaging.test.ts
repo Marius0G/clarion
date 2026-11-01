@@ -432,3 +432,20 @@ describe('urgent automatic delivery', () => {
     expect(affectedByEvacuation(['security'], undefined, hm(7, 0))).toBe(false);
  });
 
+
+it('keeps simultaneous delay and gate changes urgent and deduplicated', async () => {
+  quiet();
+  const sim = fakeSim();
+  const h = harness(sim.view);
+  await h.inbound('START W6 3751');
+  h.graph.length = 0;
+  sim.state.flights = [row({ status: 'delayed', delayMin: 30, gate: 'gate_6' })];
+  expect(await h.m.flightsChanged()).toEqual(['W6 3751']);
+  const text = h.texts().map(m => m.text).join(' ');
+  expect(text).toContain('întârziere de 30 min');
+  expect(text).toContain('poarta s-a schimbat la 6');
+  expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
+  const count = h.texts().length;
+  expect(await h.m.flightsChanged()).toEqual([]);
+  expect(h.texts()).toHaveLength(count);
+});
