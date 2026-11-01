@@ -1,7 +1,7 @@
 import { desksForGroup } from '../../../backend/src/mapIds.js';
 // Flights and the clock the WhatsApp agent reads (SPEC-v2 D13, D14).
 // Times are seconds on the displayed clock: seconds since midnight of the simulated day when Unity sends
-// simTime (D13; assumption until Marius confirms the origin), otherwise Romanian wall-clock time.
+// simTime (D13; assumption until Marius confirms the origin), simulation midnight until the first tick.
 
 export type FlightStatus = 'scheduled' | 'boarding' | 'delayed' | 'cancelled' | 'departed';
 const STATUSES: readonly FlightStatus[] = ['scheduled', 'boarding', 'delayed', 'cancelled', 'departed'];
@@ -83,13 +83,9 @@ export const closeAt = (f: Flight) => f.gateCloseAt + f.delayMin * 60;
 /** "gate_2" -> "2", "G2" -> "G2", "" -> "necunoscută încă". */
 export const gateName = (gate: string) => (gate ? gate.replace(/^(?:gate_|U_GATE_|G)/, '') : 'necunoscută încă');
 
-/** Simulated time when Unity reports simTime, otherwise Bucharest wall-clock seconds since midnight. */
-export function clockFrom(simTime: number | null | undefined, connected: boolean, nowMs = Date.now()): Clock {
-  if (connected && typeof simTime === 'number' && Number.isFinite(simTime)) return { now: simTime, sim: true };
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-    .formatToParts(new Date(nowMs));
-  const get = (t: string) => Number(parts.find(p => p.type === t)?.value ?? 0);
-  return { now: get('hour') * 3600 + get('minute') * 60 + get('second'), sim: false };
+/** Keep the latest simulation clock through disconnects. Before its first tick, use simulation midnight. */
+export function clockFrom(simTime: number | null | undefined, _connected: boolean, _nowMs?: number): Clock {
+  return { now: typeof simTime === 'number' && Number.isFinite(simTime) && simTime >= 0 ? simTime : 0, sim: true };
 }
 
 /** Seconds on the clock -> "14:20". */

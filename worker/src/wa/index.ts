@@ -1,7 +1,7 @@
 import { RouteImages, resolveLandmark } from './airport-info.js';
 import { Auth, normalizePhone, parseLogin } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
-import { extractFacts, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
+import { extractFacts, messageLanguage, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
 import { say, language, passengerText } from './texts.js';
@@ -62,7 +62,7 @@ export class WhatsAppAgent {
       if (trace && (event.type === 'text' || event.type === 'interactive')) trace.bubbles++;
       await this.observe?.(event);
     });
-    this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs });
+    this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs, images: this.images });
     this.reports = new Reports(store, opts.reportsChanged);
   }
 
@@ -156,7 +156,9 @@ export class WhatsAppAgent {
 
     if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
-    if (chosen) { await save({ lang: chosen }); await this.wa.sendText(m.phone, say(chosen, 'language')); return; }
+    if (chosen) { await save({ lang: chosen, languageExplicit: true }); await this.wa.sendText(m.phone, say(chosen, 'language')); return; }
+    const detected = messageLanguage(m.text);
+    if (!profile.languageExplicit && detected) await save({ lang: detected });
     // ş (cedilla, older keyboards) is matched as ș.
     if (DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
       if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);
@@ -171,7 +173,7 @@ export class WhatsAppAgent {
       ?? await this.store.get<PassengerContext['alerts']>(`msg:alerts:wa:${m.phone}`) ?? [];
     ctx.alerts = alerts.filter(a => a.kind === 'flight' || a.kind === 'evacuate');
     const remember = async (user: string, bubbles: string[]) => {
-      const at = new Date().toISOString();
+      const at = clockText(this.view.clock().now);
       const entries: HistoryEntry[] = [{ role: 'user', text: user, at }, ...bubbles.map(text => ({ role: 'clarion' as const, text, at }))];
       return this.store.put(ctxKey, { ...ctx, ...await foldHistory(this.env, this.fetcher, ctx, entries) });
     };
@@ -199,7 +201,7 @@ export class WhatsAppAgent {
       const pending = await consumeJoin(this.store, start.token, flight.flight);
       if (!pending) console.warn(JSON.stringify({ wa: 'unverified-start', from: masked(m.phone), flight: flight.flight }));
       await save({ flight: flight.flight, gate: gateName(flight.gate), airline: flight.airline, token: start.token, verified: Boolean(pending),
-        ...(pending && { lang: language(pending.lang) }),
+        ...(pending && { lang: language(pending.lang), languageExplicit: true }),
         ...(pending?.name && { name: pending.name }) });
       const clock = this.view.clock();
       const text = say(profile.lang, 'startConnected', flight.flight, flight.destination, gateName(flight.gate), clockText(closeAt(flight)), say(profile.lang, clock.sim ? 'simClock' : 'realClock'));
@@ -220,7 +222,8 @@ export class WhatsAppAgent {
     }
 
     const landmark = m.replyId?.startsWith('loc:') ? m.replyId.slice(4) : resolveLandmark(text, /sunt|aflu|from|at |check|duty|hol|poart|gate|intrare|entrance/i.test(text) ? await this.images.index() : null);
-    if (landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text))) await save({ position: { node: landmark, at: Date.now() } });
+    const statedLandmark = landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text)) ? landmark : undefined;
+    if (statedLandmark) await save({ position: { node: statedLandmark, at: Date.now() } });
     const pending = landmark ? profile.pendingRoute : undefined;
     await save(extractFacts(redact(text)));
     const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';
@@ -243,11 +246,11 @@ export class WhatsAppAgent {
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
       this.traces.get(m.phone.replace(/^\+/, ''))?.tools.push(name);
-      const result = await fn(input);
+      const result = await fn(name === 'routeTo' && statedLandmark ? { ...input, from: statedLandmark } : input);
       if (name === 'routeTo') routeResult = result;
       if (name === 'whenToArrive' && typeof (result as any)?.totalMin === 'number') waitEstimate = { at: clockText(this.view.clock().now), totalMin: (result as any).totalMin };
       const note = lookupNote(name, result);
-      if (note) ctx.notes = [...(ctx.notes ?? []), { at: `${new Date().toISOString()} (airport clock ${clockText(this.view.clock().now)})`, tool: name, note }].slice(-NOTES_MAX);
+      if (note) ctx.notes = [...(ctx.notes ?? []), { at: clockText(this.view.clock().now), tool: name, note }].slice(-NOTES_MAX);
       return result;
     }]));
     const answer = pending ? await (async () => {
@@ -256,7 +259,7 @@ export class WhatsAppAgent {
       return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = (routeResult?.status === 'needs_location' ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = ((routeResult?.status === 'needs_location' || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
     const delivered = routeResult?.status === 'needs_location'
       ? (await this.wa.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok

@@ -1,5 +1,5 @@
 import { airportInfo, amenities, amenityKind, amenityDescription, resolveLandmark, LANDMARK_TTL_MS, type RouteIndex } from './airport-info.js';
-import { factPatch } from './context.js';
+import { factPatch, lostItemClaim } from './context.js';
 import { flowRow, mapNodeId } from '../../../backend/src/mapIds.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
@@ -24,7 +24,7 @@ export interface AirportView {
   history?(simSec: number): Record<string, ZoneRow>;
 }
 export interface Profile {
-  lang?: Lang; phone: string; role: 'passenger' | 'staff';
+  lang?: Lang; languageExplicit?: boolean; phone: string; role: 'passenger' | 'staff';
   flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
   groupSize?: number; needs?: { kids?: boolean; reducedMobility?: boolean; other?: string };
   gate?: string; lastWaitEstimate?: { at: string; totalMin: number };
@@ -255,6 +255,18 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
       return { status: 'ready', ...best, minutes, from, to: destination, destination: name(destination),
         steps: best.nodes.map(name), note, ...(pageLink && profile().flight && { link: await pageLink() }) };
+    },
+    async reportLostItem(input: { text?: string }) {
+      const text = String(input?.text ?? '').trim();
+      if (!lostItemClaim(text)) return { error: 'not_lost_item' };
+      if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
+      const node = resolveLandmark(text, await routeIndex?.() ?? null) ?? matchNode(text, view.flights());
+      const r = await report({ kind: 'altele', node, text, etaMin: null });
+      const security = /securitate|security|screening/i.test(text);
+      const en = profile().lang === 'en';
+      return { status: 'sent', id: r.id, note: en
+        ? `${security ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff. Recovery is not guaranteed.`
+        : `${security ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul. Recuperarea nu este garantată.` };
     },
     async reportIssue(input: { text?: string; kind?: string; location?: string }) {
       if (profile().role !== 'staff') return { error: 'staff_only', note: say(profile().lang, 'staffOnly') };

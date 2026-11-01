@@ -264,7 +264,7 @@ describe('evacuation (D10, A10)', () => {
     await h.m.registerSims([{ agentId: 'a1', role: 'p', flight: 'W6 3751' }]);
     h.graph.length = 0; h.unity.length = 0;
     expect(await h.m.evacuate(['check_in:2', 'security'], 'ops-0')).toBe('generic');
-    const text = 'Evacuare: Check-in, grupul 2, Control de securitate sunt închise. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.';
+    const text = 'Evacuare: Zona Check-in, grupul 2 este închisă. Zona Control de securitate este închisă. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.';
     expect(h.texts()[0]!.text).toContain(text);
     expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining(text) } }]);
   });
@@ -278,7 +278,7 @@ describe('evacuation (D10, A10)', () => {
     expect(await h.m.plan(plan())).toBe(2);
     expect(await generic).toBe('planned');
     // 07:00 is before his A6 entrance time, so he may be on the road: the route plus how long to stay away (clearSec 140 s + 20 min).
-    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Check-in, grupul 2 e închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul. Dacă sunteți încă pe drum, nu veniți acum: estimăm că zona se redeschide în ~23 min. Vă scriem când se poate.' }]);
+    expect(h.texts()).toEqual([{ to: '40712345678', text: 'Evacuare: Zona Check-in, grupul 2 este închisă. Ieși pe Ieșirea 1: Intrarea → Ieșirea 1. Urmează indicatoarele și personalul. Dacă ești încă pe drum, nu veni acum: estimăm că zona se redeschide în ~23 min. Îți scriem când se poate.' }]);
     expect(h.unity).toEqual([
       { type: 'agent.message', data: { agentId: 'a1', kind: 'evacuate', text: expect.stringContaining('Ieși pe Ieșirea 1') } },
       { type: 'agent.route', data: { agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' } },
@@ -403,7 +403,7 @@ describe('urgent automatic delivery', () => {
     // RO 1 closes in 10 min: estimated at its gate, so a blocked security does not concern it.
     expect(await h.m.evacuate(['security'], 'ops-generic')).toBe('generic');
     expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
-    expect(h.texts()[0]!.text).toContain('Dacă sunteți încă pe drum, nu veniți acum. Vă scriem când zona se redeschide.');
+    expect(h.texts()[0]!.text).toContain('Dacă ești încă pe drum, nu veni acum. Îți scriem când zona se redeschide.');
     h.graph.length = 0;
     await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
     expect(h.texts().map(t => t.to)).toEqual(['40712345678']);

@@ -102,6 +102,7 @@ export function amenityDescription(a: typeof amenities[number], lang?: Lang) {
 }
 export interface RouteIndex {
   points: { id: string; name: { ro: string; en: string }; aliases: string[] }[];
+  evac?: Record<string, { file?: string; exit: string; assembly?: string; assemblyPoint?: string; nodes?: string[]; steps?: string[] }>;
   routes: Record<string, { file: string; walkSec: number; steps: unknown }>;
 }
 /** Per-agent cache includes absent indexes, so a missing deployment never floods the site. */
@@ -120,6 +121,20 @@ export class RouteImages {
     } catch { /* Images are optional. */ }
     this.cached = { until: this.now() + 60000, value };
     return value;
+  }
+  async evacuation(zone: string) {
+    const index = await this.index();
+    const entry = index?.evac?.[zone] ?? Object.entries(index?.evac ?? {}).find(([id]) => mapNodeId(id) === mapNodeId(zone))?.[1];
+    if (!entry || typeof entry.exit !== 'string') return null;
+    const assembly = entry.assembly ?? entry.assemblyPoint;
+    if (typeof assembly !== 'string') return null;
+    const nodes = Array.isArray(entry.nodes) && entry.nodes.every(n => typeof n === 'string') ? entry.nodes : [zone, entry.exit, assembly];
+    let link: string | undefined;
+    if (typeof entry.file === 'string') {
+      const root = new URL(`${this.appUrl.replace(/\/$/, '')}/routes/`);
+      try { const url = new URL(entry.file, root); if (url.href.startsWith(root.href)) link = url.href; } catch { /* Optional preview. */ }
+    }
+    return { from: zone, exit: entry.exit, assembly, nodes, link };
   }
   async image(from: string, to: string) {
     const index = await this.index();

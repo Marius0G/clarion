@@ -1,3 +1,4 @@
+import { RouteImages } from './airport-info.js';
 import { Auth } from '../../../backend/src/auth.js';
 import { route } from '../../../backend/src/routing.js';
 import { terminalGraph } from '../../../backend/src/terminal.js';
@@ -53,7 +54,7 @@ export function splitRegister(data: any): { sims: SimSubscriber[]; rest: any | n
 }
 
 // ---- evac.plan from vision (A9, A10).
-export interface EvacRoute { from: string; exit: string; nodes: string[] }
+export interface EvacRoute { from: string; exit: string; nodes: string[]; assembly?: string }
 export interface EvacPlan { id: string; blocked: string[]; clearSec: number; exits: { exit: string; people: number; clearSec: number }[]; routes: EvacRoute[] }
 const node = isNodeId;
 const secs = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -66,7 +67,7 @@ export function evacPlan(d: any): EvacPlan {
   return {
     id: d.id, blocked: [...d.blocked], clearSec: d.clearSec,
     exits: d.exits.map((e: any) => ({ exit: e.exit, people: e.people, clearSec: e.clearSec })),
-    routes: d.routes.map((r: any) => ({ from: r.from, exit: r.exit, nodes: [...r.nodes] })),
+    routes: d.routes.map((r: any) => ({ from: r.from, exit: r.exit, nodes: [...r.nodes], ...(typeof r.assembly === 'string' && { assembly: r.assembly }) })),
   };
 }
 
@@ -107,6 +108,7 @@ export interface MessagingDeps {
   appUrl?: string;
   evacWaitMs?: number;
   now?: () => number;
+  images?: RouteImages;
 }
 
 export class Messaging {
@@ -268,7 +270,7 @@ export class Messaging {
       if (m.kind === 'flight' || m.kind === 'evacuate') {
         const urgentKey = `msg:urgent:${this.identity(sub)}`;
         const received = await this.deps.store.get<{ at: string; kind: string; text: string }[]>(urgentKey) ?? [];
-        await this.deps.store.put(urgentKey, [...received, { at: new Date(now).toISOString(), ...m }].slice(-8));
+        await this.deps.store.put(urgentKey, [...received, { at: clockText(this.deps.view.clock().now), ...m }].slice(-8));
       }
       const key = `msg:alerts:${this.identity(sub)}`;
       const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
@@ -388,10 +390,18 @@ export class Messaging {
     return this.serial(async () => {
       if (command.type === 'staff' || command.type === 'evacuate') return 0;
       if (command.type === 'open' && (await this.deps.store.get<{ active: boolean }>('msg:evacuation'))?.active) {
-        const left = this.deps.view.blocked?.() ?? [];
+        const left = (this.deps.view.blocked?.() ?? []).filter(z => mapNodeId(z) !== mapNodeId(command.zone));
         if (!left.length) return this.allClear();
         const state = await this.deps.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
         await this.deps.store.put('msg:evacuation', { ...state, zones: state!.zones.filter(z => left.includes(z)) });
+        const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
+        for (const s of await this.subscribers()) {
+          if (!told.has(this.identity(s.sub))) continue;
+          const text = s.lang === 'en' ? `The ${nodeName(command.zone, s.lang)} area has reopened. Other areas remain closed.`
+            : `Zona ${nodeName(command.zone, s.lang)} s-a redeschis. Alte zone rămân închise.`;
+          await this.notify(s.sub, { kind: 'evacuate', text });
+        }
+
       }
       const zone = command.type === 'redirect' ? command.from : command.zone;
       let sent = 0;
@@ -423,6 +433,18 @@ export class Messaging {
     console.log(JSON.stringify({ msg: 'all-clear', told: told.size, sent }));
     return sent;
   }
+  /** Static evacuation data supplies the named exit/assembly and optional preview. Vision remains authoritative when present. */
+  private async evacuationDetails(zones: string[], r?: EvacRoute) {
+    for (const zone of zones) {
+      const entry = await this.deps.images?.evacuation(zone);
+      if (entry && (!r || mapNodeId(entry.exit) === mapNodeId(r.exit))) return { route: r ? { ...r, assembly: r.assembly ?? entry.assembly } : entry, image: entry.link };
+    }
+    return { route: r, image: undefined };
+  }
+  private async evacuationImage(sub: Subscriber, link: string | undefined, lang?: Lang) {
+    if (sub.channel !== 'whatsapp' || !link) return;
+    try { await this.deps.wa.sendImage(sub.phone, link, lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare'); } catch { /* Text must stand alone. */ }
+  }
   /** Generic evacuation text, sent when vision's evac.plan does not arrive in time. */
   evacuateText(zones: string[], lang?: Lang) {
     return copy.evacuation(lang, zones);
@@ -447,8 +469,9 @@ export class Messaging {
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
         if (!affectedByEvacuation(zones, f, now)) continue;
-        const text = this.evacuateText(zones, s.lang) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, null)}` : '');
-        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') told.push(s.sub);
+        const details = await this.evacuationDetails(zones);
+        const text = (details.route ? copy.evacuationRoute(s.lang, copy.blockedAreas(s.lang, { blocked: zones } as EvacPlan), details.route) : this.evacuateText(zones, s.lang)) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, null)}` : '');
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { told.push(s.sub); await this.evacuationImage(s.sub, details.image, s.lang); }
       }
       await this.evacuated(told);
     });
@@ -474,10 +497,11 @@ export class Messaging {
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
         if (!affectedByEvacuation(p.blocked, f, now)) continue;
-        const r = routeFor(p, f, now);
+        const details = await this.evacuationDetails(p.blocked, routeFor(p, f, now));
+        const r = details.route!;
         const blocked = p.blocked.length ? copy.blockedAreas(s.lang, p) : '';
         const text = copy.evacuationRoute(s.lang, blocked, r) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, reopenInMin)}` : '');
-        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { sent++; told.push(s.sub); }
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { sent++; told.push(s.sub); await this.evacuationImage(s.sub, details.image, s.lang); }
         if (s.sub.channel === 'sim') this.deps.toUnity('agent.route', { agentId: s.sub.agentId, nodes: r.nodes, reason: 'evacuate' });
       }
       await this.evacuated(told);

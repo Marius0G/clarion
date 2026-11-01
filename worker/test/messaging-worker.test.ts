@@ -125,7 +125,7 @@ describe('passenger messaging in the Tower', () => {
     await expect.poll(() => texts().filter(t => t.includes('Ieși pe Ieșirea 1')).length, { timeout: 10000 }).toBe(1); // one phone (passenger turned staff)
     // No evac.plan: the generic message after ~3 s.
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['security'] })).status).toBe(202);
-    await expect.poll(() => u.of('agent.message').filter(m => m.kind === 'evacuate' && m.text.includes('Control de securitate e închisă')).length, { timeout: 8000 }).toBe(1);
+    await expect.poll(() => u.of('agent.message').filter(m => m.kind === 'evacuate' && m.text.includes('Zona Control de securitate este închisă')).length, { timeout: 8000 }).toBe(1);
     await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).evacuation).toEqual({ active: true, zones: ['security'], route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] } });
     for (let delayMin = 31; delayMin <= 36; delayMin++) {
       u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin })] }));

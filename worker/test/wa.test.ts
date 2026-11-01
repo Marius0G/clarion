@@ -94,11 +94,11 @@ describe('whenToArrive (D5)', () => {
   it('flags late when the time has passed', () => {
     expect(arrivalPlan(W6, {}, { now: hm(9, 0), sim: true }, false).late).toBe(true);
   });
-  it('reads the simulated clock when Unity is connected, else Bucharest wall time', () => {
+  it('keeps the simulation clock after Unity disconnects', () => {
     expect(clockFrom(hm(14, 20), true)).toEqual({ now: hm(14, 20), sim: true });
     const wall = clockFrom(hm(14, 20), false, Date.UTC(2026, 9, 31, 12, 0));
-    expect(wall.sim).toBe(false);
-    expect(clockText(wall.now)).toBe('14:00'); // EET, UTC+2 after the DST change on 25 Oct
+    expect(wall.sim).toBe(true);
+    expect(clockText(wall.now)).toBe('14:20'); // EET, UTC+2 after the DST change on 25 Oct
   });
 });
 

@@ -56,3 +56,12 @@ export function lookupNote(tool: string, result: any): string | undefined {
   if (tool === 'airportInfo') return (result.facts ?? []).map((f: any) => `${f.official ? '' : 'unconfirmed: '}${f.fact} (${f.source})`).join('; ').slice(0, 700) || 'Not found';
   return String(result.note ?? result.status ?? '').slice(0, 400) || undefined;
 }
+
+/** Conservative turn-language detection: short codes and shared airport nouns keep the previous choice. */
+export function messageLanguage(text: string): 'ro' | 'en' | undefined {
+  const t = normalize(text);
+  const ro = t.match(/\b(sunt|unde|cum|ajung|poarta|zborul|meu|mea|pierdut|rucsac|vreau|mancare|multumesc|securitate|este|am|la|sa|ce|cand)\b/g)?.length ?? 0;
+  const en = t.match(/\b(i|my|is|where|how|can|eat|something|flight|on|time|the|lost|at|please|thanks|hello|security|want|when|are)\b/g)?.length ?? 0;
+  return ro > en ? 'ro' : en > ro ? 'en' : undefined;
+}
+export const lostItemClaim = (text: string) => /\b(am pierdut|mi-am pierdut|i lost|i have lost|i've lost)\b/i.test(normalize(text));

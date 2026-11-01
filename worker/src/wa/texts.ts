@@ -16,8 +16,8 @@ const texts = {
   "eta": ["Echipa ajunge în ~{0} min", "The team arrives in ~{0} min"],
   "policeEta": ["Poliția aeroportului ajunge în ~{0} min", "Airport police arrive in ~{0} min"],
   "fromSecurity": ["De la securitate la poarta {0} faci ~{1} min.", "From security to gate {0} is ~{1} min on foot."],
-  "evacRoad": ["Dacă sunteți încă pe drum, nu veniți acum: estimăm că zona se redeschide în ~{0} min. Vă scriem când se poate.", "If you are still on the way, do not come now: we expect the area to reopen in ~{0} min. We will message you when it does."],
-  "evacRoadUnknown": ["Dacă sunteți încă pe drum, nu veniți acum. Vă scriem când zona se redeschide.", "If you are still on the way, do not come now. We will message you when the area reopens."],
+  "evacRoad": ["Dacă ești încă pe drum, nu veni acum: estimăm că zona se redeschide în ~{0} min. Îți scriem când se poate.", "If you are still on the way, do not come now: we expect the area to reopen in ~{0} min. We will message you when it does."],
+  "evacRoadUnknown": ["Dacă ești încă pe drum, nu veni acum. Îți scriem când zona se redeschide.", "If you are still on the way, do not come now. We will message you when the area reopens."],
   "allClear": ["Terminalul s-a redeschis.", "The terminal has reopened."],
   "history": ["~{0} min la {1} (media din istoric la ora asta)", "~{0} min at {1} (same-hour history)"],
   "noEta": ["ETA indisponibil: loc necunoscut sau traseu blocat.", "ETA unavailable: location unknown or route blocked."],
@@ -130,11 +130,11 @@ export const copy = {
   flightChange: (lang: Lang | undefined, f: Flight, change: string, situation: string) => lang === 'en' ? `Flight ${f.flight} to ${f.destination} ${change}. ${situation}` : `Zborul ${f.flight} spre ${f.destination} ${change}. ${situation}`,
   redirect: (lang: Lang | undefined, command: Extract<OpsCommand, { type: 'redirect' }>) => lang === 'en' ? `${nodeName(command.from, lang)}: flow is redirected to ${nodeName(command.to, lang)}.` : `${nodeName(command.from)}: fluxul este mutat la ${nodeName(command.to)}.`,
   areaState: (lang: Lang | undefined, zone: string, command: OpsCommand) => lang === 'en' ? `${nodeName(zone, lang)}: the area is ${command.type === 'close' ? 'closed' : 'open'}.` : `${nodeName(zone)}: zona este ${command.type === 'close' ? 'închisă' : 'deschisă'}.`,
-  evacuation: (lang: Lang | undefined, zones: string[]) => lang === 'en' ? `Evacuation: ${zones.map(z => nodeName(z, lang)).join(', ')} closed. Leave the area and follow signs to the nearest exit.` : `Evacuare: ${zones.map(n => nodeName(n)).join(', ')} ${zones.length > 1 ? 'sunt închise' : 'e închisă'}. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.`,
+  evacuation: (lang: Lang | undefined, zones: string[]) => lang === 'en' ? `Evacuation: ${zones.map(z => nodeName(z, lang)).join(', ')} closed. Leave the area and follow signs to the nearest exit.` : `Evacuare: ${zones.map(n => `Zona ${nodeName(n)} este închisă`).join('. ')}. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.`,
   /** Pitch: someone who may still be on the road is told not to come, and for how long (evac.plan clearSec plus a margin). */
   evacuationRoad: (lang: Lang | undefined, reopenInMin: number | null) => reopenInMin === null ? say(lang, 'evacRoadUnknown') : say(lang, 'evacRoad', reopenInMin),
-  blockedAreas: (lang: Lang | undefined, p: EvacPlan) => lang === 'en' ? `${p.blocked.map(z => nodeName(z, lang)).join(', ')} closed. ` : `${p.blocked.map(n => nodeName(n)).join(', ')} ${p.blocked.length > 1 ? 'sunt închise' : 'e închisă'}. `,
-  evacuationRoute: (lang: Lang | undefined, blocked: string, r: EvacRoute) => lang === 'en' ? `Evacuation: ${blocked}Exit via ${nodeName(r.exit, lang)}: ${r.nodes.map(z => nodeName(z, lang)).join(' → ')}. Follow signs and staff instructions.` : `Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(n => nodeName(n)).join(' → ')}. Urmează indicatoarele și personalul.`,
+  blockedAreas: (lang: Lang | undefined, p: EvacPlan) => lang === 'en' ? `${p.blocked.map(z => nodeName(z, lang)).join(', ')} closed. ` : `${p.blocked.map(n => `Zona ${nodeName(n)} este închisă`).join('. ')}. `,
+  evacuationRoute: (lang: Lang | undefined, blocked: string, r: EvacRoute) => lang === 'en' ? `Evacuation: ${blocked}Exit via ${nodeName(r.exit, lang)}: ${r.nodes.map(z => nodeName(z, lang)).join(' → ')}. ${assemblyText(r, lang)}Follow signs and staff instructions.` : `Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(n => nodeName(n)).join(' → ')}. ${assemblyText(r, lang)}Urmează indicatoarele și personalul.`,
   situation: (lang: Lang | undefined, plan: ReturnType<typeof arrivalPlan>) => {
     const queues = plan.queues.map(q => queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)).join(' ');
     const walk = plan.steps.find(s => s.zone === 'walk')?.min ?? 0;
@@ -155,7 +155,7 @@ export function zoneName(zone: string, lang?: Lang) {
   const real = zones.find(z => z.id === zone);
   if (real) return lang === 'en' ? real.name_en : real.name_ro;
   const point = points.find(p => p.id === zone && p.evacuation_exit);
-  if (point) return lang === 'en' ? 'Exit' : 'Ieșire';
+  if (point) return `${lang === 'en' ? 'Exit' : 'Ieșire'} ${point.id}`;
   const [base, suffix] = zone.split(':');
   const name = (lang === 'en' ? EN_ZONE_NAMES : ZONE_NAMES)[base!] ?? base;
   if (!suffix) return name!;
@@ -198,4 +198,9 @@ export function passengerText(text: string) {
     personal = true; return url;
   }).replace(/\s*\([^)]*(?:simul|simulation|estimare|estimate|ora locală|local time|ora din chat|demo)[^)]*\)/gi, '')
     .replace(/[^.!?\n]*(?:simulăr|simulation|estimare|demo)[^.!?\n]*[.!?]?/gi, '').trim();
+}
+
+function assemblyText(r: EvacRoute, lang?: Lang) {
+  const assembly = r.assembly ?? r.nodes.find(n => zones.some(z => z.id === n && z.kind === 'assembly'));
+  return assembly ? `${lang === 'en' ? 'Assembly point' : 'Punct de adunare'}: ${nodeName(assembly, lang)}. ` : '';
 }
