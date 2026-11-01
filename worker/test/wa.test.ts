@@ -1,6 +1,6 @@
 import { JOIN_TTL_MS, joinKey } from '../src/join.js';
 import { createHmac } from 'node:crypto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validWhatsAppSignature } from '../src/channels.js';
 import { WhatsAppAgent, parseStart, type WaStore } from '../src/wa/index.js';
 import { PROVISIONAL_FLIGHTS, clockFrom, clockText, findFlight, type Flight } from '../src/wa/flights.js';
@@ -324,6 +324,9 @@ describe('WhatsAppAgent turn', () => {
 });
 
 describe('passenger language (D23)', () => {
+  // W6 3751 closes at 09:10 airport time; pin the wall clock to the morning so the flight is still ahead whenever CI runs.
+  beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-11-01T06:00:00Z'), toFake: ['Date'] }); });
+  afterEach(() => { vi.useRealTimers(); });
   const phone = '+40712345678';
   function languageHarness(key = '') {
     const store = new MemoryStore();
