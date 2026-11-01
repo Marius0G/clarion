@@ -103,7 +103,7 @@ export function amenityDescription(a: typeof amenities[number], lang?: Lang) {
 }
 export interface RouteIndex {
   points: { id: string; name: { ro: string; en: string }; aliases: string[] }[];
-  evac?: Record<string, { file?: string; exit: string; assembly?: string; assemblyPoint?: string; nodes?: string[]; steps?: string[] }>;
+  evac?: Record<string, { file?: string; caption?: string; exit: string; assembly?: string; assemblyPoint?: string; nodes?: string[]; steps?: string[] }>;
   routes: Record<string, { file: string; walkSec: number; steps: unknown; nodes?: string[] }>;
 }
 /** Per-agent cache includes absent indexes, so a missing deployment never floods the site. */
@@ -135,7 +135,7 @@ export class RouteImages {
       const root = new URL(`${this.appUrl.replace(/\/$/, '')}/routes/`);
       try { const url = new URL(entry.file, root); if (url.href.startsWith(root.href)) link = url.href; } catch { /* Optional preview. */ }
     }
-    return { from: zone, exit: entry.exit, assembly, nodes, link };
+    return { from: zone, exit: entry.exit, assembly, nodes, link, caption: entry.caption };
   }
   async image(from: string, to: string, live?: { nodes: string[]; rerouted?: boolean; reroute?: boolean }, blocked: readonly string[] = []) {
     const index = await this.index();

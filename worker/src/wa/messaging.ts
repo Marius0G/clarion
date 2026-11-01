@@ -1,3 +1,5 @@
+import { evacuationRoute } from '../../../backend/src/evacuation.js';
+import { LANDMARK_TTL_MS } from './airport-info.js';
 import { RouteImages } from './airport-info.js';
 import { Auth } from '../../../backend/src/auth.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
@@ -185,7 +187,7 @@ export class Messaging {
     const from = stage === 'gate' ? f.gate : stage === 'airside' ? 'U_CORRIDOR_EAST' : 'door_departures';
     const evacuation = await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang);
     const evacPlan = evacuation.active ? await this.deps.store.get<EvacPlan>('msg:evacPlan') : undefined;
-    const liveEvac = evacPlan?.routes.length ? routeFor(evacPlan, f, clock.now) : null;
+    const liveEvac = evacuation.active ? (evacPlan?.routes.length ? routeFor(evacPlan, f, clock.now) : await this.fallbackRoute(sub, f)) : null;
     const preview = evacuation.active ? await this.deps.images?.evacuation(liveEvac?.from ?? from) : null;
     const path = route(terminalGraph, from, f.gate, zoneDensities(this.deps.view.flow(), zoneAreas), this.deps.view.blocked?.());
     const image = !evacuation.active && path ? await this.deps.images?.image(from, f.gate, path, this.deps.view.blocked?.()) : null;
@@ -210,9 +212,26 @@ export class Messaging {
     if (!state?.active) return { active: false, zones: [] };
     const now = this.deps.view.clock().now;
     const plan = await this.deps.store.get<EvacPlan>('msg:evacPlan');
-    const r = plan?.routes.length ? routeFor(plan, f, now) : null;
+    const r = plan?.routes.length ? routeFor(plan, f, now) : await this.fallbackRoute(s.sub, f);
     return { active: true, zones: state.zones, ...(r && { route: { exit: nodeName(r.exit, lang), steps: r.nodes.map(n => nodeName(n, lang)) } }),
       ...(this.onTheRoad(s, f, now) && { stayAway: { reopenInMin: state.reopenInMin ?? null } }) };
+  }
+  /** D9: a fresh self-reported landmark takes precedence over the clock's stage. */
+  private async estimatedPlace(sub: Subscriber, f: Flight | undefined) {
+    const profile = await this.subscriberProfile(sub);
+    const position = profile && 'position' in profile ? profile.position : undefined;
+    const age = position ? this.deps.view.clock().now * 1000 - position.at : Infinity;
+    if (position && age >= 0 && age <= LANDMARK_TTL_MS) return position.node;
+    const stage = estimateStage(f, this.deps.view.clock().now);
+    return stage === 'gate' ? f!.gate : stage === 'airside' ? 'airside' : f?.checkIn ?? 'entrance';
+  }
+  private async fallbackRoute(sub: Subscriber, f: Flight | undefined): Promise<EvacRoute | null> {
+    const from = await this.estimatedPlace(sub, f);
+    // The occupied zone must allow egress; other closed zones and exits remain excluded.
+    const start = terminalGraph.nodes.find(n => n.id === mapNodeId(from));
+    const blocked = (this.deps.view.blocked?.() ?? []).filter(z => ![mapNodeId(from), start?.zone].includes(mapNodeId(z)));
+    const r = evacuationRoute(from, zoneDensities(this.deps.view.flow(), zoneAreas), blocked);
+    return r ? { from, exit: r.exit, assembly: r.assembly, nodes: [...r.route.nodes, r.assembly] } : null;
   }
   /**
    * Pitch, D9: a WhatsApp passenger whose A6 entrance time is still ahead may still be on the road (clock only, no GPS),
@@ -448,13 +467,22 @@ export class Messaging {
   private async evacuationDetails(zones: string[], r?: EvacRoute) {
     for (const zone of zones) {
       const entry = await this.deps.images?.evacuation(zone);
-      if (entry && (!r || mapNodeId(entry.exit) === mapNodeId(r.exit))) return { route: r ? { ...r, assembly: r.assembly ?? entry.assembly } : entry, image: entry.link };
+      if (entry && (!r || mapNodeId(entry.exit) === mapNodeId(r.exit))) return { route: r ? { ...r, assembly: r.assembly ?? entry.assembly } : entry, image: entry.link, caption: entry.caption };
     }
-    return { route: r, image: undefined };
+    return { route: r, image: undefined, caption: undefined };
   }
-  private async evacuationImage(sub: Subscriber, link: string | undefined, lang?: Lang) {
+  private async sendImage(sub: Subscriber, link: string, caption: string) {
+    if (sub.channel !== 'whatsapp') return;
+    if (!(await this.deps.wa.sendImage(sub.phone, link, caption)).ok) return;
+    await this.pageSerial(async () => {
+      const key = `msg:alerts:${this.identity(sub)}`;
+      const alerts = await this.deps.store.get<PassengerData['alerts']>(key) ?? [];
+      await this.deps.store.put(key, [...alerts, { at: clockText(this.deps.view.clock().now), timestamp: Date.now(), kind: 'route', text: caption, image: link }].slice(-50));
+    });
+  }
+  private async evacuationImage(sub: Subscriber, link: string | undefined, lang?: Lang, caption?: string) {
     if (sub.channel !== 'whatsapp' || !link) return;
-    try { await this.deps.wa.sendImage(sub.phone, link, lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare'); } catch { /* Text must stand alone. */ }
+    try { await this.sendImage(sub, link, caption ?? (lang === 'en' ? 'Evacuation route' : 'Traseu de evacuare')); } catch { /* Text must stand alone. */ }
   }
   /** Generic evacuation text, sent when vision's evac.plan does not arrive in time. */
   evacuateText(zones: string[], lang?: Lang) {
@@ -480,9 +508,10 @@ export class Messaging {
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
         if (!affectedByEvacuation(zones, f, now)) continue;
-        const details = await this.evacuationDetails(zones);
+        const r = await this.fallbackRoute(s.sub, f);
+        const details = r ? await this.evacuationDetails([r.from], r) : { route: undefined, image: undefined, caption: undefined };
         const text = (details.route ? copy.evacuationRoute(s.lang, copy.blockedAreas(s.lang, { blocked: zones } as EvacPlan), details.route) : this.evacuateText(zones, s.lang)) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, null)}` : '');
-        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { told.push(s.sub); await this.evacuationImage(s.sub, details.image, s.lang); }
+        if (await this.notify(s.sub, { kind: 'evacuate', text }) === 'sent') { told.push(s.sub); await this.evacuationImage(s.sub, details.image, s.lang, details.caption); }
       }
       await this.evacuated(told);
     });

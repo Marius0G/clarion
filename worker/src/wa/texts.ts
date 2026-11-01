@@ -157,7 +157,12 @@ export function zoneName(zone: string, lang?: Lang) {
   const real = zones.find(z => z.id === zone);
   if (real) return lang === 'en' ? real.name_en : real.name_ro;
   const point = points.find(p => p.id === zone && p.evacuation_exit);
-  if (point) return `${lang === 'en' ? 'Exit' : 'Ieșire'} ${point.id}`;
+  if (point) {
+    const name = point.name.split(' / ')[lang === 'en' ? 1 : 0] ?? point.name;
+    const direction = /_(east|west|mid)$/.exec(point.id)?.[1];
+    const suffix = direction && (lang === 'en' ? { east: 'east', west: 'west', mid: 'central' } : { east: 'est', west: 'vest', mid: 'centrală' })[direction as 'east' | 'west' | 'mid'];
+    return suffix ? `${name} (${suffix})` : name;
+  }
   const [base, suffix] = zone.split(':');
   const name = (lang === 'en' ? EN_ZONE_NAMES : ZONE_NAMES)[base!] ?? base;
   if (!suffix) return name!;
