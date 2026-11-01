@@ -360,6 +360,41 @@ Ce schimbă pentru backend:
 ```
 Compania e `W4` (indicativele WMT), nu `W6`. Alte zile au alte zboruri, deci nu presupuneți numere fixe. Grupul se alocă pe zbor după intervalul orar; în ziua demo zborurile nu se suprapun, așa că toate sunt pe `check_in:1`. `gate_N` e nodul din `terminal.json`. Scenariul `rush` înmulțește pasagerii din simulare cu 2,5. În `flight.update`, `pax` va fi limitat la locurile avionului de la următoarea instalare în Unity; până atunci, cu `rush`, worker-ul poate primi peste locuri (483 pe A321).
 
+**3. `flow.report` din vision: confirmat.** Câmpurile sunt cele din contract, fără `staff` și `capacity`. Exemplul e un rând real, din rularea live a lui Unity din 1 noiembrie (rush, x10, ora simulată 15:05:35), trecut prin serviciu:
+```json
+{"zones":[{"zone":"U_SECURITY_QUEUE","waiting":62,"waitingSd":1.98,"density":0.479,"waitMin":15.33,"waitMinP90":18.8,"coverage":0.994,
+  "forecast":[{"inMin":30,"waitMin":6.92},{"inMin":60,"waitMin":10.04},{"inMin":90,"waitMin":3.66},{"inMin":120,"waitMin":11.71}],
+  "advice":{"lanes":3,"by":54306,"waitMinIfNot":13.5}},
+ {"zone":"check_in:1","waiting":11,"waitingSd":1.22,"density":0.228,"waitMin":0.99,"waitMinP90":2.52,"coverage":1.0,
+  "forecast":[{"inMin":30,"waitMin":0.02},{"inMin":60,"waitMin":0.03},{"inMin":90,"waitMin":0.61},{"inMin":120,"waitMin":3.27}]}]}
+```
+Serviciul trimite `flow.report` și `crowd.positions` o dată pe secundă reală. Intrările sunt doar camerele, orarul (`flight.update`) și comenzile adminului (D0). În demo, camerele sunt detectorul simulat din Unity (varianta de rezervă din D0): pentru fiecare cameră, Unity scrie cutiile pe care le-ar da un detector, fără niciun adevăr. Cifrele din demo nu sunt cifre YOLO.
+
+- **`zone`:** id-urile fizice din `terminal.json` (`U_SECURITY_QUEUE`, `U_GATE_2`, ...) și `check_in:1..3`. `bag_drop:*` nu se trimite, pentru că Unity are o singură coadă pe grup. `G_CHECKIN_QUEUE` arată grupul cel mai aglomerat. `U_SECURITY` și `G_CHECKIN_DESKS` preiau așteptarea cozii lor. O zonă văzută sub 10 % nu se trimite.
+- **`waiting` (numărarea, A1-A3):**
+  - Picioarele fiecărei cutii trec prin omografia camerei (`calib.json`) și devin un punct pe podea, în metri. Unde se suprapun două camere, același om e numărat o singură dată.
+  - Pe fiecare coadă, un filtru Kalman ține numărul de oameni. Predicția adună cei care intră în inelul cozii și scade cei văzuți plecând de la capul ei. Actualizarea folosește numărătoarea camerelor corectată de LightGBM (A2), pentru că în coada densă oamenii se ascund unul pe altul.
+  - `waitingSd` e abaterea filtrului. `density` = `waiting` ÷ aria zonei (oameni/m²). `coverage` = partea din zonă pe care o văd camerele care merg.
+  - Dacă o cameră cade, filtrul continuă din fluxuri și abaterea crește. Rândul se mai trimite cu `coverage: 0` cel mult 10 min simulate, cât timp abaterea rămâne sub 12 oameni; apoi zona dispare și dashboard-ul o arată „necunoscut”.
+- **`waitMin` (așteptarea acum, A4):**
+  - W = oamenii din coadă ÷ (μ × liniile deschise). μ e ritmul pe linie, măsurat la capul cozii din plecările văzute în ultimele 5 minute în care coada n-a fost goală.
+  - Până la prima măsurătoare, μ pornește de la valoarea din rulările de antrenare (securitate ~2,3, check-in ~1,6 oameni/min pe linie).
+  - Liniile le ia din `initialLanes` plus comenzile `staff`, deci o linie nouă schimbă W imediat.
+  - Peste W se aplică o corecție LightGBM, antrenată să prezică așteptarea reală a celor care intră acum în coadă (din `stages.csv`).
+  - Valoarea afișată e netezită pe 60 s simulate, ca să nu sară de la un raport la altul. La o schimbare de linii netezirea se resetează, deci noua linie se vede imediat.
+  - `waitMinP90` vine din abaterea numărului și a lui μ (metoda delta).
+- **`forecast` (A5, la +30/60/90/120 min):**
+  - Sosirile: λ(t) = Σ pe zboruri, `pax` × curba de prezentare, o lognormală pe minutele dinainte de STD. Curbele sunt potrivite pe rulările de antrenare: la securitate mediana e ~145 min, σ 0,42; la check-in mediana e ~148 min, σ 0,37, și ~88 % trec pe la ghișeu.
+  - λ se înmulțește cu un factor măsurat de camere (0,5-3): dacă au intrat mai mulți decât prevedea orarul, restul sosirilor crește în proporție.
+  - Coada evoluează minut cu minut: L ← max(0, L + (λ − μ × linii) × 1 min), iar W = L ÷ (μ × linii).
+  - Un zbor întârziat își mută curba, unul anulat iese din calcul. Peste fiecare orizont se aplică o corecție LightGBM.
+  - Fără orar nu se trimite prognoză.
+- **`advice` (A7):** cel mai mic număr total de linii care ține prognoza sub țintă în ora următoare (securitate 10 min, check-in 15 min). `by` e ora până la care trebuie deschisă linia, în secunde simulate de la miezul nopții. `waitMinIfNot` e vârful orei cu liniile de acum. Câmpul apare doar când prognoza depășește ținta.
+- **`crowd.positions`:** `{x, z, y=z, level}` în metri Unity, doar unde văd camerele, cel mult 2.000 de puncte.
+- **`evac.plan`** (răspuns la `evacuate`, în 0,5-1,1 s în rulările live) are trei câmpuri în plus, pe care backend-ul le poate ignora: `partlyEstimated`, `peopleSeen`, `peopleEstimated`.
+
+**Pentru panoul de acuratețe:** `waitMin` din `truth.report` e media celor care termină coada acum, deci rămâne în urmă când coada se schimbă. Vision estimează cât va aștepta cine intră acum. De aceea panoul arată o diferență de câteva minute chiar când estimarea e bună. În rularea live, la ora simulată 15:05 panoul arăta 10,4 min. Într-o rulare batch cu același scenariu, cine intra atunci aștepta ~12 min, iar serviciul arăta 14-15 min. Erorile măsurate sunt în `vision/RESULTS.md`.
+
 **4. Efectul comenzilor.**
 - **Linie de securitate:** ~2,3 pasageri/min pe linie, măsurat cu coada plină (4,6/min la 2 linii, ~7/min la 3). La 1 linie am măsurat 2,05/min. Între 0 și 4 linii, inițial 2.
 - **Ghișeu:** bag drop ~2,0 pasageri/min (81 s pe grup, 2,7 pasageri pe grup); check-in fără online ~1,5 pasageri/min (100 s pe grup). 3 ghișee deschise din 4 pe grup de ghișee, doar cât zborul are fereastra deschisă.
@@ -369,7 +404,7 @@ Compania e `W4` (indicativele WMT), nu `W6`. Alte zile au alte zboruri, deci nu 
 - **`agent.route` la evacuare:** grupul abonatului intră pe traseu la nodul cel mai apropiat de el, merge până la prima ușă din listă, apoi la punctul de adunare. Dacă ușa e de cealaltă parte a securității față de agent (etapa estimată din ceas poate greși, D9), agentul ignoră ruta și iese pe cea mai apropiată ușă liberă. Neabonații ies mereu pe cea mai apropiată ușă liberă. Celelalte motive (`gate`, `check_in`, `redirect`) schimbă doar grupurile care merg sau așteaptă, nu pe cele din coadă sau de la control.
 - **Atenție:** `Messaging.plan` trimite rută tuturor abonaților, nu doar celor din zonele blocate, deci la o evacuare parțială pleacă și abonați de departe.
 
-**5. Ceasul.** `simTime` = secunde de la miezul nopții zilei simulate (float, 0-86400). `SIM_SPEED` în demo = 10, iar `wrangler.toml` are încă 60, deci trebuie setat 10. Butoanele ×1/×10/×60 din aplicație schimbă viteza, iar `sim.status.speed` o urmează (scris, încă neverificat cu butoanele). La `running: false`, `speed` rămâne ultima valoare (> 0).
+**5. Ceasul.** `simTime` = secunde de la miezul nopții zilei simulate (float, 0-86400). `SIM_SPEED` în demo = 10 (setat în `wrangler.toml`). Butoanele ×1/×10/×60 din aplicație schimbă viteza, iar `sim.status.speed` o urmează: verificat, ×60 și ×1 ajung în worker în cel mult 3 s. La `running: false`, `speed` rămâne ultima valoare (> 0).
 
 **Scenariu demo:** `sim.command { action: "start", scenario: "rush" }` (sau `CLARION_SCENARIO=rush`) pornește ziua la 15:00 cu pasagerii × 2,5, cu 2 linii. Așteptarea reală trece de 10 min la 15:10, adică după circa un minut real la ×10. Cu +1 linie la 15:15, coada ajunge la 75 la 15:25 și 12 la 15:40; fără ea, 101 și 63, iar așteptarea urcă la 22,7 min până la 15:50. `scenario: "day"` e ziua reală, unde coada de la securitate nu trece de ~6 min nici cu o singură linie. `waitMin` din adevărul simulării e o medie mobilă a așteptărilor încheiate, deci rămâne în urmă: stă pe la 11,5 min până se golește coada, chiar dacă numărul de oameni scade în câteva minute.
 
