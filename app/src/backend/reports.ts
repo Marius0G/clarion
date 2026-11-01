@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { backend } from './config'
 
 /** D11: a staff report, placed on a terminal.json node. */
-export interface StaffReport { id: string; at: string; kind: string; node: string; text: string; status: string; etaMin?: number | null }
+export interface StaffReport { id: string; at: string; kind: string; node: string; text: string; status: string; etaMin?: number | null; policeEtaMin?: number | null }
 
 const closed = ['closed', 'resolved', 'done']
 /** Keeps well-formed open reports; anything else (404, old backend, bad rows) gives none. */

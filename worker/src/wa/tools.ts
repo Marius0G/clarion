@@ -20,6 +20,8 @@ export interface AirportView {
   flights(): readonly Flight[];
   provisional(): boolean;
   blocked?(): readonly string[];
+  /** D5b: mean wait per zone for the simulated hour of `simSec`, from past camera reports; used only without a fresh row. */
+  history?(simSec: number): Record<string, ZoneRow>;
 }
 export interface Profile {
   lang?: Lang; phone: string; role: 'passenger' | 'staff';
@@ -34,6 +36,8 @@ export type Tools = Record<string, (input: any) => Promise<unknown>>;
 export const GATE_WALK_MIN: Record<string, number> = { gate_1: 3, gate_2: 4, gate_3: 5, gate_4: 6, G1: 3, G2: 4, G3: 5, G4: 6 };
 const DEFAULT_WALK_MIN = 5;
 export const MARGIN_MIN = 10;
+/** Airport police posts placed by Unity (terminal.json nodes). */
+export const POLICE_POSTS = ['door_departures', 'door_exit_west'];
 // Used only when neither a forecast nor a live wait exists for a zone (no Unity, no history yet).
 export const DEFAULT_WAIT_MIN: Record<string, number> = { bag_drop: 12, check_in: 15, security: 15 };
 
@@ -46,9 +50,9 @@ export function ownZones(flight: Pick<Flight, 'airline' | 'checkIn'> | undefined
   return [...(group ? [`check_in:${group}`, `bag_drop:${group}`] : []), `check_in:${flight.airline}`, `bag_drop:${flight.airline}`];
 }
 
-type Source = 'prognoză' | 'acum' | 'estimare standard';
-/** Wait at a zone for someone arriving inMin minutes from now: forecast (interpolated), else live, else default. */
-export function waitAt(row: ZoneRow | undefined, base: string, inMin: number): { min: number; source: Source } {
+type Source = 'prognoză' | 'acum' | 'istoric' | 'estimare standard';
+/** Wait at a zone for someone arriving inMin minutes from now: forecast (interpolated), else live, else the same-hour history mean (D5b), else default. */
+export function waitAt(row: ZoneRow | undefined, base: string, inMin: number, past?: ZoneRow): { min: number; source: Source } {
   const forecast = (row?.forecast ?? []).filter(p => Number.isFinite(p.inMin) && Number.isFinite(p.waitMin)).sort((a, b) => a.inMin - b.inMin);
   if (forecast.length) {
     const points = [{ inMin: 0, waitMin: row?.waitMin ?? forecast[0]!.waitMin }, ...forecast.filter(p => p.inMin > 0)];
@@ -60,6 +64,7 @@ export function waitAt(row: ZoneRow | undefined, base: string, inMin: number): {
     return { min: points.at(-1)!.waitMin, source: 'prognoză' };
   }
   if (row && row.waitMin !== null && Number.isFinite(row.waitMin)) return { min: row.waitMin, source: 'acum' };
+  if (past && past.waitMin !== null && Number.isFinite(past.waitMin)) return { min: past.waitMin, source: 'istoric' };
   return { min: DEFAULT_WAIT_MIN[base] ?? 10, source: 'estimare standard' };
 }
 
@@ -76,7 +81,7 @@ function zoneFor(flow: Record<string, ZoneRow>, bases: string[], flight: Flight)
  * D5: be at the terminal entrance at gateCloseAt − (bag drop if checked bag + security + walk to gate + margin),
  * each wait taken for the time he gets there. Two passes: the first estimate picks which forecast point applies.
  */
-export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined, blocked: readonly string[] = []) {
+export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock: Clock, hasCheckedBag: boolean | undefined, blocked: readonly string[] = [], history?: AirportView['history']) {
   const bag = hasCheckedBag !== false;
   const bagZone = zoneFor(flow, ['bag_drop', 'check_in'], flight);
   const secZone = { key: 'security', row: flowRow(flow, 'security') };
@@ -84,8 +89,9 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
   const walk = route(terminalGraph, 'security', flight.gate, zoneDensities(flow, zoneAreas), blocked);
   const steps = (inMin: number) => {
     const out: { zone: string; step: string; min: number; source: string }[] = [];
-    if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin); out.push({ zone: bagZone.key, step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
-    const s = waitAt(secZone.row, 'security', inMin);
+    const past = history?.(clock.now + inMin * 60) ?? {};
+    if (bag) { const w = waitAt(bagZone.row, bagZone.base, inMin, bagZone.row ? undefined : zoneFor(past, ['bag_drop', 'check_in'], flight).row); out.push({ zone: bagZone.key, step: zoneName(bagZone.key), min: Math.ceil(w.min), source: w.source }); }
+    const s = waitAt(secZone.row, 'security', inMin, secZone.row ? undefined : flowRow(past, 'security'));
     out.push({ zone: secZone.key, step: zoneName(secZone.key), min: Math.ceil(s.min), source: s.source });
     out.push({ zone: 'walk', step: copy.gateWalk(undefined, flight), min: walk ? Math.ceil(walk.totalSec / 60) : GATE_WALK_MIN[flight.gate] ?? DEFAULT_WALK_MIN, source: walk ? 'traseu live' : 'constantă' });
     out.push({ zone: 'margin', step: say('ro', 'margin'), min: MARGIN_MIN, source: 'constantă' });
@@ -131,7 +137,7 @@ export interface ToolDeps {
   profile: () => Profile;
   save: (patch: Partial<Profile>) => Promise<void>;
   /** Stores a staff report (D11); absent in read-only contexts. */
-  report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null }) => Promise<Report>;
+  report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null; policeEtaMin?: number | null }) => Promise<Report>;
   pageLink?: () => Promise<string>;
   /** During an evacuation: the latest evac.plan route for this passenger's estimated place (A10, D9); null otherwise. */
   evacRoute?: (flight: Flight | undefined) => Promise<EvacRoute | null>;
@@ -174,7 +180,7 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: T
       const f = r.flight;
       if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: say(profile().lang, 'cancelledNote') };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: say(profile().lang, 'departedNote') };
-      const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.());
+      const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.(), view.history);
       return { ...plan, situation: situationText(plan, profile().lang), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
@@ -208,8 +214,12 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: T
         .filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
       if (!best) return { status: 'unavailable', note: say(profile().lang, 'noRoute') };
       const minutes = Math.ceil(best.totalSec / 60);
-      return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1),
-        steps: best.nodes.map(n => nodeName(n, profile().lang)), note: say(profile().lang, 'route', best.nodes.map(n => nodeName(n, profile().lang)).join(' → '), minutes),
+      // Pitch: the gate and the walk to it from security, said explicitly.
+      const fromSec = to === 'gate' ? route(terminalGraph, 'security', best.nodes.at(-1)!, density, blocked) : null;
+      const fromSecurityMin = fromSec ? Math.ceil(fromSec.totalSec / 60) : null;
+      const securityNote = fromSecurityMin === null ? '' : ` ${say(profile().lang, 'fromSecurity', gateName(best.nodes.at(-1)!), fromSecurityMin)}`;
+      return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1), ...(fromSecurityMin !== null && { fromSecurityMin }),
+        steps: best.nodes.map(n => nodeName(n, profile().lang)), note: say(profile().lang, 'route', best.nodes.map(n => nodeName(n, profile().lang)).join(' → '), minutes) + securityNote,
         ...(pageLink && { link: await pageLink() }), provisional: terminalGraph.provisional };
     },
     async reportIssue(input: { text?: string; kind?: string; location?: string }) {
@@ -219,11 +229,18 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: T
       if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
       const node = matchNode(`${input?.location ?? ''} ${text}`, view.flights());
-      const path = node ? route(terminalGraph, 'team_post', node, zoneDensities(view.flow(), zoneAreas), view.blocked?.()) : null;
+      const density = zoneDensities(view.flow(), zoneAreas);
+      const path = node ? route(terminalGraph, 'team_post', node, density, view.blocked?.()) : null;
       const etaMin = path ? Math.ceil(path.totalSec / 60) : null;
-      const r = await report({ kind, node, etaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
-      return { status: 'sent', id: r.id, etaMin, kind: profile().lang === 'en' ? EN_ISSUES[kind] : RO_ISSUES[kind], place: node ? nodeName(node, profile().lang) : say(profile().lang, 'unknownPlace'),
-        note: say(profile().lang, 'reportSent', etaMin === null ? say(profile().lang, 'noEta') : say(profile().lang, 'eta', etaMin)) };
+      // The airport police posts Unity places (POLICE_POSTS), crowd-penalised like the team's route (A8); the nearest one.
+      const police = node ? POLICE_POSTS.map(post => route(terminalGraph, post, node, density, view.blocked?.())).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0] : undefined;
+      const policeEtaMin = police ? Math.ceil(police.totalSec / 60) : null;
+      const r = await report({ kind, node, etaMin, policeEtaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
+      const lang = profile().lang;
+      const eta = etaMin === null && policeEtaMin === null ? say(lang, 'noEta')
+        : [etaMin === null ? '' : say(lang, 'eta', etaMin), policeEtaMin === null ? '' : say(lang, 'policeEta', policeEtaMin)].filter(Boolean).join('. ') + '.';
+      return { status: 'sent', id: r.id, etaMin, policeEtaMin, kind: lang === 'en' ? EN_ISSUES[kind] : RO_ISSUES[kind], place: node ? nodeName(node, lang) : say(lang, 'unknownPlace'),
+        note: say(lang, 'reportSent', eta) };
     },
   };
 }

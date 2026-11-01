@@ -7,7 +7,7 @@ export const ISSUE_KINDS = ['bagaj_abandonat', 'medical', 'securitate', 'aglomer
 export type IssueKind = typeof ISSUE_KINDS[number];
 export { RO_ISSUES as ISSUE_LABELS } from './texts.js';
 /** The exact shape the dashboard pins read. */
-export interface Report { id: string; at: string; kind: IssueKind; node: string | null; text: string; status: 'open' | 'closed'; etaMin?: number | null }
+export interface Report { id: string; at: string; kind: IssueKind; node: string | null; text: string; status: 'open' | 'closed'; etaMin?: number | null; policeEtaMin?: number | null }
 
 const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ş/g, 's').replace(/ţ/g, 't');
 
@@ -63,11 +63,11 @@ export class Reports {
     await this.store.delete(KEY);
     return { reports };
   }
-  async list(): Promise<Report[]> { return ((await this.store.get<Report[]>(KEY)) ?? []).map(r => ({ ...r, etaMin: r.etaMin ?? null })); }
-  async add(input: { kind: IssueKind; node: string | null; text: string; etaMin?: number | null }, now = Date.now()): Promise<Report> {
+  async list(): Promise<Report[]> { return ((await this.store.get<Report[]>(KEY)) ?? []).map(r => ({ ...r, etaMin: r.etaMin ?? null, policeEtaMin: r.policeEtaMin ?? null })); }
+  async add(input: { kind: IssueKind; node: string | null; text: string; etaMin?: number | null; policeEtaMin?: number | null }, now = Date.now()): Promise<Report> {
     const all = await this.list();
     const n = all.reduce((m, r) => Math.max(m, Number(r.id.replace(/^R/, '')) || 0), 0) + 1;
-    const report: Report = { id: `R${n}`, at: new Date(now).toISOString(), kind: input.kind, node: input.node, text: input.text.slice(0, 500), status: 'open', etaMin: input.etaMin ?? null };
+    const report: Report = { id: `R${n}`, at: new Date(now).toISOString(), kind: input.kind, node: input.node, text: input.text.slice(0, 500), status: 'open', etaMin: input.etaMin ?? null, policeEtaMin: input.policeEtaMin ?? null };
     await this.store.put(KEY, [...all, report].slice(-KEEP));
     this.changed?.([...all, report].slice(-KEEP));
     return report;

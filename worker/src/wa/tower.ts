@@ -1,6 +1,7 @@
 // The Tower's data as the WhatsApp agent sees it: the sim clock (D13), flow rows (D5b, D8) and flights (D14).
 import { clockFrom, currentFlights, fromSim, isProvisional, type SimFlightRow } from './flights.js';
 import type { AirportView, ZoneRow } from './tools.js';
+import type { WaitHistory } from './history.js';
 
 interface SimSnapshot { simTime: number | null; flow: Record<string, ZoneRow>; flights?: readonly SimFlightRow[]; blocked?: readonly string[] }
 export interface SimSource { snapshot(connected: boolean, metrics: unknown): SimSnapshot }
@@ -9,7 +10,7 @@ export interface SimSource { snapshot(connected: boolean, metrics: unknown): Sim
 const fresh = (flow: Record<string, ZoneRow>) => Object.fromEntries(Object.entries(flow).filter(([, row]) => !row.stale));
 
 /** Flights come from Unity's flight.update (sim store); the provisional fixture only until one has arrived. */
-export function airportView(sim: SimSource, connected: () => boolean): AirportView {
+export function airportView(sim: SimSource, connected: () => boolean, history?: WaitHistory): AirportView {
   const unity = () => fromSim(sim.snapshot(false, null).flights);
   return {
     clock: () => clockFrom(sim.snapshot(false, null).simTime, connected()),
@@ -17,5 +18,6 @@ export function airportView(sim: SimSource, connected: () => boolean): AirportVi
     flow: () => fresh(sim.snapshot(false, null).flow),
     flights: () => currentFlights(unity()),
     provisional: () => isProvisional(unity()),
+    ...(history && { history: (simSec: number) => history.rows(simSec) }),
   };
 }

@@ -14,6 +14,12 @@ const texts = {
   "cancelledNote": ["Zborul e anulat. Informațiile despre alternative sunt disponibile la compania aeriană.", "The flight is cancelled. Alternative options are available from the airline."],
   "departedNote": ["Zborul a plecat deja.", "The flight has already departed."],
   "eta": ["Echipa ajunge în ~{0} min", "The team arrives in ~{0} min"],
+  "policeEta": ["Poliția aeroportului ajunge în ~{0} min", "Airport police arrive in ~{0} min"],
+  "fromSecurity": ["De la securitate la poarta {0} faci ~{1} min.", "From security to gate {0} is ~{1} min on foot."],
+  "evacRoad": ["Dacă sunteți încă pe drum, nu veniți acum: estimăm că zona se redeschide în ~{0} min. Vă scriem când se poate.", "If you are still on the way, do not come now: we expect the area to reopen in ~{0} min. We will message you when it does."],
+  "evacRoadUnknown": ["Dacă sunteți încă pe drum, nu veniți acum. Vă scriem când zona se redeschide.", "If you are still on the way, do not come now. We will message you when the area reopens."],
+  "allClear": ["Terminalul s-a redeschis.", "The terminal has reopened."],
+  "history": ["~{0} min la {1} (media din istoric la ora asta)", "~{0} min at {1} (same-hour history)"],
   "noEta": ["ETA indisponibil: loc necunoscut sau traseu blocat.", "ETA unavailable: location unknown or route blocked."],
   "reportSent": ["Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. {0}", "The report is on the dashboard map. The response team has been notified. {0}"],
   "unknownPlace": ["loc neprecizat", "location unspecified"],
@@ -34,7 +40,7 @@ const texts = {
   "askFlight": ["Care este numărul zborului (ex: W6 3751)?", "What is your flight number (for example W6 3751)?"],
   "refusal": ["Aici nu te pot ajuta, dar pentru zbor și aeroport sunt aici oricând 🙂", "I can help with your flight and the airport 🙂"],
   "tangled": ["Hmm, m-am încurcat puțin 😅 Poți să o spui altfel?", "I lost track a little 😅 Could you rephrase that?"],
-  "situation": ["{0} Poarta {1} se închide la {2}. Cu situația de acum, de la intrare la poartă ~{3} min, inclusiv 10 min marjă ({4}).", "{0} Gate {1} closes at {2}. With current conditions, entrance to gate takes ~{3} min, including a 10 min margin ({4})."],
+  "situation": ["{0} {5} Poarta {1} se închide la {2}. Cu situația de acum, de la intrare la poartă ~{3} min, inclusiv 10 min marjă ({4}).", "{0} {5} Gate {1} closes at {2}. With current conditions, entrance to gate takes ~{3} min, including a 10 min margin ({4})."],
   "estimated": ["~{0} min (estimare)", "~{0} min (estimate)"],
   "forecast": ["~{0} min la {1}", "~{0} min at {1}"],
   "now": ["{0} min acum", "{0} min now"],
@@ -125,19 +131,23 @@ export const copy = {
   redirect: (lang: Lang | undefined, command: Extract<OpsCommand, { type: 'redirect' }>) => lang === 'en' ? `${nodeName(command.from, lang)}: flow is redirected to ${nodeName(command.to, lang)}.` : `${nodeName(command.from)}: fluxul este mutat la ${nodeName(command.to)}.`,
   areaState: (lang: Lang | undefined, zone: string, command: OpsCommand) => lang === 'en' ? `${nodeName(zone, lang)}: the area is ${command.type === 'close' ? 'closed' : 'open'}.` : `${nodeName(zone)}: zona este ${command.type === 'close' ? 'închisă' : 'deschisă'}.`,
   evacuation: (lang: Lang | undefined, zones: string[]) => lang === 'en' ? `Evacuation: ${zones.map(z => nodeName(z, lang)).join(', ')} closed. Leave the area and follow signs to the nearest exit.` : `Evacuare: ${zones.map(n => nodeName(n)).join(', ')} ${zones.length > 1 ? 'sunt închise' : 'e închisă'}. Părăsește zona și urmează indicatoarele spre cea mai apropiată ieșire.`,
+  /** Pitch: someone who may still be on the road is told not to come, and for how long (evac.plan clearSec plus a margin). */
+  evacuationRoad: (lang: Lang | undefined, reopenInMin: number | null) => reopenInMin === null ? say(lang, 'evacRoadUnknown') : say(lang, 'evacRoad', reopenInMin),
   blockedAreas: (lang: Lang | undefined, p: EvacPlan) => lang === 'en' ? `${p.blocked.map(z => nodeName(z, lang)).join(', ')} closed. ` : `${p.blocked.map(n => nodeName(n)).join(', ')} ${p.blocked.length > 1 ? 'sunt închise' : 'e închisă'}. `,
   evacuationRoute: (lang: Lang | undefined, blocked: string, r: EvacRoute) => lang === 'en' ? `Evacuation: ${blocked}Exit via ${nodeName(r.exit, lang)}: ${r.nodes.map(z => nodeName(z, lang)).join(' → ')}. Follow signs and staff instructions.` : `Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(n => nodeName(n)).join(' → ')}. Urmează indicatoarele și personalul.`,
   situation: (lang: Lang | undefined, plan: ReturnType<typeof arrivalPlan>) => {
     const queues = plan.queues.map(q => {
       const now = q.nowMin === null ? null : say(lang, 'now', Math.round(q.nowMin));
-      const later = q.source === 'prognoză' ? say(lang, 'forecast', q.forecastMin, q.forecastAt) : q.nowMin === null ? say(lang, 'estimated', q.forecastMin) : null;
+      const later = q.source === 'prognoză' ? say(lang, 'forecast', q.forecastMin, q.forecastAt) : q.source === 'istoric' ? say(lang, 'history', q.forecastMin, q.forecastAt) : q.nowMin === null ? say(lang, 'estimated', q.forecastMin) : null;
       return `${nodeName(q.zone, lang)}: ${[now, later].filter(Boolean).join(', ')}.`;
     }).join(' ');
-    return say(lang, 'situation', queues, plan.gate, plan.gateCloseAt, plan.totalMin, plan.clock === 'ora simulării' ? say(lang, 'simClock') : say(lang, 'realClock'));
+    const walk = plan.steps.find(s => s.zone === 'walk')?.min;
+    return say(lang, 'situation', queues, plan.gate, plan.gateCloseAt, plan.totalMin, plan.clock === 'ora simulării' ? say(lang, 'simClock') : say(lang, 'realClock'), walk == null ? '' : say(lang, 'fromSecurity', plan.gate, walk))
+      .replace(/  +/g, ' ');
   },
 };
 export function localSource(source: string, lang?: Lang) {
-  return lang === 'en' ? ({ 'prognoză': 'forecast', 'acum': 'now', 'estimare standard': 'standard estimate' } as Record<string, string>)[source] ?? source : source;
+  return lang === 'en' ? ({ 'prognoză': 'forecast', 'acum': 'now', 'estimare standard': 'standard estimate', 'istoric': 'same-hour history' } as Record<string, string>)[source] ?? source : source;
 }
 
 export const EN_ISSUES = { bagaj_abandonat: 'Unattended baggage', medical: 'Medical', securitate: 'Security', aglomerare: 'Crowding', altele: 'Other' };

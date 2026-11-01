@@ -20,6 +20,7 @@ import { JoinTokens, JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin
 import { findFlight } from './wa/flights.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
 import { airportView } from './wa/tower.js';
+import { WaitHistory } from './wa/history.js';
 import { CameraFeeds } from './cams.js';
 
 export interface Env extends Secrets, WaEnv, AuthEnv {
@@ -96,11 +97,14 @@ export class Tower extends DurableObject<Env> {
   private lastAlarm = 0;
   /** Latest camera.frame per camera (contract), in memory only. */
   private cams = new CameraFeeds();
+  /** D5b: same-hour mean waits from past camera reports, for when vision is down. */
+  private history: WaitHistory;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.waEvents = new WaEvents(ctx.storage);
-    this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0),
+    this.history = new WaitHistory(ctx.storage);
+    this.whatsapp = new WhatsAppAgent(env, ctx.storage, airportView({ snapshot: (c, m) => this.engine.sim.snapshot(c, m) }, () => this.twins().length > 0, this.history),
       { toUnity: (type, data) => this.toTwins(type, data), observe: this.waEvents.record, reportsChanged: rows => this.engine.updateStaffReports(rows) });
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS engine_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)');
@@ -109,6 +113,7 @@ export class Tower extends DurableObject<Env> {
       this.wallet = createWallet(env, await ctx.storage.get<WalletStore>('wallet'),
         store => ctx.storage.put('wallet', store));
       this.seenWhatsApp = await ctx.storage.get<string[]>('whatsappIds') ?? [];
+      await this.history.load();
       this.engine = createStoredEngine(saved, store => {
         // SQLite writes are synchronous and participate in DO output gating.
         // Store JSON in SQL to avoid the KV API's smaller per-value limit.
@@ -162,6 +167,11 @@ export class Tower extends DurableObject<Env> {
     }
     await this.wallet.handle(this.engine, event, client);
     if (event.type === 'flow.report' && (client === 'vision' || client === 'twin')) this.background(msg.flowChanged());
+    if (event.type === 'flow.report' && client === 'vision') {
+      const snapshot = this.engine.sim.snapshot(false, null);
+      const write = this.history.record(snapshot.flow, snapshot.simTime);
+      if (write) this.background(write);
+    }
     if (event.type === 'flight.update') this.background(msg.flightsChanged());
     // Reset rebuilds the fixture in the core. Restore the adapter's current
     // schedule immediately, without postponing the next polling deadline.
