@@ -138,7 +138,7 @@ describe('agent tools', () => {
   });
   it('the no-key fallback answers from the same tools', async () => {
     const { tools } = setup({ flight: 'W6 3751', airline: 'W6', hasCheckedBag: true });
-    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~27 min la cozi');
+    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~27 min de stat la coadă');
     expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta 2,');
   });
 });
@@ -310,7 +310,7 @@ describe('WhatsAppAgent turn', () => {
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751', airline: 'W6' });
     await agent.inbound(inbound('', { type: 'interactive', text: undefined, interactive: { button_reply: { id: 'bag:no', title: 'Doar de mână' } } }));
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(false);
-    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~18 min la cozi');
+    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~18 min de stat la coadă');
   });
 
   it('answers the fallback when Claude fails, and respects WA_ALLOWLIST', async () => {
@@ -386,7 +386,7 @@ describe('passenger language (D23)', () => {
     airport.flights = () => [{ ...W6, status: 'delayed', delayMin: 30 }];
     await agent.messaging.flightsChanged();
     expect(texts().join(' ')).toContain('is delayed by 30 min');
-    expect(texts().at(-1)).toContain('Gate 2 closes');
+    expect(texts().at(-1)).toContain('gate closes at 09:40');
     expect(agent.messaging.evacuateText(['security'], 'en')).toContain('Evacuation: Security closed');
     await store.delete(`msg:last:wa:${phone}`);
     await agent.messaging.adminChanged({ type: 'close', zone: 'security' });

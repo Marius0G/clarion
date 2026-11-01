@@ -183,7 +183,7 @@ describe('automatic flight messages (D14, D18 beat 3)', () => {
     const wa = h.texts();
     expect(wa.map(m => m.text)).toEqual(passengerBubbles(h.unity[0]!.data.text));
     expect(wa[0]!.to).toBe('40712345678');
-    expect(wa[0]!.text).toContain('întârziere de 45 min. Plecarea: 10:25 în loc de 09:40.');
+    expect(wa[0]!.text).toContain('întârziere de 45 min. Pleacă la 10:25, poarta se închide la 09:55.');
     expect(h.unity).toEqual([{ type: 'agent.message', data: { agentId: 'a1', kind: 'flight', text: expect.stringContaining('întârziere de 45 min') } }]);
 
     sim.state.flights = [row({ status: 'delayed', delayMin: 60 }), row({ flight: 'RO 642', airline: 'RO', status: 'cancelled' })];
@@ -448,4 +448,23 @@ it('keeps simultaneous delay and gate changes urgent and deduplicated', async ()
   const count = h.texts().length;
   expect(await h.m.flightsChanged()).toEqual([]);
   expect(h.texts()).toHaveLength(count);
+});
+
+it('sends only delay details unless a queue changed band since the delivered state', async () => {
+  quiet();
+  const sim = fakeSim([row()], { security: { waiting: 10, waitMin: 7, forecast: [{ inMin: 30, waitMin: 7 }] } });
+  const h = harness(sim.view);
+  await h.inbound('START W6 3751');
+  const delayed = { ...sim.view.flights()[0]!, status: 'delayed' as const, delayMin: 30 };
+  expect(h.m.flightText(delayed)).toBe('Zborul W6 3751 are o întârziere de 30 min. Pleacă la 10:10, poarta se închide la 09:40.');
+  sim.state.flow.security!.waitMin = 9;
+  sim.state.flights = [row({ status: 'delayed', delayMin: 30 })];
+  await h.m.flightsChanged();
+  expect(h.texts().filter(m => m.text.includes('întârziere')).at(-1)?.text).toBe(h.m.flightText(delayed));
+  sim.state.flow.security!.waitMin = 11;
+  sim.state.flights = [row({ status: 'delayed', delayMin: 45 })];
+  await h.m.flightsChanged();
+  const text = h.texts().map(m => m.text).join(' ');
+  expect(text).toContain('Control de securitate: coadă mare, ~11 min');
+  expect(h.texts().filter(m => m.text.includes('/m/'))).toHaveLength(1);
 });

@@ -98,6 +98,24 @@ it('delivers the D18 rush, recovery, delay and gate change to WhatsApp and web h
   for (const b of outbound.filter(b => b.type === 'text')) expect(b.text.body.length).toBeLessThanOrEqual(180);
   for (const e of timeline) expect(payloads().some(b => b.text?.body === e.text || b.image?.caption === e.text)).toBe(true);
   const scenario = payloads().slice();
+  const transcript = scenario.map(b => ({ recipient: b.to, type: b.type === 'interactive' ? 'buttons' : b.type,
+    text: b.text?.body ?? b.interactive?.body.text ?? b.image?.caption }));
+  expect(transcript).toEqual([
+    { recipient: '40712345678', type: 'text', text: 'Gata ✈️ Te-am conectat la zborul W4 3625 spre Birmingham. Poarta 3 se închide la 16:30.' },
+    { recipient: '40712345678', type: 'text', text: 'Zborul W4 3625 spre Birmingham. Check-in grupul 1: fără coadă. Control de securitate: fără coadă. De la securitate până la poarta 3 ~2 min de mers, ~4 min de stat la coadă.' },
+    { recipient: '40712345678', type: 'text', text: 'Poarta 3 se închide la 16:30.' },
+    { recipient: '40712345678', type: 'text', text: `https://passenger.example/m/${token}` },
+    { recipient: '40712345678', type: 'buttons', text: 'Ai bagaj de cală?' },
+    { recipient: '40712345678', type: 'text', text: 'Coada la securitate a crescut: ~11 min acum, ~24 min în jur de 15:40. Până la poartă ai nevoie de ~25 min.' },
+    { recipient: '40712345678', type: 'text', text: 'Control de securitate: s-a deschis o linie în plus. Coada este așteptată să scadă la ~3 min până la 15:55.' },
+    { recipient: '40712345678', type: 'text', text: 'Zborul W4 3625 are o întârziere de 30 min. Pleacă la 17:10, poarta se închide la 17:00.' },
+    { recipient: '40712345678', type: 'text', text: 'Zborul W4 3625: poarta s-a schimbat la 6.' },
+    { recipient: '40712345678', type: 'image', text: 'Traseu spre poarta 6' },
+  ]);
+  expect(transcript.filter(m => m.text.includes('/m/'))).toHaveLength(1);
+  expect(transcript.slice(5).every(m => !m.text.includes('Check-in'))).toBe(true);
+  expect(scenario.at(-1).image.link).toBe('https://passenger.example/routes/gate-6.png');
+
   await api('/api/auth/otp', { phone: '+40712345678' });
   const code = /Cod Clarion: (\d{6})/.exec(texts().at(-1)!)![1];
   const session: any = await (await api('/api/auth/verify', { phone: '+40712345678', code })).json();

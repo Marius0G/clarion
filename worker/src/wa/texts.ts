@@ -1,5 +1,5 @@
 import { zones, points } from '../../../backend/src/terminal.js';
-import { clockText, etd, gateName, type Flight } from './flights.js';
+import { clockText, closeAt, etd, gateName, type Flight } from './flights.js';
 import type { arrivalPlan } from './tools.js';
 import type { OpsCommand } from '../../../backend/src/sim.js';
 import type { EvacPlan, EvacRoute } from './messaging.js';
@@ -126,6 +126,7 @@ export const copy = {
   departedFlight: (lang: Lang | undefined, f: Flight) => lang === 'en' ? `Flight ${f.flight} to ${f.destination} has departed.` : `Zborul ${f.flight} spre ${f.destination} a plecat.`,
   flightSituation: (lang: Lang | undefined, f: Flight, situation: string) => lang === 'en' ? `Flight ${f.flight} to ${f.destination}. ${situation}` : `Zborul ${f.flight} spre ${f.destination}. ${situation}`,
   delayedDeparture: (lang: Lang | undefined, f: Flight) => lang === 'en' ? `is delayed by ${f.delayMin} min. Departure: ${clockText(etd(f))} instead of ${clockText(f.std)}` : `are o întârziere de ${f.delayMin} min. Plecarea: ${clockText(etd(f))} în loc de ${clockText(f.std)}`,
+  delayUpdate: (lang: Lang | undefined, f: Flight) => lang === 'en' ? `Flight ${f.flight} is delayed by ${f.delayMin} min. Departs at ${clockText(etd(f))}, gate closes at ${clockText(closeAt(f))}.` : `Zborul ${f.flight} are o întârziere de ${f.delayMin} min. Pleacă la ${clockText(etd(f))}, poarta se închide la ${clockText(closeAt(f))}.`,
   scheduledDeparture: (lang: Lang | undefined, f: Flight) => lang === 'en' ? `departs as scheduled at ${clockText(etd(f))}` : `pleacă la ora programată, ${clockText(etd(f))}`,
   flightChange: (lang: Lang | undefined, f: Flight, change: string, situation: string) => lang === 'en' ? `Flight ${f.flight} to ${f.destination} ${change}. ${situation}` : `Zborul ${f.flight} spre ${f.destination} ${change}. ${situation}`,
   redirect: (lang: Lang | undefined, command: Extract<OpsCommand, { type: 'redirect' }>) => lang === 'en' ? `${nodeName(command.from, lang)}: flow is redirected to ${nodeName(command.to, lang)}.` : `${nodeName(command.from)}: fluxul este mutat la ${nodeName(command.to)}.`,
@@ -143,7 +144,7 @@ export const copy = {
     const wait = plan.steps.filter(s => !['walk', 'margin'].includes(s.zone)).reduce((n, s) => n + s.min, 0);
     return lang === 'en'
       ? `${queues} From security to gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}.`
-      : `${queues} De la securitate până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min la cozi`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
+      : `${queues} De la securitate până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min de stat la coadă`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
   },
 };
 export function localSource(source: string, lang?: Lang) {
@@ -180,21 +181,22 @@ export function nodeName(id: string, lang?: Lang) {
 
 export const RO_ISSUES = { bagaj_abandonat: 'bagaj abandonat', medical: 'urgență medicală', securitate: 'problemă de securitate', aglomerare: 'aglomerare', altele: 'incident' };
 
-/** Hamburg bands, keeping approximate figures only where they add information. */
+/** Hamburg bands: 0–3, 4–10, over 10 minutes. Compare categories, never formatted figures. */
+export function queueBand(min: number | null): 'unknown' | 'none' | 'moderate' | 'large' {
+  return min === null ? 'unknown' : min <= 3 ? 'none' : min <= 10 ? 'moderate' : 'large';
+}
 export function waitBand(min: number | null, lang?: Lang): string {
-  if (min === null) return lang === 'en' ? 'wait unknown' : 'timp necunoscut';
-  if (min < 1) return lang === 'en' ? 'no queue' : 'fără coadă';
-  const band = min <= 3 ? (lang === 'en' ? 'short queue' : 'coadă mică') : min <= 10 ? (lang === 'en' ? 'moderate queue' : 'coadă moderată') : (lang === 'en' ? 'long queue' : 'coadă mare');
-  return `${band}, ~${Math.round(min)} min`;
+  const band = queueBand(min);
+  if (band === 'unknown') return lang === 'en' ? 'wait unknown' : 'timp necunoscut';
+  if (band === 'none') return lang === 'en' ? 'no queue' : 'fără coadă';
+  const label = band === 'moderate' ? (lang === 'en' ? 'moderate queue' : 'coadă moderată') : (lang === 'en' ? 'long queue' : 'coadă mare');
+  return `${label}, ~${Math.round(min!)} min`;
 }
 export function queueText(name: string, now: number | null, forecast: { inMin: number; waitMin: number }[] = [], lang?: Lang) {
-  const future = forecast.filter(p => p.inMin > 0 && p.inMin <= 120);
-  const full = [30, 60, 90, 120].every(m => future.some(p => p.inMin === m));
-  if (now !== null && now < 1 && full && future.every(p => p.waitMin < 1)) {
-    return lang === 'en' ? `No queue at ${name === 'Security' ? 'security' : name}, and none is expected in the next 2 hours.` : `Nu e coadă la ${name === 'Control de securitate' ? 'securitate' : name} și nu se așteaptă să se formeze în următoarele 2 ore.`;
-  }
+  const future = forecast.filter(p => p.inMin > 0 && p.inMin <= 120 && queueBand(p.waitMin) !== queueBand(now));
   const peak = future.reduce<typeof future[number] | undefined>((a, b) => !a || b.waitMin > a.waitMin ? b : a, undefined);
-  return `${name}: ${waitBand(now, lang)} ${lang === 'en' ? 'now' : 'acum'}${peak ? `; ${waitBand(peak.waitMin, lang)} ${lang === 'en' ? 'in' : 'peste'} ${peak.inMin} min` : ''}.`;
+  const current = waitBand(now, lang);
+  return `${name.replace('Check-in, grupul', 'Check-in grupul')}: ${current}${peak ? ` ${lang === 'en' ? 'now' : 'acum'}; ${waitBand(peak.waitMin, lang)} ${lang === 'en' ? 'in' : 'peste'} ${peak.inMin} min` : ''}.`;
 }
 /** Last-line guard for generated copy; the clock itself remains the airport clock. */
 export function passengerText(text: string) {
