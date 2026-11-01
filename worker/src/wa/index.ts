@@ -226,7 +226,7 @@ export class WhatsAppAgent {
 
     const landmark = m.replyId?.startsWith('loc:') ? m.replyId.slice(4) : resolveLandmark(text, /sunt|aflu|from|at |check|duty|hol|poart|gate|intrare|entrance/i.test(text) ? await this.images.index() : null);
     const statedLandmark = landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text)) ? landmark : undefined;
-    if (statedLandmark) await save({ position: { node: statedLandmark, at: Date.now() } });
+    if (statedLandmark) await save({ position: { node: statedLandmark, at: this.view.clock().now * 1000 } });
     const pending = landmark ? profile.pendingRoute : undefined;
     await save(extractFacts(redact(text)));
     const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';

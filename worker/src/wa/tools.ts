@@ -147,7 +147,7 @@ export interface ToolDeps {
 }
 
 /** The five D15 tools for one person, using the shared provisional terminal graph. */
-export function toolsFor({ view, profile, save, report, pageLink, evacRoute, routeIndex, now = Date.now }: ToolDeps): Tools {
+export function toolsFor({ view, profile, save, report, pageLink, evacRoute, routeIndex, now = () => view.clock().now * 1000 }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;

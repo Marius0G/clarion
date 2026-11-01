@@ -279,7 +279,7 @@ describe('WhatsAppAgent turn', () => {
       { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'urgent', name: tool, input: { text, to: 'exit' } }] },
       { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]⚠️\n---\nReceived ⚠️. Exit 1 → 2. 👩🏽‍🚒 🇷🇴 1️⃣\n---\n🙏' }] },
     ]);
-    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang, position: { node: 'entrance', at: Date.now() } });
+    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang, position: { node: 'entrance', at: sim7.now * 1000 } });
     await agent.inbound(inbound(text));
     expect(meta().filter(b => b.type === 'reaction')).toEqual([]);
     expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Received . Exit 1 → 2.']);

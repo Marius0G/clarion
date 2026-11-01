@@ -10,7 +10,7 @@ function setup(flow: Record<string, ZoneRow> = {}, blocked: string[] = []) {
   const data = new Map<string, unknown>();
   const reports = new Reports({ get: async <T>(key: string) => data.get(key) as T | undefined,
     put: async (key, value) => { data.set(key, structuredClone(value)); }, delete: async key => data.delete(key) });
-  let profile: Profile = { phone: '+40700000000', role: 'passenger', flight: 'W6 3751', position: { node: 'entrance', at: Date.now() } };
+  let profile: Profile = { phone: '+40700000000', role: 'passenger', flight: 'W6 3751', position: { node: 'entrance', at: 0 } };
   const view: AirportView = { clock: () => ({ now: 0, sim: true }), flights: () => PROVISIONAL_FLIGHTS,
     flow: () => flow, provisional: () => true, blocked: () => blocked };
   const tools = toolsFor({ view, profile: () => profile, save: async p => { profile = { ...profile, ...p }; },

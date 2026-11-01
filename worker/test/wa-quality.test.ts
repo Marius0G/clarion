@@ -68,6 +68,23 @@ describe('WhatsApp passenger quality regressions', () => {
     now++;
     expect(await h.tools.routeTo!({ to: 'toilet' })).toMatchObject({ status: 'needs_location' });
   });
+  it('7: landmark age follows simulation time, including a paused or reset clock', async () => {
+    let simSec = 100;
+    const airport = { ...view, clock: () => ({ now: simSec, sim: true }) };
+    let profile: Profile = { phone: '+40712345678', role: 'passenger', flight: flight.flight };
+    const t = toolsFor({ view: airport, profile: () => profile, save: async patch => { profile = { ...profile, ...patch }; } });
+    await t.routeTo!({ to: 'gate', from: 'Hol central' });
+    expect(profile.position?.at).toBe(100_000);
+    simSec += 599;
+    expect(await t.routeTo!({ to: 'gate' })).toMatchObject({ status: 'ready', from: 'G_CENTER' });
+    simSec++;
+    expect(await t.routeTo!({ to: 'gate' })).toMatchObject({ status: 'needs_location' });
+    simSec = 50;
+    expect(await t.routeTo!({ to: 'gate' })).toMatchObject({ status: 'needs_location' });
+    const h = harness(null, airport);
+    await h.receive('Sunt la Hol central.');
+    expect((await h.agent.profile('+40712345678'))?.position?.at).toBe(50_000);
+  });
   it('7: an amenity name alone never becomes the current position', async () => {
     const h = harness(); await h.receive('ATM');
     expect((await h.agent.profile('+40712345678'))?.position).toBeUndefined();
