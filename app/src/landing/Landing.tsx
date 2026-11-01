@@ -2,7 +2,8 @@ import { lazy, Suspense, useRef } from "react";
 import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
 import "@fontsource-variable/big-shoulders-display";
 import "./landing.css";
-import { BlurText, CountUp, SplitFlap, Spotlight } from "./effects";
+import { ArrowUpRight, CaretRight, WhatsappLogo } from "@phosphor-icons/react";
+import { BlurText, ClickSpark, CountUp, Magnet, ScrollVelocity, SplitFlap, Spotlight, VariableProximity } from "./effects";
 
 const FlightGlobe = lazy(() => import("./FlightGlobe"));
 
@@ -28,6 +29,13 @@ const LIGHTS = Array.from({ length: 28 }, (_, i) => i);
 const BOXES: readonly [number, number, number][] = [
   [8, 52, 0], [17, 47, 1], [26, 55, 2], [35, 49, 0], [44, 53, 1], [53, 46, 2], [62, 51, 0], [71, 48, 1], [80, 54, 2], [22, 72, 1], [48, 70, 0], [68, 73, 2],
 ];
+
+function Ctas() {
+  return <div className="lp-actions">
+    <Magnet><ClickSpark color="#ff2d87"><a className="lp-btn" href="/join">Abonează-te<CaretRight weight="bold" aria-hidden="true" /></a></ClickSpark></Magnet>
+    <Magnet strength={0.18}><ClickSpark><a className="lp-link" href={WHATSAPP_START} target="_blank" rel="noopener noreferrer"><WhatsappLogo weight="regular" aria-hidden="true" />Scrie-ne pe WhatsApp<ArrowUpRight aria-hidden="true" /></a></ClickSpark></Magnet>
+  </div>;
+}
 
 function Hero() {
   const ref = useRef<HTMLElement>(null);
@@ -62,15 +70,12 @@ function Hero() {
     <motion.div className="lp-hero-copy" style={{ opacity: fade }}>
       <h1 id="landing-title" className="lp-h1">
         <motion.span className="lp-h1-lead" {...rise(0.05)}>Clarion transformă aglomerația din aeroport în instrucțiuni personale:</motion.span>{" "}
-        <motion.span className="lp-h1-line" style={{ y: line1 }}><motion.span {...rise(0.15)}>când să vii,</motion.span></motion.span>{" "}
-        <motion.span className="lp-h1-line" style={{ y: line2 }}><motion.span {...rise(0.25)}>pe unde să intri</motion.span></motion.span>{" "}
-        <motion.span className="lp-h1-line" style={{ y: line3 }}><motion.span {...rise(0.35)}>și unde să te duci</motion.span></motion.span>{" "}
+        <motion.span className="lp-h1-line" style={{ y: line1 }}><motion.span {...rise(0.15)}><VariableProximity text="când să vii," /></motion.span></motion.span>{" "}
+        <motion.span className="lp-h1-line" style={{ y: line2 }}><motion.span {...rise(0.25)}><VariableProximity text="pe unde să intri" /></motion.span></motion.span>{" "}
+        <motion.span className="lp-h1-line" style={{ y: line3 }}><motion.span {...rise(0.35)}><VariableProximity text="și unde să te duci" /></motion.span></motion.span>{" "}
         <motion.span className="lp-h1-tail" {...rise(0.5)}>când ceva merge prost.</motion.span>
       </h1>
-      <motion.div className="lp-actions" {...rise(0.6)}>
-        <a className="lp-btn lp-btn-sign" href="/join">Abonează-te</a>
-        <a className="lp-btn lp-btn-ghost" href={WHATSAPP_START} target="_blank" rel="noopener noreferrer">Scrie-ne pe WhatsApp</a>
-      </motion.div>
+      <motion.div {...rise(0.6)}><Ctas /></motion.div>
     </motion.div>
 
     <motion.div className="lp-chip lp-chip-msg" style={{ y: chipsFast }} aria-hidden="true">
@@ -128,22 +133,22 @@ function Roles() {
         <h3 id="lp-roles-title">Camerele numără oamenii din cozi.</h3>
         <p>Viziunea pe camere numără persoanele din fiecare coadă, estimează cât se așteaptă acum și face prognoza pentru următoarele 30, 60, 90 și 120 de minute. Doar numărători, fără fețe și fără identități.</p>
       </Spotlight>
-      <Spotlight className="lp-tile lp-tile-staff">
+      <article className="lp-tile lp-tile-staff">
         <h3 id="angajati">Angajații raportează pe WhatsApp.</h3>
         <p>Un angajat raportează o problemă din telefon și vede în câte minute ajung echipa de intervenție și poliția aeroportului, ținând cont de aglomerație.</p>
         <ul className="lp-eta" aria-label="Exemplu de timpi de sosire">
           <li><span>Echipa de intervenție</span><b>3 min</b></li>
           <li><span>Poliția aeroportului</span><b>5 min</b></li>
         </ul>
-      </Spotlight>
-      <Spotlight className="lp-tile lp-tile-admin">
+      </article>
+      <article className="lp-tile lp-tile-admin">
         <h3>Administratorul decide de pe un singur ecran.</h3>
         <p>Un dashboard live cu camerele, cozile, recomandările și evacuarea.</p>
         <div className="lp-advice">
           <span className="lp-advice-rec">Deschide o linie la securitate până la 14:05</span>
           <span className="lp-advice-evac">Evacuare</span>
         </div>
-      </Spotlight>
+      </article>
     </div>
   </section>;
 }
@@ -179,10 +184,7 @@ function Pass() {
       <div className="lp-pass-main">
         <h2 id="lp-pass-title" className="lp-h2">Primește instrucțiunile pentru zborul tău.</h2>
         <p>La abonare te conectezi, îți alegi zborul și primești cardul pentru Wallet și linkul spre WhatsApp cu mesajul START.</p>
-        <div className="lp-actions">
-          <a className="lp-btn lp-btn-sign" href="/join">Abonează-te</a>
-          <a className="lp-btn lp-btn-ghost" href={WHATSAPP_START} target="_blank" rel="noopener noreferrer">Scrie-ne pe WhatsApp</a>
-        </div>
+        <Ctas />
       </div>
       <div className="lp-pass-stub" aria-hidden="true">
         <span className="lp-pass-brand">Clarion</span>
@@ -206,10 +208,14 @@ export default function Landing() {
         <a href="#camere">Camere și personal</a>
         <a href="#rezultate">Rezultate</a>
       </nav>
-      <a className="lp-btn lp-btn-sign lp-btn-sm" href="/join">Abonează-te</a>
+      <a className="lp-btn lp-btn-sm" href="/join">Abonează-te<CaretRight weight="bold" aria-hidden="true" /></a>
     </header>
     <main>
       <Hero />
+      <div className="lp-ticker">
+        <ScrollVelocity text="CRA  LTN  BGY  BCN  DTM  CRL  " base={60} />
+        <ScrollVelocity text="check-in  securitate  poarta  îmbarcare  ieșire  " base={-45} />
+      </div>
       <Board />
       <Roles />
       <Proof />

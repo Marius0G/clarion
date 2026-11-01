@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode, type PointerEvent } from "react";
-import { animate, motion, useInView, useReducedMotion } from "motion/react";
+import { animate, motion, useAnimationFrame, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform, useVelocity } from "motion/react";
 
 /** Word-by-word blur reveal (after React Bits «BlurText», MIT), once, when the heading scrolls in. */
 export function BlurText({ text, as = "h2", className }: { text: string; as?: "h2" | "h3"; className?: string }) {
@@ -75,4 +75,85 @@ export function Spotlight({ className, children }: { className?: string; childre
     e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
   };
   return <article className={`lp-spot ${className ?? ""}`} onPointerMove={move}>{children}</article>;
+}
+
+/** Magnet (after React Bits «Magnet»): the wrapped control leans toward the pointer, springs back on leave. */
+export function Magnet({ children, strength = 0.28 }: { children: ReactNode; strength?: number }) {
+  const reduce = useReducedMotion();
+  const x = useMotionValue(0), y = useMotionValue(0);
+  const sx = useSpring(x, { stiffness: 260, damping: 18 }), sy = useSpring(y, { stiffness: 260, damping: 18 });
+  const move = (e: PointerEvent<HTMLSpanElement>) => {
+    if (reduce || e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    x.set((e.clientX - (r.left + r.width / 2)) * strength);
+    y.set((e.clientY - (r.top + r.height / 2)) * strength);
+  };
+  return <motion.span className="lp-magnet" style={{ x: sx, y: sy }} onPointerMove={move} onPointerLeave={() => { x.set(0); y.set(0); }}>{children}</motion.span>;
+}
+
+/** Click spark (after React Bits «ClickSpark»): short radial sparks from the click point. */
+export function ClickSpark({ children, color = "#2ee6ff" }: { children: ReactNode; color?: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const spark = (e: React.MouseEvent<HTMLSpanElement>) => {
+    const c = ref.current, ctx = c?.getContext("2d");
+    if (!c || !ctx || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = c.getBoundingClientRect();
+    c.width = r.width; c.height = r.height;
+    const ox = e.clientX - r.left, oy = e.clientY - r.top, t0 = performance.now();
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / 420);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.strokeStyle = color; ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2, d = 10 + k * 34, len = 12 * (1 - k);
+        ctx.beginPath(); ctx.moveTo(ox + Math.cos(a) * d, oy + Math.sin(a) * d); ctx.lineTo(ox + Math.cos(a) * (d + len), oy + Math.sin(a) * (d + len)); ctx.stroke();
+      }
+      if (k < 1) requestAnimationFrame(tick); else ctx.clearRect(0, 0, c.width, c.height);
+    };
+    requestAnimationFrame(tick);
+  };
+  return <span className="lp-spark" onClickCapture={spark}>{children}<canvas ref={ref} aria-hidden="true" /></span>;
+}
+
+/** Variable proximity (after React Bits «VariableProximity»): letters gain weight near the pointer. */
+export function VariableProximity({ text, radius = 240, from = 300, to = 900 }: { text: string; radius?: number; from?: number; to?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || reduce) return;
+    const letters = Array.from(el.querySelectorAll<HTMLSpanElement>(".lp-vp"));
+    let px = -9999, py = -9999, raf = 0;
+    const paint = () => {
+      raf = 0;
+      for (const l of letters) {
+        const r = l.getBoundingClientRect();
+        const d = Math.hypot(px - (r.left + r.width / 2), py - (r.top + r.height / 2));
+        const f = Math.max(0, 1 - d / radius);
+        l.style.fontVariationSettings = `'wght' ${Math.round(from + (to - from) * f * f)}`;
+      }
+    };
+    const move = (e: globalThis.PointerEvent) => { px = e.clientX; py = e.clientY; if (!raf) raf = requestAnimationFrame(paint); };
+    window.addEventListener("pointermove", move, { passive: true });
+    return () => { window.removeEventListener("pointermove", move); cancelAnimationFrame(raf); };
+  }, [reduce, radius, from, to]);
+  return <span ref={ref} className="lp-vp-wrap">{Array.from(text).map((c, i) => <span key={i} className="lp-vp" style={{ fontVariationSettings: `'wght' ${from}` }}>{c}</span>)}</span>;
+}
+
+/** Scroll velocity strip (after React Bits «ScrollVelocity»): drifts sideways, faster while the page scrolls. */
+export function ScrollVelocity({ text, base = 40 }: { text: string; base?: number }) {
+  const reduce = useReducedMotion();
+  const x = useMotionValue(0);
+  const { scrollY } = useScroll();
+  const v = useSpring(useVelocity(scrollY), { damping: 50, stiffness: 400 });
+  const factor = useTransform(v, [-1000, 0, 1000], [-4, 0, 4], { clamp: false });
+  const pct = useTransform(x, val => `${((val % 50) - 50) % 50}%`);
+  useAnimationFrame((_, delta) => {
+    if (reduce) return;
+    const dir = base < 0 ? -1 : 1;
+    x.set(x.get() + dir * Math.abs(base) * (delta / 1000) * 0.1 * (1 + Math.abs(factor.get())));
+  });
+  return <div className="lp-velo" aria-hidden="true"><motion.div className="lp-velo-track" style={{ x: pct }}>
+    {[0, 1, 2, 3].map(i => <span key={i}>{text}</span>)}
+  </motion.div></div>;
 }

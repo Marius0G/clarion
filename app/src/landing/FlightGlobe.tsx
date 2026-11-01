@@ -74,14 +74,14 @@ export default function FlightGlobe({ still = false }: { still?: boolean }) {
       ctx.clearRect(0, 0, w, h);
 
       const halo = ctx.createRadialGradient(ox, oy, R * 0.55, ox, oy, Math.min(w, h) / 2);
-      halo.addColorStop(0, "rgba(61,107,255,0.20)");
-      halo.addColorStop(0.75, "rgba(61,107,255,0.05)");
-      halo.addColorStop(1, "rgba(61,107,255,0)");
+      halo.addColorStop(0, "rgba(46,230,255,0.16)");
+      halo.addColorStop(0.75, "rgba(46,230,255,0.04)");
+      halo.addColorStop(1, "rgba(46,230,255,0)");
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, w, h);
       ctx.beginPath();
       ctx.arc(ox, oy, R, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,150,255,0.35)";
+      ctx.strokeStyle = "rgba(46,230,255,0.35)";
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -89,7 +89,7 @@ export default function FlightGlobe({ still = false }: { still?: boolean }) {
         const [x, y, z] = proj(d);
         if (z < 0) continue;
         const s = 0.7 + z * 1.3;
-        ctx.fillStyle = `rgba(120,150,255,${0.12 + z * 0.55})`;
+        ctx.fillStyle = `rgba(120,235,255,${0.10 + z * 0.55})`;
         ctx.fillRect(x - s / 2, y - s / 2, s, s);
       }
 
@@ -98,38 +98,38 @@ export default function FlightGlobe({ still = false }: { still?: boolean }) {
         const pts = r.path.map(proj);
         ctx.beginPath();
         pts.forEach(([x, y], i) => { if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
-        ctx.strokeStyle = "rgba(255,210,26,0.22)";
+        ctx.strokeStyle = "rgba(255,45,135,0.30)";
         ctx.lineWidth = 1.2;
         ctx.stroke();
         const p = (t * 0.14 + r.phase) % 1, head = Math.floor(p * (pts.length - 1)), tail = Math.max(0, head - 22);
         const grad = ctx.createLinearGradient(pts[tail]![0], pts[tail]![1], pts[head]![0], pts[head]![1]);
-        grad.addColorStop(0, "rgba(255,210,26,0)");
-        grad.addColorStop(1, "rgba(255,210,26,0.95)");
+        grad.addColorStop(0, "rgba(255,45,135,0)");
+        grad.addColorStop(1, "rgba(255,90,170,1)");
         ctx.beginPath();
         for (let i = tail; i <= head; i++) { if (i === tail) ctx.moveTo(pts[i]![0], pts[i]![1]); else ctx.lineTo(pts[i]![0], pts[i]![1]); }
         ctx.strokeStyle = grad;
         ctx.lineWidth = 2.2;
         ctx.stroke();
         const [hx, hy] = pts[head]!;
-        ctx.fillStyle = "#fff6cf";
+        ctx.fillStyle = "#ffe3f0";
         ctx.beginPath(); ctx.arc(hx, hy, 2.4, 0, Math.PI * 2); ctx.fill();
         const [ex, ey, ez] = proj(r.end);
         if (ez > 0) {
-          ctx.fillStyle = "#ffd21a";
+          ctx.fillStyle = "#ff2d87";
           ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "rgba(238,241,255,0.85)";
+          ctx.fillStyle = "rgba(236,251,255,0.9)";
           ctx.fillText(r.code, ex + 7, ey + 4);
         }
       }
 
       const [hx, hy] = proj(home);
       const pulse = (t * 0.6) % 1;
-      ctx.strokeStyle = `rgba(255,61,78,${1 - pulse})`;
+      ctx.strokeStyle = `rgba(46,230,255,${1 - pulse})`;
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(hx, hy, 5 + pulse * 22, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = "#ff3d4e";
+      ctx.fillStyle = "#2ee6ff";
       ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#eef1ff";
+      ctx.fillStyle = "#ecfbff";
       ctx.font = "600 13px 'Geist Mono', ui-monospace, monospace";
       ctx.fillText("CRA", hx + 10, hy - 8);
     };
