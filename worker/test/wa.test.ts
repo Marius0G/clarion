@@ -133,7 +133,7 @@ describe('agent tools', () => {
     ]);
     expect(await setup().tools.queues!({})).toMatchObject({ available: false });
     expect(await tools.routeTo!({ to: 'gate', from: 'Intrare plecări' })).toMatchObject({ status: 'ready' });
-    expect(await tools.reportIssue!({ text: 'bagaj abandonat' })).toMatchObject({ error: 'staff_only' });
+    expect(await tools.reportIssue!({ text: 'bagaj abandonat' })).toMatchObject({ error: 'unavailable' });
     expect(await setup({ role: 'staff' }).tools.reportIssue!({ text: 'x' })).toMatchObject({ error: 'unavailable' });
   });
   it('the no-key fallback answers from the same tools', async () => {

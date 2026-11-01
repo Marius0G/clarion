@@ -268,8 +268,8 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(text).toContain('personalul de securitate');
     expect(text).toContain('Lost & Found este la Informații');
     expect(text).toContain('Am transmis');
-    expect(text).toContain('Recuperarea nu este garantată');
-    expect(await tools().tools.reportIssue!({ text: 'incident' })).toMatchObject({ error: 'staff_only' });
+    expect(text).not.toContain('Recuperarea nu este garantată');
+    expect(await tools().tools.reportIssue!({ text: 'incident' })).toMatchObject({ error: 'unavailable' });
   });
   it('lab rejects all prohibited disclaimers and exercises amenities and stated routes', async () => {
     for (const text of ['ora simulării', 'simulation time', '(estimare)', 'demo']) {

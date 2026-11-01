@@ -43,7 +43,7 @@ describe('D32 camera triggers', () => {
 });
 describe('staff reports and flight risk', () => {
   const report = { id: 'R1', kind: 'medical', node: 'security', text: 'Ajutor', status: 'open' as const };
-  it.each([['securitate', 'P1'], ['bagaj_abandonat', 'P1'], ['medical', 'P2'], ['aglomerare', 'P2']])('prioritizes %s as %s', (kind, priority) => {
+  it.each([['securitate', 'P1'], ['bagaj_abandonat', 'P1'], ['medical', 'P1'], ['aglomerare', 'P2']])('prioritizes %s as %s', (kind, priority) => {
     expect(new Alerts().update(input({ reports: [{ ...report, kind }] }))[0]).toMatchObject({ priority, createdAt: 1000 });
   });
   it('deduplicates reports by kind/zone, reannounces new reports, clears when closed', () => {

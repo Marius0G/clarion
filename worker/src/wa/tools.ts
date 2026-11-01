@@ -6,7 +6,7 @@ import { route, zoneDensities } from '../../../backend/src/routing.js';
 import { terminalGraph, zoneAreas, points, zones } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
-import { classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
+import { classifyIssue, classifyReportType, typeForKind, REPORT_TYPES, isIssueKind, matchNode, type Report, type ReportInput } from './reports.js';
 import { estimateStage, type EvacRoute } from './messaging.js';
 
 export interface ZoneRow {
@@ -24,6 +24,7 @@ export interface AirportView {
   history?(simSec: number): Record<string, ZoneRow>;
 }
 export interface Profile {
+  staffRole?: 'security_supervisor' | 'hall_agent' | 'incident_commander'; zone?: string;
   lang?: Lang; languageExplicit?: boolean; phone: string; role: 'passenger' | 'staff';
   flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
   groupSize?: number; needs?: { kids?: boolean; reducedMobility?: boolean; other?: string };
@@ -138,7 +139,7 @@ export interface ToolDeps {
   profile: () => Profile;
   save: (patch: Partial<Profile>) => Promise<void>;
   /** Stores a staff report (D11); absent in read-only contexts. */
-  report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null; policeEtaMin?: number | null }) => Promise<Report>;
+  report?: (input: ReportInput) => Promise<Report>;
   pageLink?: () => Promise<string>;
   routeIndex?: () => Promise<RouteIndex | null>;
   now?: () => number;
@@ -263,27 +264,27 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       if (!lostItemClaim(text)) return { error: 'not_lost_item' };
       if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const node = resolveLandmark(text, await routeIndex?.() ?? null) ?? matchNode(text, view.flights());
-      const r = await report({ kind: 'altele', node, text, etaMin: null });
+      const r = await report({ kind: 'altele', type: 'lost item', node, text, etaMin: null });
       const security = /securitate|security|screening/i.test(text);
       const en = profile().lang === 'en';
       return { status: 'sent', id: r.id, note: en
-        ? `${security ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff. Recovery is not guaranteed.`
-        : `${security ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul. Recuperarea nu este garantată.` };
+        ? `${security ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
+        : `${security ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.` };
     },
-    async reportIssue(input: { text?: string; kind?: string; location?: string }) {
-      if (profile().role !== 'staff') return { error: 'staff_only', note: say(profile().lang, 'staffOnly') };
+    async reportIssue(input: { text?: string; kind?: string; type?: string; location?: string }) {
       const text = String(input?.text ?? '').trim();
       if (!text) return { error: 'empty', hint: say(profile().lang, 'whereIssue') };
       if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
-      const node = matchNode(`${input?.location ?? ''} ${text}`, view.flights());
+      const type = REPORT_TYPES.find(type => type === input?.type) ?? classifyReportType(text) ?? typeForKind(kind);
+      const node = resolveLandmark(input?.location ?? '', await routeIndex?.() ?? null) ?? matchNode(`${input?.location ?? ''} ${text}`, view.flights());
       const density = zoneDensities(view.flow(), zoneAreas);
       const path = node ? route(terminalGraph, 'team_post', node, density, view.blocked?.()) : null;
       const etaMin = path ? Math.ceil(path.totalSec / 60) : null;
       // The airport police posts Unity places (POLICE_POSTS), crowd-penalised like the team's route (A8); the nearest one.
       const police = node ? POLICE_POSTS.map(post => route(terminalGraph, post, node, density, view.blocked?.())).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0] : undefined;
       const policeEtaMin = police ? Math.ceil(police.totalSec / 60) : null;
-      const r = await report({ kind, node, etaMin, policeEtaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
+      const r = await report({ kind, type, node, place: { node, name: node ? nodeName(node, profile().lang) : say(profile().lang, 'unknownPlace') }, etaMin, policeEtaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
       const lang = profile().lang;
       const eta = etaMin === null && policeEtaMin === null ? say(lang, 'noEta')
         : [etaMin === null ? '' : say(lang, 'eta', etaMin), policeEtaMin === null ? '' : say(lang, 'policeEta', policeEtaMin)].filter(Boolean).join('. ') + '.';

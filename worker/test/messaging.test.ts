@@ -214,15 +214,15 @@ describe('staff reports (D11, D18 beat 4)', () => {
     await h.inbound('STAFF gresit');
     expect((await h.store.get<Profile>('wa:profile:+40712345678'))!.role).toBe('passenger');
     await h.inbound('bagaj abandonat lângă check-in Wizz');
-    expect(await h.agent.reports.list()).toEqual([]);
+    expect(await h.agent.reports.list()).toMatchObject([{ source: 'passenger', type: 'security' }]);
     await h.inbound('STAFF craiova2026');
     expect((await h.store.get<Profile>('wa:profile:+40712345678'))!.role).toBe('staff');
     await h.inbound('Bagaj abandonat lângă check-in Wizz');
-    const [r] = await h.agent.reports.list();
-    expect(r).toEqual({ id: 'R1', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
-    expect(Object.keys(r!)).toEqual(['id', 'at', 'kind', 'node', 'text', 'status', 'etaMin', 'policeEtaMin']);
+    const [, r] = await h.agent.reports.list();
+    expect(r).toMatchObject({ id: 'R2', at: expect.any(String), kind: 'bagaj_abandonat', node: 'check_in:2', text: 'Bagaj abandonat lângă check-in Wizz', status: 'open', etaMin: 2, policeEtaMin: expect.any(Number) });
+    expect(r).toMatchObject({ source: 'staff', state: 'sent', priority: 'P1' });
     // Pitch: the airport police's ETA too, from its nearest post, crowd-penalised like the team's.
-    expect(h.texts().at(-1)!.text).toBe(`Am primit (R1): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min. Poliția aeroportului ajunge în ~${r!.policeEtaMin} min.`);
+    expect(h.texts().at(-1)!.text).toBe(`Am primit (R2): bagaj abandonat, Check-in, grupul 2. Raportul e pe harta din dashboard. Echipa de intervenție a fost anunțată. Echipa ajunge în ~2 min. Poliția aeroportului ajunge în ~${r!.policeEtaMin} min.`);
     expect((await h.agent.reports.close('R1'))!.status).toBe('closed');
     expect(await h.agent.reports.close('R9')).toBeUndefined();
   });

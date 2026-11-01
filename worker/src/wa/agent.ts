@@ -179,9 +179,10 @@ export const TOOL_SPECS = [
   { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses passenger landmark or flight stage. If needs_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin and route, minutes and personal link.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
   {
     name: 'reportIssue',
-    description: 'Doar pentru angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
+    description: 'Pentru pasageri și angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
     input_schema: { type: 'object', properties: {
-      text: { type: 'string', description: 'mesajul angajatului, cum l-a scris' },
+      text: { type: 'string', description: 'mesajul persoanei, cum l-a scris' },
+      type: { type: 'string', enum: ['security', 'medical', 'cleaning', 'lost item', 'crowd', 'other'] },
       kind: { type: 'string', enum: ['bagaj_abandonat', 'medical', 'securitate', 'aglomerare', 'altele'] },
       location: { type: 'string', description: 'locul, cum l-a spus (ex: „lângă check-in 2”, „poarta 3”)' },
     }, required: ['text'] },

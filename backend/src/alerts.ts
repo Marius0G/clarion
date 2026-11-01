@@ -8,7 +8,7 @@ export interface Alert {
   text: string; numbers: Record<string, number>; createdAt: number; updatedAt: number;
   state: AlertState; active: boolean; adviceId: string | null; shelvedUntil: number | null; shelveReason: string | null;
 }
-export interface StaffReport { id: string; kind: string; node: string | null; text: string; status: 'open' | 'closed' }
+export interface StaffReport { id: string; kind: string; node: string | null; text: string; status: 'open' | 'closed'; type?: string; source?: 'passenger' | 'staff'; priority?: 'P1' | 'P2' | 'P3' }
 export interface AlertInput {
   simTime: number;
   flow: Readonly<Record<string, Pick<FlowRow, 'source' | 'stale' | 'coverage' | 'waiting' | 'waitMin' | 'forecast' | 'density'> & { adviceId?: string | null }>>;
@@ -67,15 +67,15 @@ export class Alerts {
     // Same-zone reports form one alarm, but a newly arriving report must require acknowledgement again.
     const reportGroups = new Map<string, StaffReport[]>();
     for (const r of reports.filter(r => r.status === 'open')) {
-      const kind = ['securitate', 'bagaj_abandonat'].includes(r.kind) ? 'staff-security' : 'staff-report';
+      const kind = (['securitate', 'bagaj_abandonat', 'medical'].includes(r.kind) || r.type === 'security' || r.type === 'medical') ? 'staff-security' : 'staff-report';
       const key = `${kind}:${r.node ? zoneKey(r.node) : 'unknown'}`;
       reportGroups.set(key, [...reportGroups.get(key) ?? [], r]);
     }
     for (const [key, group] of reportGroups) {
       const r = group[group.length - 1]!;
       const kind = key.startsWith('staff-security:') ? 'staff-security' : 'staff-report';
-      add({ kind, priority: kind === 'staff-security' ? 'P1' : 'P2', zoneId: r.node, flight: null,
-        text: kind === 'staff-security' ? 'Raport securitate' : 'Raport personal', numbers: { reports: group.length }, adviceId: null }, r.node ? zoneKey(r.node) : 'unknown');
+      add({ kind, priority: group.some(r => r.priority === 'P1') || kind === 'staff-security' ? 'P1' : group.some(r => r.priority === 'P2') ? 'P2' : r.priority ?? 'P2', zoneId: r.node, flight: null,
+        text: kind === 'staff-security' ? (group.every(r => r.kind === 'medical' || r.type === 'medical') ? 'Raport medical' : 'Raport securitate') : (group.some(r => r.source === 'passenger') ? 'Raport pasager' : 'Raport personal'), numbers: { reports: group.length }, adviceId: null }, r.node ? zoneKey(r.node) : 'unknown');
       const previous = this.reportIds.get(key);
       if (previous && group.some(r => !previous.has(r.id))) {
         const alert = this.rows.get(key);

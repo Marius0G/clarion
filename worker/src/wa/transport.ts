@@ -15,6 +15,7 @@ export interface WaEnv {
   /** Code an employee sends as "STAFF <code>" to get the staff role (D11). Unset: DEFAULT_STAFF_CODE. */
   STAFF_CODE?: string;
   STAFF_PHONES?: string;
+  STAFF_ASSIGNMENTS?: string;
 }
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -53,12 +54,13 @@ export function quickReaction(text: string) {
 
 // ---- Inbound parsing.
 export const MEDIA = new Set(['image', 'audio', 'video', 'document', 'sticker', 'location', 'contacts', 'voice']);
-export interface InboundMessage { id: string; phone: string; name: string; type: string; text: string | null; replyId: string | null; at: number }
+export interface InboundMessage { id: string; phone: string; name: string; type: string; text: string | null; replyId: string | null; at: number; photo?: string }
 
 function textOf(m: any): string | null {
   if (m.type === 'text' || (m.type === undefined && m.text)) return m.text?.body ?? '';
   if (m.type === 'button' || (m.type === undefined && m.button)) return m.button?.text ?? m.button?.payload ?? '';
   if (m.type === 'interactive' || (m.type === undefined && m.interactive)) return m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? '';
+  if (m.type === 'image') return m.image?.caption ?? null;
   return null;
 }
 
@@ -75,7 +77,7 @@ export function parseWebhook(payload: any, phoneNumberId?: string): InboundMessa
         const phone = normalizePhone(`+${m?.from}`);
         if (!phone || typeof m.id !== 'string' || m.type === 'reaction') continue;
         const name = v.contacts?.find((c: any) => c.wa_id === m.from)?.profile?.name || '';
-        out.push({ id: m.id, phone, name, type: m.type ?? 'text', text: textOf(m), replyId: m.interactive?.button_reply?.id ?? null, at: Number(m.timestamp) * 1000 || Date.now() });
+        out.push({ id: m.id, phone, name, type: m.type ?? 'text', text: textOf(m), ...(m.type === 'image' && typeof m.image?.id === 'string' && { photo: `wa:${m.image.id}` }), replyId: m.interactive?.button_reply?.id ?? null, at: Number(m.timestamp) * 1000 || Date.now() });
       }
     }
   }

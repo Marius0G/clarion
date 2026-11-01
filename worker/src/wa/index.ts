@@ -1,13 +1,13 @@
 import { mapNodeId } from '../../../backend/src/mapIds.js';
-import { zoneDensities } from '../../../backend/src/routing.js';
-import { zoneAreas } from '../../../backend/src/terminal.js';
+import { zoneDensities, route } from '../../../backend/src/routing.js';
+import { zoneAreas, terminalGraph } from '../../../backend/src/terminal.js';
 import { RouteImages, resolveLandmark } from './airport-info.js';
 import { Auth, normalizePhone, parseLogin } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
-import { extractFacts, messageLanguage, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
+import { lostItemClaim, extractFacts, messageLanguage, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
-import { say, language, passengerText } from './texts.js';
+import { say, language, passengerText, nodeName } from './texts.js';
 import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
@@ -15,7 +15,7 @@ import { consumeJoin } from '../join.js';
 import { reply, foldHistory, type HistoryEntry } from './agent.js';
 import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
-import { Reports } from './reports.js';
+import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType } from './reports.js';
 import { toolsFor, type AirportView, type Profile } from './tools.js';
 import {
   WhatsAppClient, allowed, failedStatuses, masked, parseWebhook, quickReaction, reactionOf, redact, MEDIA,
@@ -66,7 +66,12 @@ export class WhatsAppAgent {
       await this.observe?.(event);
     });
     this.messaging = new Messaging({ store, appUrl: env.APP_URL, wa: this.wa, view, toUnity: opts.toUnity ?? (() => false), evacWaitMs: opts.evacWaitMs, images: this.images });
-    this.reports = new Reports(store, opts.reportsChanged);
+    this.reports = new Reports(store, opts.reportsChanged, async r => {
+      if (!r.phone) return;
+      const en = (await this.profile(r.phone))?.lang === 'en';
+      await this.messaging.notify({ channel: 'whatsapp', phone: r.phone }, { kind: 'admin', requested: true,
+        text: `${r.id} · ${reportStateLabel(r.state, en)} · ${r.place.name === r.node && r.node ? nodeName(r.node, en ? 'en' : 'ro') : r.place.name}${r.etaMin == null || r.state === 'resolved' ? '' : ` · ETA ~${r.etaMin} min`}` });
+    });
   }
 
   async reset() {
@@ -77,6 +82,7 @@ export class WhatsAppAgent {
       ...await this.reports.reset(),
       profiles: await clearPrefix(this.store, 'wa:profile:'),
       histories: await clearPrefix(this.store, 'wa:ctx:'),
+      reportDrafts: await clearPrefix(this.store, 'wa:report:'),
       inboundWindows: await clearPrefix(this.store, 'wa:last:'),
     };
   }
@@ -142,7 +148,7 @@ export class WhatsAppAgent {
     const flight = profile.flight && findFlight(this.view.flights(), profile.flight);
     const flightAlert = flight && (flight.status === 'delayed' || flight.status === 'cancelled')
       && /flight|zbor|gate|poart/i.test(m.text ?? '');
-    const urgent = m.text && (urgentText(m.text) || flightAlert || (profile.role === 'staff' && staffIncident(m.text)));
+    const urgent = m.text && (clearProblem(m.text) || m.replyId?.startsWith('rep:') || urgentText(m.text) || flightAlert || (profile.role === 'staff' && staffIncident(m.text)));
     const quick = m.text && !urgent ? quickReaction(m.text) : null;
     if (quick) await this.wa.sendReaction(m.phone, m.id, quick);
 
@@ -157,6 +163,11 @@ export class WhatsAppAgent {
     await this.store.put(`wa:last:${m.phone}`, m.at);
     await save({ role: profile.role, lastInboundAt: m.at, ...(m.name && { name: m.name }) });
 
+    if (m.photo) {
+      const draft = await this.store.get<object>(`wa:report:${m.phone}`) ?? { text: m.text ?? '' };
+      await this.store.put(`wa:report:${m.phone}`, { ...draft, photo: m.photo });
+      m.text ??= '';
+    }
     if (m.text === null) { if (MEDIA.has(m.type)) await this.wa.sendText(m.phone, say(profile.lang, 'textOnly')); return; }
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
     if (chosen) { await save({ lang: chosen, languageExplicit: true }); await this.wa.sendText(m.phone, say(chosen, 'language')); return; }
@@ -217,6 +228,54 @@ export class WhatsAppAgent {
       await remember(`START ${flight.flight}`, [text, ask]);
       return;
     }
+    // Reports from either role use one bounded slot-filling flow; missing type/place are button choices.
+    const reportKey = `wa:report:${m.phone}`;
+    let draft = await this.store.get<{ text: string; type?: ReportType; node?: string; photo?: string }>(reportKey);
+    if (draft || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))) || /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) || m.replyId?.startsWith('rep:')) {
+      const en = profile.lang === 'en';
+      const index = await this.images.index();
+      const words = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+      const reportText = words(m.text);
+      const mentioned = index?.points.flatMap(p => [p.name.ro, p.name.en, ...p.aliases].map(name => ({ node: p.id, name: words(name) })))
+        .filter(p => p.name && ` ${reportText} `.includes(` ${p.name} `)).sort((a, b) => b.name.length - a.name.length)[0]?.node;
+      draft ??= { text: /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) ? '' : m.text,
+        type: classifyReportType(m.text), node: mentioned ?? matchNode(m.text, this.view.flights()) ?? undefined };
+      if (m.replyId?.startsWith('rep:type:')) {
+        const selected = m.replyId.slice(9) as ReportType;
+        if (REPORT_TYPES.includes(selected)) draft.type = selected;
+      } else if (m.replyId?.startsWith('rep:loc:')) {
+        const selected = m.replyId.slice(8);
+        if (index?.points.some(p => p.id === selected) || ['door_departures', 'U_SECURITY_QUEUE'].includes(selected)) draft.node = selected;
+      } else if (!m.replyId?.startsWith('rep:page:')) {
+        draft.type ??= classifyReportType(m.text);
+        draft.node ??= mentioned ?? resolveLandmark(m.text, index) ?? matchNode(m.text, this.view.flights()) ?? undefined;
+        if (!draft.text && !/^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text)) draft.text = m.text;
+      }
+      await this.store.put(reportKey, draft);
+      if (!draft.type) {
+        const names = en ? ['Security', 'Medical', 'Cleaning', 'Lost item', 'Crowd', 'Other'] : ['Securitate', 'Medical', 'Curățenie', 'Obiect pierdut', 'Aglomerare', 'Altele'];
+        for (const offset of [0, 3]) await this.wa.sendButtons(m.phone, en ? 'Type' : 'Tip', REPORT_TYPES.slice(offset, offset + 3).map((type, i) => ({ id: `rep:type:${type}`, title: names[offset + i]! })));
+        return;
+      }
+      if (!draft.node) {
+        const choices = index?.points ?? [{ id: 'door_departures', name: { ro: 'Intrare plecări', en: 'Entrance' } }, { id: 'U_SECURITY_QUEUE', name: { ro: 'Securitate', en: 'Security' } }];
+        const offset = m.replyId?.startsWith('rep:page:') ? Number(m.replyId.slice(9)) || 0 : 0;
+        await this.wa.sendButtons(m.phone, en ? 'Place' : 'Reper', [...choices.slice(offset, offset + 2).map(p => ({ id: `rep:loc:${p.id}`, title: p.name[en ? 'en' : 'ro'].slice(0, 20) })),
+          { id: `rep:page:${offset + 2 < choices.length ? offset + 2 : 0}`, title: en ? 'More' : 'Alte repere' }]);
+        return;
+      }
+      if (!draft.text) { await this.wa.sendText(m.phone, en ? 'Description' : 'Descriere'); return; }
+      const path = route(terminalGraph,
+        'team_post', draft.node, zoneDensities(this.view.flow(), zoneAreas), this.view.blocked?.());
+      await this.reports.add({ kind: kindForType(draft.type), type: draft.type, node: draft.node,
+        place: { node: draft.node, name: index?.points.find(p => p.id === draft!.node)?.name[en ? 'en' : 'ro'] ?? draft.node },
+        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null });
+      if (draft.type === 'lost item') await this.messaging.notify({ channel: 'whatsapp', phone: m.phone }, { kind: 'admin', requested: true,
+        text: en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
+          : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.` });
+      await this.store.delete(reportKey);
+      return;
+    }
     // A tap on the bag question: save it, then ask the agent the question it was for.
     let text = m.text;
     if (m.replyId === 'bag:yes' || m.replyId === 'bag:no') {
@@ -238,7 +297,7 @@ export class WhatsAppAgent {
     const spokenFlight = code && findFlight(this.view.flights(), code);
     if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
-    const tools = toolsFor({ routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add(r), evacRoute: f => this.messaging.evacRouteFor(f),
+    const tools = toolsFor({ routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
       pageLink: async () => {
         const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
         const stored = await this.profile(m.phone);
