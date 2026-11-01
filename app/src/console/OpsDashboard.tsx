@@ -52,6 +52,9 @@ export function OpsDashboard() {
   const sim = useSim(1000)
   const reports = useReports()
   const latestSim = useRef(sim)
+  const measured = useSpeed(sim)
+  const reported = (sim as (SimSnapshot & { speed?: unknown }) | null)?.speed
+  const speed = typeof reported === 'number' && Number.isFinite(reported) && reported > 0 ? Math.round(reported * 10) / 10 : measured
   useEffect(() => { latestSim.current = sim }, [sim])
   const [alertResult, setAlertResult] = useState<{ source: SimSnapshot | null; alerts: Alert[] } | null>(null)
   const alerts = alertResult && alertResult.source === sim ? alertResult.alerts : (sim as (SimSnapshot & { alerts?: Alert[] }) | null)?.alerts ?? []
@@ -101,6 +104,12 @@ export function OpsDashboard() {
   if (order.source !== sim) setOrder({ source: sim, value: currentOrder })
   const ordered = currentOrder.ids.flatMap(id => { const z = byId.get(id); return z ? [z] : [] })
   const metrics = topMetrics(stats, sim)
+  const security = byId.get('U_SECURITY_QUEUE')
+  const securityRow = liveRow(sim, 'U_SECURITY_QUEUE')
+  const checkin = stats.filter(s => s.kind === 'check_in' && s.waitMin != null).sort((a, b) => b.waitMin! - a.waitMin!)[0]
+  const adviceLanes = typeof securityRow?.advice === 'object' ? securityRow?.advice?.lanes ?? null : null
+  const atRisk = new Set(alerts.filter(a => a.kind === 'flight-risk' && a.active).map(a => a.flight)).size
+  const delayed = (sim?.flights ?? []).filter(f => f.status === 'delayed' || f.status === 'cancelled')
   const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind }] : [])
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(z => z !== id) : [...current, id])
 
@@ -126,6 +135,20 @@ export function OpsDashboard() {
   if (newlyCompleted.length) setCompleted(done)
   const recommendation = ordered.find(z => z.line.action && !dismissed.includes(`${z.id}:${z.line.action.label}`) && !history.some(c => (c.status === 'sent' || c.status === 'acked') && !done.has(c.key) && commandTouchesZone(c.command, z.id)))
 
+  const placeName = (node: string) => byId.get(node)?.name ?? byId.get(mapNodeId(node))?.name ?? mapZones.get(node)?.name_ro ?? mapZones.get(mapNodeId(node))?.name_ro ?? node
+  const openReports = [...reports].sort((a, b) => Number(a.status === 'acked') - Number(b.status === 'acked') || Date.parse(b.at) - Date.parse(a.at))
+  /** D18 beat 4: the latest evacuation, people the cameras still see in its zones against the count when it was sent. */
+  const evacuation = (() => {
+    const c = history.find(h => h.command.type === 'evacuate')
+    if (!c || c.command.type !== 'evacuate') return null
+    const zones = c.command.zones
+    const rows = zones.map(z => liveRow(sim, z))
+    const left = rows.some(r => r) ? rows.reduce((n, r) => n + (r?.waiting ?? 0), 0) : null
+    const before = c.evidence?.before.waiting ?? null
+    const share = left != null && before ? Math.max(0, Math.min(100, Math.round((1 - left / before) * 100))) : null
+    return { names: zones.map(z => byId.get(z)?.name ?? z).join(', '), left, before, share }
+  })()
+
   /** Desk groups that share the selected hall (D8): one button each, so a single group can be acted on. */
   const panelGroups = mapSelected ? stats.filter(s => GROUP.test(s.id) && groupZone(s.id) === mapSelected) : []
   /** Hover card: the zone's own numbers, or the desk groups that sit in it. Nothing invented. */
@@ -149,13 +172,36 @@ export function OpsDashboard() {
   }
 
   return <div className="ops ops-console">
+    <div className="ops-bar">
+      <div className="ops-brand"><b>Clarion</b><span>Aeroportul Craiova · Terminal 2</span></div>
+      <div className="ops-clock" data-testid="sim-clock" aria-label="Ceas simulare">
+        <span className="ops-clock-time">{simClock(sim?.simTime)}</span>
+        {speed != null && <span className="ops-chip">×{speed}</span>}
+        {sim?.run.scenario && <span className="ops-chip">{sim.run.scenario}</span>}
+      </div>
+      <div className="ops-bar-flights">
+        {delayed.map(f => <span key={f.flight} className="ops-chip is-near"><b>{f.flight}</b> {f.destination} · {f.status === 'cancelled' ? 'anulat' : `+${f.delayMin} min`}</span>)}
+      </div>
+      <div className="ops-links">
+        <span className={`ops-link${sim?.connected ? ' on' : ''}`}><i />Unity</span>
+        <span className={`ops-link${sim?.vision ? ' on' : ''}`}><i />Camere</span>
+      </div>
+    </div>
     <header className="ops-metrics" aria-label="Indicatori" data-testid="top-band">
-      {[
-        ['Așteptare maximă', minutes(metrics.worst)], ['Prima depășire', simClock(metrics.first).slice(0, 5)],
-        ['Sub țintă azi', '—'], ['Zboruri în pericol', String(new Set(alerts.filter(a => a.kind === 'flight-risk' && a.active).map(a => a.flight)).size)],
-        ['Densitate maximă', metrics.density == null ? '—' : `${metrics.density.toFixed(1)} /m²`],
-      ].map(([label, value, note]) => <div key={label}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>)}
+      <div><span>În terminal</span><strong><Tick value={people.length ? number(people.length) : '—'} /></strong>
+        <small>văzuți de camere · densitate max {metrics.density == null ? '—' : `${metrics.density.toFixed(1)} /m²`}</small></div>
+      <div className={`is-${security?.state ?? 'none'}`}><span>Securitate</span>
+        <div className="ops-metric-row"><strong><Tick value={minutes(security?.waitMin ?? null)} /></strong>
+          <Spark now={security?.waitMin ?? null} forecast={securityRow?.forecast ?? null} target={10} /></div>
+        <small>p90 {minutes(securityRow?.waitMinP90 ?? null)} · țintă 10 min</small></div>
+      <div className={`is-${checkin?.state ?? 'none'}`}><span>Check-in</span><strong><Tick value={minutes(checkin?.waitMin ?? null)} /></strong>
+        <small>{checkin ? checkin.name : 'fără date'} · țintă 15 min</small></div>
+      <div><span>Linii deschise</span><strong><Tick value={security?.lanes == null ? '—' : number(security.lanes)} /></strong>
+        <small>securitate{adviceLanes != null && adviceLanes !== security?.lanes ? ` · necesar ${adviceLanes}` : ''}</small></div>
+      <div><span>Așteptare maximă</span><strong><Tick value={minutes(metrics.worst)} /></strong>
+        <small>prima depășire {simClock(metrics.first).slice(0, 5)} · {atRisk} {atRisk === 1 ? 'zbor' : 'zboruri'} în pericol</small></div>
     </header>
+    <CameraStrip zoneName={id => byId.get(id)?.name ?? byId.get(mapNodeId(id))?.name ?? id} zoneWait={id => liveRow(sim, id)?.waitMin ?? null} onHover={setHovered} />
     <main className={`ops-stage${zone ? ' has-panel' : ''}`}>
       <div className="ops-canvas" data-testid="terminal-map" onMouseOver={e => {
         const id = (e.target as Element).closest('[data-testid^="zone-"]')?.getAttribute('data-testid')?.slice(5)
@@ -167,7 +213,7 @@ export function OpsDashboard() {
       </div>
 
       <aside className="ops-rail" aria-label="Operațiuni">
-        <section className="ops-recommendation" data-testid="advice">
+        <section className={`ops-recommendation${recommendation ? '' : ' is-idle'}`} data-testid="advice">
           <h2>Recomandare</h2>
           {recommendation ? <>
             <b>{recommendation.line.action!.label}</b><p>{recommendation.name}</p>
@@ -178,10 +224,24 @@ export function OpsDashboard() {
             <button onClick={() => { setDismissed(d => [...d, `${recommendation.id}:${recommendation.line.action!.label}`]); setRejections(r => [...r, { key: `rejected-${Date.now()}`, at: Date.now(), label: `${recommendation.name} · ${recommendation.line.action!.label}` }]) }}>Respinge</button>
           </> : <p>Fără recomandări</p>}
         </section>
+        {(openReports.length > 0 || evacuation) && <section className="ops-incident" aria-label="Incident" data-testid="incident">
+          <h2>Incident</h2>
+          {openReports.slice(0, 2).map(r => <article key={r.id}>
+            <b>{r.text}</b><p>{placeName(r.node)} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}</p>
+            {(r.etaMin != null || r.policeEtaMin != null) && <dl className="ops-eta">
+              {r.etaMin != null && <div><dt>Echipa</dt><dd>~{r.etaMin} min</dd></div>}
+              {r.policeEtaMin != null && <div><dt>Poliția</dt><dd>~{r.policeEtaMin} min</dd></div>}
+            </dl>}
+          </article>)}
+          {evacuation && <article className="ops-evac-progress" data-testid="evac-progress">
+            <b>Evacuare · {evacuation.names}</b>
+            {evacuation.share != null && <div className="ops-progress" role="progressbar" aria-label="Evacuare" aria-valuemin={0} aria-valuemax={100} aria-valuenow={evacuation.share}><i style={{ width: `${evacuation.share}%` }} /></div>}
+            <p>{evacuation.left == null ? 'Camerele nu văd zona' : `${number(evacuation.left)} oameni rămași`}{evacuation.before != null && ` din ${number(evacuation.before)}`}{evacuation.share != null && ` · ${evacuation.share}% evacuat`}</p>
+          </article>}
+        </section>}
         {/* D18 beat 2: the accuracy card sits right under the advice so it stays on screen at 1536×960 even with alerts. */}
         <AccuracyCard plan={plan} sim={sim} onZone={id => openZone(byId.has(id) ? id : mapNodeId(id))} />
         <AlertList alerts={alerts} simTime={sim?.simTime ?? null} onZone={id => openZone(byId.has(id) ? id : alertMapZone(id))} onCommand={commandAlert} />
-        <CameraStrip zoneName={id => byId.get(id)?.name ?? byId.get(mapNodeId(id))?.name ?? id} onHover={setHovered} />
         <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
           {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
             const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
@@ -273,3 +333,30 @@ function liveRowForecast(sim: SimSnapshot | null, id: string): string | null {
   return `${Math.round(Math.max(...next.map(p => p.waitMin)))} min`
 }
 const onClickHint = (zone: { staffed: boolean } | undefined) => zone?.staffed ? <p className="ops-card-hint">Click pentru decizii</p> : null
+/** Re-mounts when the value changes, so a new number plays a short entrance (CSS; off under reduced motion). */
+function Tick({ value }: { value: string }) { return <span key={value} className="ops-tick">{value}</span> }
+/** Forecast line (D5b): now, then +30/+60/+90/+120 from flow.report, against the wait target. Nothing without a forecast. */
+function Spark({ now, forecast, target }: { now: number | null; forecast: { inMin: number; waitMin: number }[] | null; target: number }) {
+  const pts = [...(now == null ? [] : [{ inMin: 0, waitMin: now }]), ...(forecast ?? []).filter(p => p.inMin > 0 && p.inMin <= 120 && Number.isFinite(p.waitMin))].sort((a, b) => a.inMin - b.inMin)
+  if (pts.length < 2) return null
+  const W = 140, H = 44, max = Math.max(target * 2, ...pts.map(p => p.waitMin)) * 1.1
+  const x = (m: number) => 3 + m / 120 * (W - 6), y = (v: number) => H - 12 - v / max * (H - 16)
+  const last = pts.at(-1)!
+  return <svg className="ops-spark" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={`Prognoză: ${pts.map(p => `${p.inMin ? `+${p.inMin}` : 'acum'} ${Math.round(p.waitMin)} min`).join(', ')}`}>
+    <line className="ops-spark-target" x1={3} x2={W - 3} y1={y(target)} y2={y(target)} />
+    <polyline points={pts.map(p => `${x(p.inMin)},${y(p.waitMin)}`).join(' ')} />
+    {pts.map(p => <circle key={p.inMin} cx={x(p.inMin)} cy={y(p.waitMin)} r={p === last ? 2.5 : 1.5} />)}
+    <text className="ops-spark-end" x={x(last.inMin) - 5} y={y(last.waitMin) - 4} textAnchor="end">{Math.round(last.waitMin)}</text>
+    {[30, 60, 90, 120].map(m => <text key={m} x={x(m)} y={H - 1} textAnchor={m === 120 ? 'end' : 'middle'}>+{m}</text>)}
+  </svg>
+}
+/** Sim speed measured from the snapshots: sim seconds per wall second, between two reports. */
+function useSpeed(sim: SimSnapshot | null): number | null {
+  const [sample, setSample] = useState<{ simTime: number; at: number; speed: number | null } | null>(null)
+  const t = sim?.simTime ?? null, at = Date.parse(sim?.lastSeen ?? '')
+  if (t != null && Number.isFinite(at) && (!sample || at > sample.at)) {
+    const v = sample && t > sample.simTime ? (t - sample.simTime) / ((at - sample.at) / 1000) : NaN
+    setSample({ simTime: t, at, speed: Number.isFinite(v) && v > 0 && v < 1000 ? Math.max(1, Math.round(v)) : sample?.speed ?? null })
+  }
+  return sample?.speed ?? null
+}

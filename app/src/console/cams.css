@@ -1,17 +1,31 @@
-/* "Camere" rail section (contract camera.frame), in the D29 console style: flat, 1 px rules, 2 px corners. */
-.ops-cam-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
-.ops button.ops-cam { display:flex; flex-direction:column; gap:2px; padding:0 0 4px; text-align:left; background:#e4e4e4; min-width:0 }
-.ops-cam img { display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; background:#9a9a9a }
-.ops-cam b,.ops-cam small { padding:0 6px }
-.ops-cam b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-.ops-cam small { color:#4a4a4a }
-.ops-cam.stale img { opacity:.35 }
-.ops-cam.stale small { color:var(--ink) }
-/* Enlarged frame over the map (the rail stays visible). */
-.ops-cam-big { position:fixed; z-index:20; left:0; top:104px; right:400px; bottom:0; display:grid; place-items:center; padding:16px; background:#D4D4D4; cursor:zoom-out }
+/* "Camere" (contract camera.frame): a black band of live monitors under the key numbers. YOLO's boxes are in the JPEGs. */
+.ops-cams { flex:none; padding:10px 20px 12px; background:var(--night); color:var(--night-ink); border-bottom:1px solid var(--rule-strong) }
+.ops-cam-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px }
+.ops button.ops-cam { display:flex; flex-direction:column; gap:6px; padding:0; min-width:0; text-align:left; border:0; background:none; color:var(--night-ink); cursor:zoom-in }
+.ops button.ops-cam:hover:not(:disabled) { background:none; color:var(--night-ink) }
+.ops button.ops-cam:hover .ops-cam-frame { outline:1px solid var(--night-ink); outline-offset:2px }
+.ops-cam-frame { position:relative; display:block; background:#000; overflow:hidden }
+.ops-cam .ops-cam-frame img { display:block; width:100%; height:clamp(120px,17vh,250px); object-fit:contain; background:#000 }
+.ops-cam-live { position:absolute; left:8px; top:8px; display:inline-flex; align-items:center; gap:6px; padding:3px 7px; background:rgba(0,0,0,.72); color:#fff; font:600 11px/1.2 var(--mono); letter-spacing:.06em; text-transform:uppercase }
+.ops-cam-live em { font-style:normal; font-weight:400; color:#c9c9c4; text-transform:none; letter-spacing:0 }
+.ops-live-dot { width:7px; height:7px; border-radius:50%; background:var(--full) }
+.ops .ops-live-dot { animation:ops-live 1.6s cubic-bezier(.16,1,.3,1) infinite }
+.ops .ops-cam-live.lost .ops-live-dot { animation:none; background:#8d8d86 }
+@keyframes ops-live { 0% { box-shadow:0 0 0 0 rgba(208,38,27,.7) } 70%,100% { box-shadow:0 0 0 7px rgba(208,38,27,0) } }
+.ops-cam-id { position:absolute; right:8px; top:8px; padding:3px 7px; background:rgba(0,0,0,.72); color:#c9c9c4; font:500 11px/1.2 var(--mono) }
+.ops-cam-meta { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:0 12px; align-items:baseline; min-width:0 }
+.ops-cam-meta b { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ops-cam-meta small { grid-column:1; color:var(--night-ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ops-cam-figs { grid-column:2; grid-row:1/3; display:flex; gap:14px; color:var(--night-ink-2); font-size:12px; white-space:nowrap }
+.ops-cam-figs>span { display:flex; flex-direction:column; align-items:flex-end; line-height:1.15 }
+.ops-cam-figs strong { font:600 20px/1.1 var(--sans); letter-spacing:-.02em; color:var(--night-ink) }
+.ops-cam.stale img { opacity:.3 }
+/* Enlarged frame: the whole screen, black, so the boxes read. */
+.ops-cam-big { position:fixed; z-index:20; inset:0; display:grid; place-items:center; padding:32px; background:rgba(5,5,5,.94); color:var(--night-ink); cursor:zoom-out }
 .ops-cam-big figure { margin:0; max-width:100%; max-height:100% }
-.ops-cam-big img { display:block; max-width:100%; max-height:calc(100dvh - 104px - 72px); border:1px solid var(--rule) }
-.ops-cam-big figcaption { margin-top:8px }
-.ops-cam-big .ops-ghost { position:absolute; top:8px; right:8px; font-size:20px; line-height:1; background:#e4e4e4 }
-@media(max-width:1000px) { .ops-cam-big { right:360px } }
-@media(max-width:700px) { .ops-cam-big { inset:0 } }
+.ops-cam-big img { display:block; max-width:100%; max-height:calc(100dvh - 120px) }
+.ops-cam-big figcaption { display:flex; flex-wrap:wrap; gap:6px 20px; align-items:baseline; margin-top:12px; color:var(--night-ink-2) }
+.ops-cam-big figcaption b { font-size:18px; font-weight:600; color:var(--night-ink) }
+.ops .ops-cam-big .ops-ghost { position:absolute; top:12px; right:16px; font-size:24px; line-height:1; color:var(--night-ink); border:1px solid var(--night-rule); background:none }
+@media(max-width:1000px) { .ops-cam-grid { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media(max-width:700px) { .ops-cams { padding:10px }.ops-cam-figs { grid-row:auto; grid-column:1/-1; justify-content:flex-start }.ops-cam-figs>span { align-items:flex-start } }
