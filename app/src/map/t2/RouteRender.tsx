@@ -4,7 +4,7 @@ import { fmt } from './geometry'
 import { textWidth } from './layout'
 import { MAP_BOX, MAP_DIVIDER, TerminalMap, worldAt } from './TerminalMap'
 import { routeBox, type RouteSpec } from './routeSpec'
-import { pad } from './stack'
+import { pad, type Box } from './stack'
 import './routeRender.css'
 
 /**
@@ -32,10 +32,14 @@ function runs(spec: RouteSpec) {
 }
 
 /** Flat label box with text, anchored by its bottom centre. */
-function Tag({ at, text, u, dark = false, dy = 0, right = false }: { at: Pt; text: string; u: number; dark?: boolean; dy?: number; right?: boolean }) {
+function Tag({ at, text, u, dark = false, dy = 0, right = false, avoid = [] }: { at: Pt; text: string; u: number; dark?: boolean; dy?: number; right?: boolean; avoid?: Box[] }) {
   const size = 18 * u, w = textWidth(text, size) + 22 * u, h = size + 16 * u
   // Bottom centre by default; `right`: vertically centred, starting at `at`.
-  const x = right ? at[0] : at[0] - w / 2, y = right ? at[1] - h / 2 : at[1] - h + dy
+  const x = right ? at[0] : at[0] - w / 2
+  let y = (right ? at[1] - h / 2 : at[1] - h) + dy
+  // Place step labels below the start marker when their real label boxes intersect.
+  for (const [ax, ay, aw, ah] of avoid)
+    if (x < ax + aw && x + w > ax && y < ay + ah && y + h > ay) y = ay + ah + 8 * u
   return <g className={`r-tag${dark ? ' dark' : ''}`}>
     <rect x={fmt(x)} y={fmt(y)} width={fmt(w)} height={fmt(h)} rx={fmt(2 * u)} />
     <text x={fmt(x + w / 2)} y={fmt(y + h / 2 + size * 0.35)} fontSize={fmt(size)}>{text}</text>
@@ -45,6 +49,10 @@ function Tag({ at, text, u, dark = false, dy = 0, right = false }: { at: Pt; tex
 function Overlay({ spec, u }: { spec: RouteSpec; u: number }) {
   const parts = runs(spec)
   const els: ReactNode[] = []
+  const first = parts[0]!.pts[0]!
+  const startWidth = textWidth('Ești aici', 18 * u) + 22 * u
+  // One bounding box includes both the origin tag and its circular marker.
+  const startBox: Box = [first[0] - startWidth / 2 - 2 * u, first[1] - 54 * u, startWidth + 4 * u, 70 * u]
   parts.forEach((r, k) => {
     const d = `M${r.pts.map(p => p.map(fmt).join(',')).join('L')}`
     els.push(<path key={`h${k}`} className="r-halo" d={d} strokeWidth={fmt(15 * u)} />, <path key={`l${k}`} className="r-line" d={d} strokeWidth={fmt(8 * u)} />)
@@ -69,11 +77,10 @@ function Overlay({ spec, u }: { spec: RouteSpec; u: number }) {
         <rect x={fmt(p[0] - s)} y={fmt(p[1] - s)} width={fmt(2 * s)} height={fmt(2 * s)} rx={fmt(2 * u)} />
         <path d={up ? `M${fmt(p[0])},${fmt(p[1] - s * 0.6)}L${fmt(p[0] + s * 0.55)},${fmt(p[1] + s * 0.05)}M${fmt(p[0])},${fmt(p[1] - s * 0.6)}L${fmt(p[0] - s * 0.55)},${fmt(p[1] + s * 0.05)}M${fmt(p[0])},${fmt(p[1] - s * 0.6)}V${fmt(p[1] + s * 0.6)}`
           : `M${fmt(p[0])},${fmt(p[1] + s * 0.6)}L${fmt(p[0] + s * 0.55)},${fmt(p[1] - s * 0.05)}M${fmt(p[0])},${fmt(p[1] + s * 0.6)}L${fmt(p[0] - s * 0.55)},${fmt(p[1] - s * 0.05)}M${fmt(p[0])},${fmt(p[1] + s * 0.6)}V${fmt(p[1] - s * 0.6)}`} strokeWidth={fmt(2.6 * u)} />
-        {side ? <Tag at={[p[0] + s + 8 * u, p[1]]} text={text} u={u} right /> : <Tag at={[p[0], p[1] - s - 6 * u]} text={text} u={u} />}
+        {side ? <Tag at={[p[0] + s + 8 * u, p[1]]} text={text} u={u} right avoid={[startBox]} /> : <Tag at={[p[0], p[1] - s - 6 * u]} text={text} u={u} avoid={[startBox]} />}
       </g>)
     }
   }
-  const first = parts[0]!.pts[0]!
   const lastRun = parts[parts.length - 1]!
   const end = lastRun.pts[lastRun.pts.length - 1]!
   els.push(<g key="start" className="r-start">
@@ -100,7 +107,7 @@ function Overlay({ spec, u }: { spec: RouteSpec; u: number }) {
       <path d={`M${fmt(end[0])},${fmt(end[1])}V${fmt(end[1] - pole)}`} className="pole" strokeWidth={fmt(3 * u)} />
       <path d={`M${fmt(end[0])},${fmt(end[1] - pole)}h${fmt(26 * u)}l${fmt(-7 * u)},${fmt(9 * u)}l${fmt(7 * u)},${fmt(9 * u)}h${fmt(-26 * u)}Z`} className="flag" />
       <circle cx={fmt(end[0])} cy={fmt(end[1])} r={fmt(5 * u)} className="foot" />
-      <Tag at={[end[0], end[1] - pole - 8 * u]} text={spec.to} u={u} dark />
+      <Tag at={[end[0], end[1] - pole - 8 * u]} text={spec.to} u={u} dark avoid={[startBox]} />
     </g>)
   }
   return <>{els}</>

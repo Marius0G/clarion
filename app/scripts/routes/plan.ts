@@ -1,5 +1,5 @@
 /**
- * Every ordered pair of landmarks routed with the backend's own `route()` on its terminal graph,
+ * Every origin routed to passenger destinations with the backend's own `route()` on its terminal graph,
  * so the picture matches the WhatsApp text. Free flow (no live density), nothing blocked.
  */
 import { route, FREE_SPEED, type Route } from '../../../backend/src/routing.ts'
@@ -67,10 +67,28 @@ function toPath(r: Route): { path: PathNode[]; steps: Step[] } {
   return { path, steps }
 }
 
+/** Explicit passenger destinations. Technical landmarks remain available as origins only. */
+export const destinationIds = [
+  ...Array.from({ length: 10 }, (_, i) => `U_GATE_${i + 1}`),
+  'check_in:1', 'check_in:2', 'check_in:3', 'G_CHECKIN_DESKS',
+  'U_SECURITY', 'U_PASSPORT_DEP', 'G_ARRIVALS_PASSPORT',
+  'G_WC', 'U_WC', 'G_INFO', 'G_CAFE', 'U_CAFE', 'U_DUTY_FREE', 'kiosk_west', 'vending_1',
+  'atm_bcr', 'atm_euronet', 'G_RECLAIM_1', 'G_RECLAIM_2', 'G_ARRIVALS_EXIT', 'G_MEETING',
+  'X_KERB_DEPARTURES', 'X_KERB_ARRIVALS', 'X_TAXI_RANK', 'X_BOLT',
+  'X_PARKING_T2', 'X_PARKING_EAST', 'X_BUS_221', 'lost_found',
+  'shop_sixt', 'shop_autonom', 'shop_pricecarz',
+  'door_departures', 'door_exit_west', 'door_exit_mid', 'door_arrivals_east',
+]
+const passengerDestinations = new Set(destinationIds)
+
+// TODO(MAP): The seven G_GATE_DOOR_* zones and three ASSEMBLY_* points currently have no
+// permitted normal route to any passenger destination. Keep them as origins with explicit skips;
+// the graph owner must confirm arrivals access/normal exterior links before pictures can exist.
 export function planRoutes(list: Landmark[] = landmarks) {
   const routes: PlannedRoute[] = []
   const skipped: Skipped[] = []
-  for (const a of list) for (const b of list) {
+  const destinations = list.filter(l => passengerDestinations.has(l.id))
+  for (const a of list) for (const b of destinations) {
     if (a.id === b.id) continue
     const rule = allowed(a.area, b.area)
     if (rule) { skipped.push({ from: a.id, to: b.id, reason: rule }); continue }

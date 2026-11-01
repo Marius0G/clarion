@@ -14,7 +14,7 @@ import { chromium } from '@playwright/test'
 import { terminalGraph } from '../../../backend/src/terminal.ts'
 import { landmarks } from './landmarks.ts'
 import { landmarkCoverage } from '../../../backend/src/landmarks.ts'
-import { evacCaption, nameOf, planEvacuations, planRoutes, skipReasons } from './plan.ts'
+import { destinationIds, evacCaption, nameOf, planEvacuations, planRoutes, skipReasons } from './plan.ts'
 import { toIndexedPng } from './png.ts'
 import type { RouteSpec } from '../../src/map/t2/routeSpec.ts'
 
@@ -75,7 +75,7 @@ try {
   let bytes = 0, n = 0, next = 0
   // Independent cards share one browser; four pages avoid serial screenshot round trips.
   await Promise.all(Array.from({ length: 4 }, async () => {
-    const page = await browser.newPage({ viewport: { width: 1080, height: 1400 }, deviceScaleFactor: 0.4 })
+    const page = await browser.newPage({ viewport: { width: 1080, height: 1400 }, deviceScaleFactor: 1 })
     await page.goto(`http://127.0.0.1:${PORT}/harta/ruta`)
     await page.waitForFunction(() => typeof window.__route === 'function')
     for (;;) {
@@ -83,7 +83,17 @@ try {
       if (!job) break
       await page.evaluate(spec => { delete document.body.dataset.ready; window.__route!(spec) }, job.spec)
       await page.waitForFunction(id => document.body.dataset.ready === id, job.spec.id)
+      // Verify actual browser text geometry, including origins at a floor transition.
+      await page.evaluate(() => {
+        const start = document.querySelector('.r-start')!.getBoundingClientRect()
+        for (const tag of document.querySelectorAll('.r-floor .r-tag, .r-end .r-tag')) {
+          const b = tag.getBoundingClientRect()
+          if (b.left < start.right && b.right > start.left && b.top < start.bottom && b.bottom > start.top)
+            throw new Error('Step/destination label overlaps Ești aici marker')
+        }
+      })
       const png = toIndexedPng(await page.locator('#route-card').screenshot({ animations: 'disabled' }), COLOURS, KEEP)
+      if (png.length >= 150_000) throw new Error(`${job.file} exceeds 150 KB: ${png.length} bytes`)
       writeFileSync(join(out, job.file), png)
       bytes += png.length
       if (++n % 100 === 0) console.log(`${n}/${todo.length} · ${(bytes / 1e6).toFixed(1)} MB`)
@@ -103,6 +113,8 @@ if (!only && (indexOnly || todo.length === jobs.length)) {
     about: 'T2 route pictures. Routes come from backend route() on terminalGraph at free flow (no density, nothing blocked), evacuations from backend evacuationRoute(); a live route can differ when queues are dense.',
     graph: terminalGraph.version,
     points: landmarks,
+    origins: landmarks.map(l => l.id),
+    destinations: destinationIds,
     coverage: landmarkCoverage,
     routes: Object.fromEntries(routes.map(r => [`${r.from}__${r.to}`, { file: fileOf.get(`${r.from}__${r.to}`)!, walkSec: r.walkSec, steps: r.steps }])),
     evac: Object.fromEntries(evacs.map(e => [e.zone, { file: fileOf.get(`evac:${e.zone}`)!, exit: e.exit, assembly: e.assembly, caption: evacCaption(e.exit, e.assembly), walkSec: e.walkSec, steps: e.steps }])),
@@ -111,6 +123,6 @@ if (!only && (indexOnly || todo.length === jobs.length)) {
   }
   writeFileSync(join(out, 'index.json'), JSON.stringify(index) + '\n')
   const total = jobs.reduce((s, j) => s + statSync(join(out, j.file)).size, 0)
-  if (total + statSync(join(out, 'index.json')).size >= 40e6) throw new Error('Route assets including index exceed 40 MB')
+  if (total + statSync(join(out, 'index.json')).size >= 90e6) throw new Error('Route assets including index exceed 90 MB')
   console.log(`index.json: ${landmarks.length} points, ${routes.length} routes, ${skipped.length} skipped, ${evacs.length} evacuations · ${(total / 1e6).toFixed(1)} MB`)
 }
