@@ -84,24 +84,43 @@ export const landmarkCases = examples.flatMap(([id, ro, en]) => [{ text: ro, exp
   Array.from({ length: 10 }, (_, i) => ({ text: `sunt la g${i + 1}`, expected: `U_GATE_${i + 1}` })),
 );
 export const origins = ['door_departures', 'escalator_east_G', 'G_MEETING', 'U_GATE_5', 'G_RECLAIM_1'];
+// These phrases describe where a passenger is standing, rather than a rendered destination.
+// Keep this independent of the manifest so accidentally removing a passenger destination fails.
+const originOnlyIds = new Set([
+  'door_emergency_east', 'door_emergency_west', 'X_FORECOURT',
+  'G_CHECKIN_QUEUE', 'G_DEPARTURES', 'G_CENTER', 'G_WEST',
+  'U_SECURITY_QUEUE', 'U_CONCOURSE', 'U_CORRIDOR_EAST',
+  'escalator_east_G', 'escalator_east_U',
+  'stairs_east_G', 'stairs_east_U', 'stairs_west_G', 'stairs_west_U',
+  'lift_east_G', 'lift_east_U', 'lift_west_G', 'lift_west_U',
+]);
 export function evaluateLandmarks(resolve, index, root = fileURLToPath(new URL('../../app/public', import.meta.url))) {
-  const failures = []; let passed = 0, images = 0, skips = 0, samePoint = 0;
+  const failures = []; let passed = 0, images = 0, skips = 0, samePoint = 0, originCases = 0, destinationCases = 0;
   for (const c of landmarkCases) {
     const result = resolve(c.text);
     if (result?.id !== c.expected) { failures.push({ ...c, actual: result?.id ?? null }); continue; }
     let valid = true;
-    for (const from of origins) {
-      if (from === result.id) { samePoint++; continue; }
-      const r = index.routes[`${from}__${result.id}`];
+    // Keep technical-location phrases in the language benchmark. Their asset role is origin,
+    // while passenger destinations still get checked from the five established origins.
+    const destination = !originOnlyIds.has(c.expected);
+    if (destination !== index.destinations.includes(result.id)) {
+      failures.push({ ...c, error: 'Incorrect rendered destination role' }); continue;
+    }
+    if (destination) destinationCases++; else originCases++;
+    const pairs = destination ? origins.map(from => [from, result.id]) : index.destinations.map(to => [result.id, to]);
+    for (const [from, to] of pairs) {
+      if (!index.origins.includes(from)) { failures.push({ ...c, from, error: 'Unknown origin' }); valid = false; continue; }
+      if (from === to) { samePoint++; continue; }
+      const r = index.routes[`${from}__${to}`];
       if (r) {
         if (existsSync(`${root}${r.file}`)) images++;
         else { failures.push({ ...c, from, error: `Missing image ${r.file}` }); valid = false; }
-      } else if (index.skipped.some(s => s.from === from && s.to === result.id && index.skipReasons[s.reason])) skips++;
-      else { failures.push({ ...c, from, error: 'No route or documented skip' }); valid = false; }
+      } else if (index.skipped.some(s => s.from === from && s.to === to && index.skipReasons[s.reason])) skips++;
+      else { failures.push({ ...c, from, to, error: 'No route or documented skip' }); valid = false; }
     }
     if (valid) passed++;
   }
-  return { total: landmarkCases.length, passed, accuracy: 100 * passed / landmarkCases.length, images, documentedSkips: skips, samePoint, failures };
+  return { total: landmarkCases.length, passed, accuracy: 100 * passed / landmarkCases.length, images, documentedSkips: skips, samePoint, originCases, destinationCases, failures };
 }
 async function main() {
   const require = createRequire(new URL('../../backend/package.json', import.meta.url));
@@ -110,7 +129,7 @@ async function main() {
   const index = JSON.parse(readFileSync(new URL('../../app/public/routes/index.json', import.meta.url), 'utf8'));
   const report = evaluateLandmarks(resolveLandmark, index);
   console.log(JSON.stringify(report, null, 2));
-  if (report.accuracy < 95) process.exitCode = 1;
+  if (report.accuracy < 100) process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch(error => { console.error(error); process.exitCode = 1; });

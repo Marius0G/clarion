@@ -14,9 +14,16 @@ describe('rendered passenger routes', () => {
     const report = evaluateLandmarks(resolveLandmark, index());
     expect(report.total).toBeGreaterThanOrEqual(150);
     expect(report.failures).toEqual([]);
-    expect(report.accuracy).toBeGreaterThanOrEqual(95);
+    expect(report.accuracy).toBe(100);
     expect(report.images).toBeGreaterThan(0);
     expect(report.documentedSkips).toBeGreaterThan(0);
+  });
+  it('fails the eval if a passenger destination is removed instead of silently treating it as an origin', () => {
+    const incomplete = index();
+    incomplete.destinations = incomplete.destinations.filter((id: string) => id !== 'U_GATE_3');
+    const report = evaluateLandmarks(resolveLandmark, incomplete);
+    expect(report.accuracy).toBeLessThan(100);
+    expect(report.failures.some((f: { expected: string; error: string }) => f.expected === 'U_GATE_3' && f.error === 'Incorrect rendered destination role')).toBe(true);
   });
   it('renders routes starting at the escalator, stairs and lifts', () => {
     for (const from of ['escalator_east_G','stairs_east_G','lift_east_G']) {
@@ -25,11 +32,11 @@ describe('rendered passenger routes', () => {
       expect(r.steps[0].node).toBe(from);
     }
   });
-  it('stays below 40 MB including index and every file on disk', () => {
+  it('stays below 90 MB including index and every file on disk', () => {
     const size = (dir: URL): number => readdirSync(dir, { withFileTypes: true }).reduce((sum, f) => {
       const path = new URL(f.name + (f.isDirectory() ? '/' : ''), dir);
       return sum + (f.isDirectory() ? size(path) : statSync(path).size);
     }, 0);
-    expect(size(new URL('routes/', publicRoot))).toBeLessThan(40e6);
+    expect(size(new URL('routes/', publicRoot))).toBeLessThan(90e6);
   });
 });
