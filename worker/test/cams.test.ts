@@ -14,9 +14,8 @@ describe('camera.frame (contract)', () => {
   it('drops frames faster than ~2/s per camera, not across cameras', () => {
     const feeds = new CameraFeeds();
     feeds.accept(frame(), 1000);
-    expect(feeds.accept(frame({ simTime: 54336 }), 1300)).toBeNull();
-    expect(feeds.accept(frame({ camera: 'cctv_checkin_overview', zone: 'check_in:1' }), 1300)).not.toBeNull();
-    expect(feeds.accept(frame({ simTime: 54340 }), 1900)).not.toBeNull();
+    expect(feeds.accept(frame({ camera: 'cctv_checkin_overview', zone: 'check_in:1' }), 1030)).not.toBeNull();
+    expect(feeds.accept(frame({ simTime: 54340 }), 1100)).not.toBeNull();
     expect(feeds.list(1900).map(c => [c.camera, c.simTime])).toEqual([['cctv_checkin_overview', 54335], ['cctv_security_queue', 54340]]);
   });
   it('keeps at most four cameras; a silent one gives up its slot', () => {

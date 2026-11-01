@@ -2,8 +2,9 @@
 // The JPEG already has vision's detection boxes drawn; the worker never decodes it, it only checks it is a JPEG.
 
 export const CAMS_MAX = 4;
-/** At most ~2 frames/s per camera (Unity renders at most 2: -cctv-live-fps 2). Faster ones are dropped silently (some jitter allowed). */
-export const FRAME_MIN_MS = 400;
+/** No time gate: vision paces each camera (camera_feed.SEND_FPS, about 5 a second). A Durable Object's clock does not move
+ * between messages handled in one burst, so any gap rule here dropped every other frame. */
+export const FRAME_MIN_MS = 0;
 /** Contract: each JPEG ≤ ~120 KB. Allow some headroom before refusing. */
 export const JPEG_MAX_BYTES = 200_000;
 /** A camera silent this long gives its slot to a new one. */
