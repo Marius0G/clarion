@@ -40,7 +40,7 @@ async function mock(page: Page, sim: () => unknown, command?: (route: Route, bod
 
 test('offline console exposes five metrics and unknown zones', async ({ page }) => {
   await mock(page, () => empty)
-  await page.goto('/')
+  await page.goto('/console')
   await expect(page.getByTestId('top-band').locator(':scope > div')).toHaveCount(5)
   await expect(page.getByTestId('top-band').getByRole('button')).toHaveCount(0)
   await expect(page.getByTestId('row-U_SECURITY_QUEUE')).toContainText('Necunoscut')
@@ -51,7 +51,7 @@ test('camera metrics, bullet rows, FIDS and unified staff log', async ({ page })
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
   await mock(page, () => ({ ...live, flights: [{ flight: 'W4 3751', destination: 'Roma', std: 54000, gate: 'G2', status: 'delayed', delayMin: 20 }] }), undefined, reports)
-  await page.goto('/')
+  await page.goto('/console')
   await expect(page.getByTestId('top-band')).toContainText('30 min')
   await expect(page.getByTestId('top-band')).toContainText('2.1 /m²')
   await expect(page.getByTestId('row-U_SECURITY_QUEUE').getByRole('img')).toHaveAttribute('aria-label', /țintă 10 min/)
@@ -64,7 +64,7 @@ test('camera metrics, bullet rows, FIDS and unified staff log', async ({ page })
 })
 test('map and list share hover and click selection', async ({ page }) => {
   await mock(page, () => live)
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByTestId('row-U_SECURITY_QUEUE').hover()
   await expect(page.getByTestId('zone-U_SECURITY_QUEUE')).toHaveClass(/sel/)
   await page.getByTestId('row-U_SECURITY_QUEUE').click()
@@ -79,7 +79,7 @@ test('map fills its stage beside operations and retains working zoom controls', 
   await mock(page, () => live)
   // Obsolete browser preferences cannot hide the map content.
   await page.addInitScript(() => localStorage.setItem('clarion.map', JSON.stringify({ layers: { labels: false, pins: false }, refreshMs: 5000 })))
-  await page.goto('/')
+  await page.goto('/console')
   const canvas = page.getByTestId('terminal-map')
   const stage = await page.locator('.ops-stage').boundingBox()
   const rail = await page.locator('.ops-rail').boundingBox()
@@ -114,7 +114,7 @@ test('recommendation sends unchanged command and tracks ack then camera effect',
     sim = { ...sim, ops: [command] }
     await route.fulfill({ status: 202, json: { command }, headers: cors })
   })
-  await page.goto('/')
+  await page.goto('/console')
   await expect(page.getByTestId('advice')).toContainText('Supervizor securitate')
   await expect(page.getByTestId('advice')).toContainText('Cu acțiune: 7 min')
   await page.getByTestId('advice').getByRole('button', { name: 'Trimite', exact: true }).click()
@@ -127,7 +127,7 @@ test('recommendation sends unchanged command and tracks ack then camera effect',
 })
 test('rejection and transport failures remain actionable', async ({ page }) => {
   await mock(page, () => live, async route => route.fulfill({ status: 409, json: {}, headers: cors }))
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByTestId('advice').getByRole('button', { name: 'Respinge' }).click()
   await page.getByTestId('advice').getByRole('button', { name: 'Trimite', exact: true }).click()
   await expect(page.getByTestId('journal')).toContainText('Unity offline')
@@ -135,7 +135,7 @@ test('rejection and transport failures remain actionable', async ({ page }) => {
 test('phone layout has no horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mock(page, () => live, undefined, reports)
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByTestId('row-U_SECURITY_QUEUE').click()
   await expect(page.getByTestId('zone-panel')).toContainText('88')
   const widths = await page.locator('.ops').evaluate(el => [el.scrollWidth, el.clientWidth])
@@ -155,7 +155,7 @@ test('alarms acknowledge, shelve and remain in the single journal', async ({ pag
     alerts = alerts.map(a => a.id === body.id ? { ...a, state: body.type === 'ack' ? 'acked' : 'shelved', shelvedUntil: body.type === 'shelve' ? live.simTime + body.durationSec : null, shelveReason: body.reason ?? null } : a)
     await route.fulfill({ json: { alerts }, headers: cors })
   })
-  await page.goto('/')
+  await page.goto('/console')
   const current = page.getByTestId(`alert-${alarm.id}`)
   const cleared = page.getByTestId('alert-density:U_GATE_1')
   await expect(current.locator('.ops-alarm')).toHaveCSS('animation-name', 'ops-alarm-blink')
@@ -181,9 +181,34 @@ test('alarm command errors preserve acknowledgement controls', async ({ page }) 
   const alert = { id: 'camera-loss:security', priority: 'P3', kind: 'camera-loss', zoneId: 'security', flight: null, text: 'Cameră pierdută', numbers: {}, createdAt: live.simTime, updatedAt: live.simTime, state: 'unacked', active: true, adviceId: null, shelvedUntil: null, shelveReason: null }
   await mock(page, () => ({ ...live, alerts: [alert] }))
   await page.route(/\/api\/alerts\/command$/, route => route.fulfill({ status: route.request().method() === 'OPTIONS' ? 204 : 401, headers: cors }))
-  await page.goto('/')
+  await page.goto('/console')
   const action = page.getByTestId(`alert-${alert.id}`).getByRole('button', { name: 'Confirmă' })
   await action.click()
   await expect(page.getByRole('alert')).toContainText('Acces refuzat')
   await expect(action).toBeEnabled()
 })
+
+// D18 beat 2 is recorded at 3840×2400 @250% (1536×960 CSS px): "Acuratețe" must be on screen without scrolling, with two alerts and four cameras.
+const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQBXaqPNAAAAAElFTkSuQmCC', 'base64')
+for (const [width, height] of [[1920, 1080], [1536, 960]] as const) {
+  test(`accuracy card fits the rail at ${width}×${height} with two alerts`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    const alarm = { id: 'zone-target:U_SECURITY_QUEUE', priority: 'P2', kind: 'zone-target', zoneId: 'security', flight: null, text: 'Țintă depășită', numbers: { waitMin: 12, targetMin: 10 }, createdAt: live.simTime, updatedAt: live.simTime, state: 'unacked', active: true, adviceId: null, shelvedUntil: null, shelveReason: null }
+    const alerts = [alarm, { ...alarm, id: 'density:U_GATE_1', priority: 'P1', kind: 'density', zoneId: 'gate_1', text: 'Densitate periculoasă', numbers: { density: 2.1 } }]
+    await mock(page, () => ({ ...live, alerts }))
+    const cams = ['cctv_security_queue', 'cctv_checkin_overview', 'cctv_hall_east', 'cctv_upper_4'].map((camera, i) => ({ camera, zone: i ? 'check_in:1' : 'security', simTime: live.simTime, count: 20 + i, detector: 'yolo', w: 1280, h: 720, age: 1 }))
+    await page.route(/\/cams$/, route => route.fulfill({ json: cams, headers: cors }))
+    await page.route(/\/cams\/[a-z0-9_]+\.jpg$/, route => route.fulfill({ body: pixel, contentType: 'image/png', headers: cors }))
+    await page.goto('/console')
+    await expect(page.getByTestId('alerts-slot').locator('article')).toHaveCount(2)
+    await expect(page.getByTestId('cameras').locator('img')).toHaveCount(4)
+    const card = page.getByTestId('accuracy')
+    await expect(card).toContainText('93')
+    const box = await card.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(height)
+    console.log(`rail ${width}×${height}: Acuratețe bottom at ${Math.round(box!.y + box!.height)} px`)
+    await page.screenshot({ path: `${process.env.RAIL_SHOT_DIR ?? 'test-results'}/rail_${height}.png` })
+  })
+}

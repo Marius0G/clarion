@@ -2,15 +2,21 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
+const path = window.location.pathname;
+const query = new URLSearchParams(window.location.search);
+// Old operator links (`/?token=…`, `/?backend=…`) pointed at the console when it lived at `/`.
+const legacyConsole = path === "/" && (query.has("token") || query.has("backend"));
+if (legacyConsole) window.location.replace(`/console${window.location.search}${window.location.hash}`);
+
 const Page =
-  window.location.pathname === "/join" ||
-  window.location.pathname.startsWith("/join/")
+  path === "/join" || path.startsWith("/join/")
     ? lazy(() => import("./join/Join"))
-    : window.location.pathname === "/harta" ? lazy(() => import("./map/t2/MapPreview"))
-    : window.location.pathname.startsWith("/m/") ? lazy(() => import("./me/Me"))
+    : path === "/" ? lazy(() => import("./landing/Landing"))
+    : path === "/harta" ? lazy(() => import("./map/t2/MapPreview"))
+    : path.startsWith("/m/") ? lazy(() => import("./me/Me"))
     : lazy(() => import("./App"));
 
-createRoot(document.getElementById("root")!).render(
+if (!legacyConsole) createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Suspense fallback={null}>
       <Page />

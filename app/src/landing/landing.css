@@ -1,0 +1,35 @@
+/* Public main page. Passenger-side light look (as /join), D29 rules: flat, 2px corners, 1px separators, one sans with tabular figures. */
+.landing { min-height:100dvh; background:#f1f5f9; color:#0f172a; color-scheme:light; font-family:"Geist", system-ui, -apple-system, "Segoe UI", sans-serif; font-size:16px; line-height:1.45; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased }
+.landing-page { max-width:960px; min-height:100dvh; margin:0 auto; display:flex; flex-direction:column; background:#fff }
+.landing main { flex:1 }
+.landing :focus-visible { outline:2px solid #1f2937; outline-offset:2px }
+.landing-bar { display:flex; align-items:center; justify-content:space-between; padding:16px; border-bottom:1px solid #e2e8f0 }
+.landing-brand { color:#0f172a; text-decoration:none; font-weight:600 }
+.landing-brand small { display:block; font-size:14px; font-weight:400; color:#475569 }
+.landing-hero { padding:32px 16px; border-bottom:1px solid #e2e8f0 }
+.landing-eyebrow { margin:0 0 8px; font-size:14px; color:#475569 }
+.landing h1 { margin:0 0 24px; font-size:26px; line-height:1.2; font-weight:600; letter-spacing:-0.01em; max-width:28ch; overflow-wrap:break-word }
+.landing-actions { display:flex; flex-wrap:wrap; gap:8px }
+.landing-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:48px; padding:0 24px; border-radius:2px; font-weight:600; text-decoration:none; flex:1 1 100% }
+.landing-primary { background:#1f2937; color:#fff; border:1px solid #1f2937 }
+.landing-primary:hover { background:#0f172a }
+.landing-secondary { background:#fff; color:#0f172a; border:1px solid #cbd5e1 }
+.landing-secondary:hover { border-color:#1f2937 }
+.landing-note { margin:16px 0 0; font-size:14px; color:#475569; max-width:60ch }
+.landing-what { padding:32px 16px }
+.landing h2 { margin:0 0 16px; font-size:18px; font-weight:600 }
+.landing-points { list-style:none; margin:0; padding:0; border-top:1px solid #e2e8f0 }
+.landing-points li { padding:16px 0; border-bottom:1px solid #e2e8f0 }
+.landing-num { display:block; font-size:14px; color:#475569 }
+.landing h3 { margin:4px 0; font-size:16px; font-weight:600 }
+.landing-points p { margin:0; font-size:15px; color:#334155 }
+.landing-foot { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:16px; border-top:1px solid #e2e8f0; font-size:14px; color:#475569 }
+.landing-foot a { color:#0f172a }
+@media (min-width:720px) {
+  .landing-bar, .landing-hero, .landing-what, .landing-foot { padding-left:32px; padding-right:32px }
+  .landing-hero { padding-top:64px; padding-bottom:48px }
+  .landing h1 { font-size:36px }
+  .landing-actions a { flex:0 0 auto }
+  .landing-points { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; border-top:0 }
+  .landing-points li { border-top:1px solid #e2e8f0; border-bottom:0 }
+}
