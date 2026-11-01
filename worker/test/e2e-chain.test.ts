@@ -119,7 +119,7 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   await expect.poll(simDelays, { timeout: 10000 }).toEqual([expect.objectContaining({ agentId: 'demo-passenger', text: expect.stringContaining('întârziere de 30 min') })]);
   await expect.poll(sim).toMatchObject({ flights: [expect.objectContaining({ status: 'delayed', delayMin: 30 })] });
 
-  // Beat 4: staff reports the incident; vision's evacuation plan reaches both kinds of passenger.
+  // Beat 4: staff reports the incident; the evacuation plan reaches the simulated passenger.
   await whatsapp('STAFF echipa');
   await expect.poll(() => texts().some(t => t.includes('ești înregistrat ca angajat')), { timeout: 10000 }).toBe(true);
   await whatsapp(reportText);
@@ -131,7 +131,9 @@ it('walks all four D18 demo beats through Unity, vision, WhatsApp and the operat
   for (const socket of [twin, vision]) await expect.poll(() => socket.of('ops.command').find(c => c.id === evacuation.id)).toMatchObject({ type: 'evacuate', zones: ['check_in:2'] });
   vision.send('evac.plan', { id: evacuation.id, blocked: ['check_in:2'], clearSec: 120, exits: [{ exit: 'exit_1', people: 10, clearSec: 60 }], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
   await expect.poll(() => twin.of('agent.route')).toEqual([{ agentId: 'demo-passenger', nodes: ['entrance', 'exit_1'], reason: 'evacuate' }]);
-  await expect.poll(() => texts().filter(t => t.includes('Ieși pe Ieșirea 1')).length, { timeout: 10000 }).toBe(1);
+  // This phone is now staff in security, outside the evacuated check-in zone.
+  expect(texts().filter(t => t.includes('Ieși pe Ieșirea 1'))).toHaveLength(0);
+  expect(texts().filter(t => t.startsWith('Dispeceratul a început evacuarea'))).toHaveLength(0);
   await expect.poll(passenger).toMatchObject({ evacuation: { active: true, zones: ['check_in:2'] } });
   expect(delays()).toHaveLength(1); expect(simDelays()).toHaveLength(1);
 }, 30000);

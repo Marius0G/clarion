@@ -1,3 +1,4 @@
+import { dispatchStaffNotices } from './staff-notices.js';
 import { crowdNote, Reports } from './reports.js';
 import { evacuationRoute } from '../../../backend/src/evacuation.js';
 import { LANDMARK_TTL_MS } from './airport-info.js';
@@ -502,6 +503,7 @@ export class Messaging {
   /** D22: describe an admin decision only to passengers whose queues/gate it affects. */
   adminChanged(command: OpsCommand & { id?: string }) {
     return this.serial(async () => {
+      await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, command);
       if (command.type === 'evacuate') return 0;
       if (command.type === 'staff') {
         if (command.delta > 0) await this.deps.store.put(`msg:staff:${mapNodeId(command.zone)}`, { id: command.id ?? crypto.randomUUID(), at: this.deps.view.clock().now });
@@ -526,7 +528,7 @@ export class Messaging {
       let sent = 0;
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(this.deps.view.flights(), s.flight) : undefined;
-        if (!f || !['security', f.gate, ...ownZones(f)].includes(zone)) continue;
+        if ((await this.subscriberProfile(s.sub))?.role === 'staff' || !f || !['security', f.gate, ...ownZones(f)].includes(zone)) continue;
         const decision = command.type === 'redirect'
           ? copy.redirect(s.lang, command)
           : copy.areaState(s.lang, zone, command);
@@ -585,6 +587,7 @@ export class Messaging {
    */
   async evacuate(zones: string[], id: string): Promise<'planned' | 'generic' | 'cancelled'> {
     const epoch = this.epoch;
+    await dispatchStaffNotices(this.deps.store, this.deps.wa, this.deps.view, { type: 'evacuate', zones, id });
     await this.deps.store.put('msg:evacuation', { active: true, zones });
     if (epoch !== this.epoch) return 'cancelled';
     await new Promise<void>(resolve => {
@@ -598,7 +601,7 @@ export class Messaging {
       const flights = this.deps.view.flights(), now = this.deps.view.clock().now, told: Subscriber[] = [];
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
-        if (!affectedByEvacuation(zones, f, now)) continue;
+        if ((await this.subscriberProfile(s.sub))?.role === 'staff' || !affectedByEvacuation(zones, f, now)) continue;
         const r = await this.fallbackRoute(s.sub, f);
         const details = r ? await this.evacuationDetails([r.from], r) : { route: undefined, image: undefined, caption: undefined };
         const text = (details.route ? copy.evacuationRoute(s.lang, copy.blockedAreas(s.lang, { blocked: zones } as EvacPlan), details.route) : this.evacuateText(zones, s.lang)) + (this.onTheRoad(s, f, now) ? ` ${copy.evacuationRoad(s.lang, null)}` : '');
@@ -627,7 +630,7 @@ export class Messaging {
       const told: Subscriber[] = [];
       for (const s of await this.subscribers()) {
         const f = s.flight ? findFlight(flights, s.flight) : undefined;
-        if (!affectedByEvacuation(p.blocked, f, now)) continue;
+        if ((await this.subscriberProfile(s.sub))?.role === 'staff' || !affectedByEvacuation(p.blocked, f, now)) continue;
         const details = await this.evacuationDetails(p.blocked, routeFor(p, f, now));
         const r = details.route!;
         const blocked = p.blocked.length ? copy.blockedAreas(s.lang, p) : '';

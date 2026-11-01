@@ -122,10 +122,13 @@ describe('passenger messaging in the Tower', () => {
     v.ws.send(envelope('evac.plan', { id: command.id, blocked: ['check_in:2'], clearSec: 120, exits: [{ exit: 'exit_1', people: 10, clearSec: 60 }],
       routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] }));
     await expect.poll(() => u.of('agent.route')).toEqual([{ agentId: 'a1', nodes: ['entrance', 'exit_1'], reason: 'evacuate' }]);
-    await expect.poll(() => texts().filter(t => t.includes('Ieși pe Ieșirea 1')).length, { timeout: 10000 }).toBe(1); // one phone (passenger turned staff)
+    // The phone is now staff in security, so a check-in evacuation must not target it via its old flight.
+    expect(texts().filter(t => t.includes('Ieși pe Ieșirea 1'))).toHaveLength(0);
+    await expect.poll(() => texts().filter(t => t === 'Dispeceratul a deschis o linie în plus la securitate.').length).toBe(1);
     // No evac.plan: the generic message after ~3 s.
     expect((await api('/api/ops/command', { type: 'evacuate', zones: ['security'] })).status).toBe(202);
     await expect.poll(() => u.of('agent.message').filter(m => m.kind === 'evacuate' && m.text.includes('Zona Control de securitate este închisă')).length, { timeout: 8000 }).toBe(1);
+    await expect.poll(() => texts().filter(t => t === 'Dispeceratul a început evacuarea la securitate.').length).toBe(1);
     await expect.poll(async () => (await (await api(passengerPath, undefined, '')).json() as any).evacuation).toEqual({ active: true, zones: ['security'], route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] } });
     for (let delayMin = 31; delayMin <= 36; delayMin++) {
       u.ws.send(envelope('flight.update', { flights: [flight({ status: 'delayed', delayMin })] }));
