@@ -15,6 +15,7 @@ const Page =
     ? lazy(() => import("./join/Join"))
     : path === "/" || path === "/acasa" ? lazy(() => import("./landing/Landing"))
     : path === "/harta" ? lazy(() => import("./map/t2/MapPreview"))
+    : path === "/harta/ruta" ? lazy(() => import("./map/t2/RouteRender"))
     : path.startsWith("/m/") ? lazy(() => import("./me/Me"))
     : lazy(() => import("./App"));
 

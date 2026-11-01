@@ -1,0 +1,36 @@
+/* Route pictures for WhatsApp (D29): light grey, flat, the route in the live colour. */
+html, body { margin: 0; background: #d4d4d4; }
+.route-card { width: 1080px; background: #d4d4d4; font-family: 'IBM Plex Sans', 'Geist', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #161616; }
+.route-card header { padding: 22px 28px 18px; background: #f2f2f2; border-bottom: 1px solid #8a8a8a; }
+.route-card h1 { margin: 0; font-size: 32px; line-height: 1.2; font-weight: 700; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.route-card h1 .arrow { color: #0e2f57; }
+.route-card h1 .p1 { width: 22px; height: 22px; background: #d40000; display: inline-block; }
+.route-card header p { margin: 8px 0 0; font-size: 24px; color: #2b2b2b; }
+.route-card header b { color: #0e2f57; font-weight: 700; }
+.route-card .t2map { background: #d4d4d4; }
+.route-card .detail, .route-card .t2-ends .i-door,
+.route-card .t2-zoom, .route-card .t2-floors, .route-card .t2-north, .route-card .t2-scale { display: none; }
+
+.r-halo { fill: none; stroke: #f4f4f4; stroke-linecap: round; stroke-linejoin: round; }
+.r-line { fill: none; stroke: #0e2f57; stroke-linecap: round; stroke-linejoin: round; }
+.r-chev { fill: none; stroke: #ffffff; stroke-linecap: round; stroke-linejoin: round; }
+.r-tag rect { fill: #ffffff; stroke: #161616; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.r-tag text { fill: #161616; font-weight: 700; text-anchor: middle; }
+.r-tag.dark rect { fill: #0e2f57; stroke: #0e2f57; }
+.r-tag.dark text { fill: #ffffff; }
+.r-floor > rect { fill: #0e2f57; stroke: #ffffff; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.r-floor > path { fill: none; stroke: #ffffff; stroke-linecap: round; stroke-linejoin: round; }
+.r-start .ring { fill: #0e2f57; stroke: #ffffff; stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.r-start .dot { fill: #ffffff; }
+.r-end .pole { stroke: #161616; }
+.r-end .flag { fill: #0e2f57; stroke: #ffffff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.r-end .foot { fill: #161616; stroke: #ffffff; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.r-out { fill: none; stroke: #0e2f57; }
+.r-head { fill: #0e2f57; }
+.r-door { fill: #161616; stroke: #ffffff; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.r-door-a { fill: none; stroke: #ffffff; stroke-linecap: round; stroke-linejoin: round; }
+.r-floorname rect { fill: #161616; }
+.r-floorname .t { fill: #ffffff; font-weight: 700; text-anchor: middle; }
+.r-floorname .n { fill: #161616; font-weight: 600; paint-order: stroke; stroke: #e6e6e6; stroke-width: 4px; }
+.route-card .t2-zone .edge { stroke-dasharray: none; }
+.route-card .t2-shell path, .route-card .t2-zone .edge { shape-rendering: crispEdges; }
