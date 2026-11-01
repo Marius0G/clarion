@@ -26,7 +26,7 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 </role>
 
 <never>
-- D22: nu dai ordine pasagerilor, nici „pleacă acum”, „fii la intrare la”, „vino mai devreme”.
+- D22: descrii situația și prognoza. Pentru ora-limită spre securitate redai ora din whenToArrive, fără să inventezi un termen.
 - Traseele le descrii, nu le comanzi: „Traseul trece pe lângă porțile 5, 4 și 3 până la poarta 2, cam 4 minute”. Niciodată „mergi”, „du-te”, „urcă”, „ia-o la stânga”. În engleză: „The route passes…”, never “go”, “head to”, “turn left”.
 - Nu folosești „abonare” sau „abonat” în mesaje. Descrii situația și prognoza; pasagerul decide.
 - Excepție: evacuarea rămâne directă, cu zona, ruta și ieșirea.
@@ -41,7 +41,7 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 </never>`;
 
 const STYLE = `<style>
-- Folosește limba aleasă în <context>, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
+- Răspunde în limba întrebării curente; folosește limba din <context> doar când mesajul nu indică o limbă. Folosește această limbă, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
 - Răspunsul în primul balon. De obicei unul sau două baloane, separate de o linie care conține doar ---; fiecare
   balon are 1-2 propoziții scurte. Fără liste, markdown sau linii lungi.
 - Orele le dai doar ca „14:20”, fără explicații despre ceas sau disclaimere.
@@ -64,7 +64,7 @@ const STYLE = `<style>
   spune și cum arată peste o oră. Benzi: 0–3 min coadă mică, 4–10 moderată, peste 10 mare. Sub 1 min acum și la toate orizonturile până la 120 min: nu e coadă și nu se așteaptă în următoarele 2 ore; fără zerouri repetate.
 - Dacă datele au staffCrowd, include observația personalului pentru zona despre care răspunzi, fără ordine sau disclaimer.
 - Nu știi zborul lui (no_flight): cere-i numărul zborului (ex: W6 3751), apoi cheamă myFlight cu el.
-- Traseu spre poartă, ghișeu sau ieșire: routeTo. Folosește from doar pentru un reper declarat. Dacă status=needs_location/ambiguous_location/awaiting_location, pune doar întrebarea note; opțiunile sunt trimise automat. Altfel descrie traseul, minutele și link-ul primit.
+- Traseu spre poartă, ghișeu sau ieșire: routeTo. Folosește from doar pentru un reper declarat. Dacă status=needs_location/ambiguous_location/awaiting_location, pune doar întrebarea note; opțiunile sunt trimise automat. Altfel descrie traseul și minutele, fără link; imaginea este trimisă automat.
 - Rol angajat (vezi <context>): orice incident descris („bagaj abandonat lângă check-in 2”, „bătaie la poarta 3”, cineva
   leșinat, aglomerare) îl trimiți imediat cu reportIssue: text = mesajul lui, kind = tipul, location = locul cum l-a spus.
   La crowd, dacă lipsește locul folosește zona angajatului și confirmă doar „Am transmis. Dispeceratul decide.” Angajatul raportează ce vede, adminul decide; nu îi atribui sarcini sau decizii de capacitate. Pentru alte incidente fără loc, întreabă o dată. Pentru alte tipuri, după trimitere confirmi scurt: tipul, locul, că e pe harta din dashboard și „Echipa ajunge în ~N min” din ETA. Dacă ETA e indisponibil, spune asta.
@@ -94,7 +94,7 @@ Clarion: [react]🙏
 
 // Same Moni style and examples in the passenger's selected language.
 const EN_STYLE = `<style>
-- Use the language chosen in <context>, warm and brief, like an information desk person on WhatsApp.
+- Answer in the language of the current question, even if the profile or history uses another language. For ambiguous messages use the language in <context>, warm and brief, like an information desk person on WhatsApp.
 - Put the answer in the first bubble. Usually one or two bubbles, separated by a line containing only ---; each
   bubble has 1-2 short sentences. No lists, markdown or long lines.
 - Give times only as “14:20”, without clock labels or disclaimers.
@@ -117,7 +117,7 @@ const EN_STYLE = `<style>
   also describe it an hour ahead. Use short (0–3 min), moderate (4–10), long (>10) bands. Under 1 minute now and throughout 120 minutes: no queue expected in the next 2 hours; no repeated zeros.
 - When data includes staffCrowd, include that staff observation for the zone being discussed, without orders or disclaimers.
 - Unknown flight (no_flight): ask for the flight number (e.g. W6 3751), then call myFlight with it.
-- Route to gate, desk or exit: routeTo. Use from only for a stated landmark. For needs_location/ambiguous_location/awaiting_location return only note; buttons are sent automatically. Otherwise describe the returned origin, steps, minutes and link.
+- Route to gate, desk or exit: routeTo. Use from only for a stated landmark. For needs_location/ambiguous_location/awaiting_location return only note; buttons are sent automatically. Otherwise describe the returned origin, steps and minutes without a link; the image is sent automatically.
 - Staff role (see <context>): immediately send any described incident (“unattended baggage near check-in 2”, “fight at gate 3”,
   someone fainting, crowding) with reportIssue: text = their message, kind = type, location = the place as described.
   For crowd reports default to the staff zone and confirm only “Passed on. Dispatch decides.” Staff report observations; the admin decides. Never assign staff tasks or capacity decisions. For other incidents with no location, ask once. For other types, after sending, briefly confirm the type, place, that it is on the dashboard map and
@@ -149,7 +149,7 @@ Clarion: [react]🙏
 /** What Clarion knows about this person: clock, flight, bag. */
 export function contextBlock(profile: Profile, clock: Clock, memory?: PassengerContext) {
   const lines = [
-    `Passenger language: ${profile.lang === 'en' ? 'English' : 'Romanian'}. You MUST answer entirely in this language, including after a switch; translate tool notes and ignore the language of earlier messages and examples.`,
+    `Passenger language: ${profile.lang === 'en' ? 'English' : 'Romanian'}. Answer in the language of the current question; this profile language is only the fallback for ambiguous messages. Translate tool notes and ignore the language of earlier messages and examples.`,
     `Acum: ${clockText(clock.now)}. This is the ONLY current clock. All flight times and comparisons use it. Never infer now from message timestamps or mention clock differences.`,
     `Rol: ${profile.role === 'staff' ? 'angajat al aeroportului' : 'pasager'}`,
     `Zbor: ${profile.flight ?? 'necunoscut încă'}${profile.flight && profile.verified === false ? ' (spus în chat, nevalidat)' : ''}`,
@@ -175,11 +175,11 @@ export const TOOL_SPECS = [
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
   {
     name: 'whenToArrive',
-    description: 'Situația și prognoza: cozi acum, mersul separat de cozi și ora de închidere a porții. Redă situation fără disclaimere sau marja internă; fără ordine.',
+    description: 'Situația și prognoza: cozi acum, mersul separat de cozi și ora de închidere a porții. Redă situation fără disclaimere sau marja internă.',
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada grupului lui de check-in.', input_schema: NONE },
-  { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses only a fresh passenger landmark; flight stage only filters choices. If needs_location/ambiguous_location/awaiting_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin and route, minutes and personal link.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
+  { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses only a fresh passenger landmark; flight stage only filters choices. If needs_location/ambiguous_location/awaiting_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin, route and minutes without a link; the image follows automatically.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
   {
     name: 'reportIssue',
     description: 'Pentru pasageri și angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
@@ -328,13 +328,6 @@ export async function reply({ env, fetcher, profile, clock, history, memory, tex
     urgent ||= bubbles.some(urgentText);
     return { bubbles: urgent ? urgentBubbles(bubbles) : paceReactions(bubbles, history), used };
   };
-  if (lostItemClaim(text)) {
-    used.push('reportLostItem');
-    const result = await trackedTools.reportLostItem!({ text }) as any;
-    return finish([result.note ?? say(profile.lang, 'fallback')]);
-  }
-  // Location/route requests use the same deterministic catalogue on every channel.
-  if (profile.role === 'passenger' && /unde|where|cum ajung|how.*get|nearest|closest/i.test(text) && (resolvePlace(text) || amenityKind(text))) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   if (!hasLlm(env)) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   try {
     const context = contextBlock(profile, clock, memory);
@@ -371,7 +364,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
   }
   if (amenityKind(destinationText) && !/price|cost|pret|program|hours|open|inchid|deschid/.test(t)) {
     const r = await call('routeTo', { to: amenityKind(destinationText), ...(originPhrase(text) && { from: text }) });
-    return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
+    return [r.note ?? say(lang, 'fallback')];
   }
   if (isAirportQuestion(text)) {
     const r = await call('airportInfo', { query: text });
@@ -390,7 +383,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     const destination = /(?:ajung|merg|route|traseu|get|way)[^?]*?(?:la|to)\s+([^?.]+)/i.exec(text)?.[1];
     const r = await call('routeTo', { from: text, to: (destination && resolvePlace(destination)?.id) || (/exit|ieșire|iesire/.test(destination ?? t) ? 'exit' : /check|ghișeu|ghiseu/.test(destination ?? t) ? 'check_in' : 'gate'), ...(code && { flight: code }) });
     if (noFlight(r)) return [askFlight];
-    return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
+    return [r.note ?? say(lang, 'fallback')];
   }
   // Flight information follows routing requests.
   if (/(poart|gate|delay|cancel|întârzi|intarzi|anulat|status)/.test(t)) return flightInfo();

@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { sessionToken } from '../backend/auth'
 import { backend } from '../backend/config'
-import { personalRequest, stateLabel } from '../reports/Reports'
+import { personalRequest, ReportAttribution, stateLabel } from '../reports/Reports'
 import type { PersonalReport } from '../reports/types'
 import '../me/me.css'
 import '../map/live/page.css'
 import { Chat, ChatView } from '../chat/Chat'
 import { useChatChannel } from '../chat/channel'
 import { LiveMap, teamMark, type Focus, type ReportPin, type TeamMark } from '../map/live/LiveMap'
-import { landmarkFor, routeBetween, nodeAt, search, shortName, type Lang, type Landmark, type PathNode } from '../map/live/catalogue'
+import { landmarkFor, nodeAt, search, shortName, type Lang, type Landmark, type PathNode } from '../map/live/catalogue'
 import { useFlow, useIndex, useTick, useViewportHeight, useWide } from '../map/live/useLive'
 import { Sheet, sheetHeight, type Snap } from '../map/live/Sheet'
 import { PointCard, ReportPanel, ResultList, SearchBar, StaffNumbers } from '../map/live/Panels'
 import { sendReport, useReportFlow } from '../map/live/useReport'
+import { dispatchPath } from '../map/live/team'
 import { teamProgress } from '../map/live/view'
 import { notices, type OpsRecord } from '../map/live/notices'
 import { langOverride, LangToggle } from '../map/live/lang'
@@ -96,15 +97,13 @@ export default function Staff() {
     const fade = r.state === 'resolved' ? 1 - (tick - resolvedAt) / RESOLVED_FADE_MS : undefined
     if (fade !== undefined && !(fade > 0.05)) return []
     const kind = TYPE[r.type]?.[en ? 1 : 0] ?? r.type
-    return [{ id: r.id, at, state: r.state, priority: r.priority, fade: fade !== undefined ? Math.max(0.3, Math.min(1, fade)) : undefined, label: `${kind} · ${stateLabel(r.state, en)}` }]
+    return [{ id: r.id, at, state: r.state, priority: r.priority, fade: fade !== undefined ? Math.max(0.3, Math.min(1, fade)) : undefined, label: `${kind} · ${stateLabel(r.state, en)}${r.state === 'en_route' && r.etaMin != null ? ` · ~${teamProgress(r.timestamps?.en_route, r.etaMin, tick)?.leftMin ?? r.etaMin} min` : ''}` }]
   })
   const moving = reports.filter(r => r.state === 'en_route').map(r => {
-    const end = placeOf(r), l = landmarkFor(points, r.place?.node)
+    const end = placeOf(r)
     const progress = teamProgress(r.timestamps?.en_route, r.etaMin, tick)
     if (!end || !progress || !index) return null
-    const routed = l ? routeBetween(index, 'G_INFO', l.id, lang) : null
-    const start = landmarkFor(points, 'G_INFO')
-    const path: PathNode[] = routed?.ok ? routed.path : start ? [{ id: start.id, level: start.level, x: start.x, z: start.z }, end] : [end]
+    const path = dispatchPath(index.points, r.place.node!, live.blocked)
     return { r, mark: teamMark(path, progress.t, `${en ? 'Team' : 'Echipa'} · ~${progress.leftMin} min`, end.level, r.id, lang) }
   }).filter((m): m is { r: PersonalReport; mark: TeamMark | null } => !!m)
   const team = moving[0]?.mark ?? null
@@ -122,7 +121,7 @@ export default function Staff() {
   }, [sel, zoneL, focusReport, report.stage, report.place?.id, wide])
 
   if (!sessionToken() || error === '401') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Staff' : 'Personal'}</h1><a href="/join">{en ? 'Connect with WhatsApp' : 'Conectează-te cu WhatsApp'}</a></div></main>
-  if (error === '403') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Staff access' : 'Acces personal'}</h1><a href="/m">{en ? 'My page' : 'Pagina mea'}</a></div></main>
+  if (error === '403') return <main className="me-shell"><div className="me-page"><h1>{en ? 'Send STAFF <code> on WhatsApp' : 'Trimite STAFF <cod> pe WhatsApp'}</h1><a href="/m">{en ? 'My page' : 'Pagina mea'}</a></div></main>
 
   const situation = data?.situation
   const stateWord = (en ? { normal: 'Normal', busy: 'Busy', full: 'Full', unknown: 'Unknown' } : { normal: 'Normal', busy: 'Ocupat', full: 'Plin', unknown: 'Necunoscut' })[situation?.state ?? 'unknown']
@@ -175,9 +174,9 @@ export default function Staff() {
     {zoneL ? <StaffNumbers flow={live.flow} id={zoneL.id} now={live.now} lang={lang} history={live.history} forecast={zoneForecast} /> : null}
     {situation && situation.forecast.length > 0 && !zoneL && <p>{situation.forecast.map(p => `~${Math.ceil(p.waitMin)} min · +${p.inMin} min`).join(' · ')}</p>}
     {moving.map(({ r }) => { const p = teamProgress(r.timestamps?.en_route, r.etaMin, tick); return p ? <p key={r.id} className="lv-team" data-testid="team-eta">{en ? 'Team' : 'Echipa'} · ~{p.leftMin} min · {r.place.name}</p> : null })}
-    <h2 className="lv-section-h">{en ? 'My reports' : 'Rapoartele mele'}</h2>
+    <h2 className="lv-section-h">{en ? 'Reports in my zone and mine' : 'Rapoarte din zona mea și ale mele'}</h2>
     {reports.length ? <ul className="lv-myreports">{[...reports].reverse().map(r => <li key={r.id} className={`s-${r.state}`}><button type="button" onClick={() => { setFocusReport(r.id); setSelected(null) }}>
-      <i className="ring" aria-hidden="true" /><span><b>{TYPE[r.type]?.[en ? 1 : 0] ?? r.type}</b> · {r.place?.name}{r.text ? ` · ${r.text}` : ''}</span>
+      <i className="ring" aria-hidden="true" /><span><b>{TYPE[r.type]?.[en ? 1 : 0] ?? r.type}</b> · {r.place?.name}{r.text ? ` · ${r.text}` : ''}<ReportAttribution report={r} en={en} /></span>
       <span className="st">{stateLabel(r.state, en)}{r.state === 'en_route' && r.etaMin != null && ` · ~${teamProgress(r.timestamps?.en_route, r.etaMin, tick)?.leftMin ?? r.etaMin} min`}</span></button></li>)}</ul>
       : <p className="lv-empty">{en ? 'No reports' : 'Niciun raport'}</p>}
     <h2 className="lv-section-h">{en ? 'Dispatch' : 'Dispecerat'}</h2>

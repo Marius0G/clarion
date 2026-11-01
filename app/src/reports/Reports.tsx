@@ -4,7 +4,20 @@ import { authHeaders, sessionToken } from '../backend/auth'
 import type { PersonalReport } from './types'
 
 export const reportTypes = ['security', 'medical', 'cleaning', 'lost item', 'crowd', 'other'] as const
-export const stateLabel = (state: string, en = false) => (en ? { sent: 'Sent', taken: 'Taken', en_route: 'Team en route', resolved: 'Resolved' } : { sent: 'Trimis', taken: 'Preluat', en_route: 'Echipa vine', resolved: 'Rezolvat' })[state] ?? state
+export const stateLabel = (state: string, en = false) => (en ? { sent: 'Unconfirmed', taken: 'Confirmed', en_route: 'Team en route', resolved: 'Resolved' } : { sent: 'Neconfirmat', taken: 'Confirmat', en_route: 'Echipa vine', resolved: 'Rezolvat' })[state] ?? state
+export function reporterLabel(report: PersonalReport, en = false) {
+  if (report.isOwn !== false) return en ? 'Sent by you' : 'Trimis de tine'
+  const roles: Record<string, [string, string]> = {
+    hall_agent: ['Agent hol', 'Hall agent'], security_supervisor: ['Supervizor securitate', 'Security supervisor'],
+    incident_commander: ['Comandant intervenție', 'Incident commander'], passenger: ['Pasager', 'Passenger'], staff: ['Personal', 'Staff'],
+  }
+  return roles[report.reporterRole ?? report.source]?.[en ? 1 : 0] ?? (en ? 'Reporter' : 'Raportor')
+}
+export function ReportAttribution({ report, en = false }: { report: PersonalReport; en?: boolean }) {
+  const taken = report.timestamps?.taken
+  const valid = taken && Number.isFinite(Date.parse(taken))
+  return <small className="report-attribution">{reporterLabel(report, en)}{valid && <> · {en ? 'Confirmed by dispatch' : 'Confirmat de dispecerat'} · <time dateTime={taken}>{new Date(taken).toLocaleTimeString(en ? 'en-GB' : 'ro-RO', { hour: '2-digit', minute: '2-digit' })}</time></>}</small>
+}
 export async function personalRequest<T>(path: string, body?: unknown, timeout = 6000): Promise<T> {
   const response = await fetch(`${backend.http}${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),

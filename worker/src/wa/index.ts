@@ -14,7 +14,7 @@ import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
 //   wa:profile:<phone> -> Profile           wa:ctx:<phone> -> { history }        wa:last:<phone> -> ms of last inbound (24h window)
-import { reply, foldHistory, type HistoryEntry } from './agent.js';
+import { reply, foldHistory, hasLlm, type HistoryEntry } from './agent.js';
 import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
 import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType, type ReportInput } from './reports.js';
@@ -261,7 +261,7 @@ export class WhatsAppAgent {
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
     if (chosen) { await save({ lang: chosen, languageExplicit: true }); await transport.sendText(m.phone, say(chosen, 'language')); return; }
     const detected = messageLanguage(m.text);
-    if (!profile.languageExplicit && detected) await save({ lang: detected });
+    if (detected) await save({ lang: detected });
     // ş (cedilla, older keyboards) is matched as ș.
     if (DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
       if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);
@@ -317,7 +317,9 @@ export class WhatsAppAgent {
     // Reports from either role use one bounded slot-filling flow; missing type/place are button choices.
     const reportKey = `wa:report:${m.phone}`;
     let draft = await this.store.get<{ text: string; type?: ReportType; node?: string; photo?: string }>(reportKey);
-    if (draft || (profile.role === 'staff' && classifyReportType(m.text) === 'crowd') || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))) || /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) || m.replyId?.startsWith('rep:')) {
+    // With the model, free-text problems go to the agent (reportIssue); the slot flow keeps the explicit command and its buttons.
+    const freeTextReport = !hasLlm(this.env) && ((profile.role === 'staff' && classifyReportType(m.text) === 'crowd') || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))));
+    if (draft || freeTextReport || /^(raportează|raporteaza|raport|report)(?=$|[\s:.,!])/i.test(m.text) || m.replyId?.startsWith('rep:')) {
       const en = profile.lang === 'en';
       const index = await this.images.index();
       const words = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -365,8 +367,7 @@ export class WhatsAppAgent {
         : await this.reports.add(reportInput, Date.now(), !(profile.role === 'staff' && draft.type === 'crowd'));
       if (profile.role === 'staff' && draft.type === 'crowd') await transport.sendText(m.phone, en ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.');
       if (channel === 'web' && !(profile.role === 'staff' && draft.type === 'crowd')) await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
-      if (draft.type === 'lost item') await transport.sendText(m.phone, en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
-          : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.`);
+      if (draft.type === 'lost item') await transport.sendText(m.phone, say(profile.lang, 'lostItemSent'));
       await this.store.delete(reportKey);
       return;
     }
@@ -415,13 +416,7 @@ export class WhatsAppAgent {
     const started = Date.now();
     const tools = toolsFor({ reports: () => this.reports.list(), routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => channel === 'web'
       ? this.fileWebReport({ ...r, phone: m.phone, source: profile.role })
-      : this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
-      pageLink: async () => {
-        const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
-        const stored = await this.profile(m.phone);
-        if (stored?.pageToken) profile.pageToken = stored.pageToken;
-        return link;
-      } });
+      : this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f) });
     let waitEstimate: Profile['lastWaitEstimate'];
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
@@ -436,10 +431,10 @@ export class WhatsAppAgent {
     const answer = pending ? await (async () => {
       const r = await trackedTools.routeTo!({ ...pending, from: landmark });
       const result = r as any;
-      return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
+      return { bubbles: [result.note], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = ((['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = (['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
     const delivered = ['needs_location', 'ambiguous_location'].includes(routeResult?.status)
@@ -454,10 +449,11 @@ export class WhatsAppAgent {
       })() : await transport.sendReplies(m.phone, bubbles, m.id);
     if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
-        const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
-        if (evacuation?.active || routeResult.status === 'evacuation') {
+        const evacuation = await this.messaging.activeEvacuation();
+        const evacuationZones = evacuation?.zones ?? [];
+        if (evacuation) {
           const live = await this.messaging.evacRouteFor(profile.flight ? findFlight(this.view.flights(), profile.flight) : undefined);
-          const candidates = [routeResult.from, ...(evacuation?.zones ?? [])];
+          const candidates = [routeResult.from, ...evacuationZones];
           for (const zone of candidates) {
             const image = await this.images.evacuation(zone);
             if (!image?.link || (live && mapNodeId(image.exit) !== mapNodeId(live.exit))) continue;
@@ -472,7 +468,7 @@ export class WhatsAppAgent {
       } catch { /* Text delivery must never depend on a preview. */ }
     }
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
-    if (!initiallyBound && profile.flight) {
+    if (!initiallyBound && profile.flight && !routeResult) {
       const flight = findFlight(this.view.flights(), profile.flight);
       if (flight) {
         if (channel === 'web') await transport.sendText(m.phone, this.messaging.arriveText(flight, profile.hasCheckedBag, profile.lang));

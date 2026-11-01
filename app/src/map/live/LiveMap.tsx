@@ -4,11 +4,12 @@ import { fmt } from '../t2/geometry'
 import { zoneDetail } from '../t2/details'
 import { PLATE, SHELL, worldAt, zoneGeo } from '../t2/TerminalMap'
 import { boundsOf, pad, type Box } from '../t2/stack'
-import { categoryOf, FLOOR_NAMES, floorShort, rankOf, shortName, tierOf, type Category, type Lang, type Landmark, type PathNode } from './catalogue'
+import { categoryOf, floorChanges, FLOOR_NAMES, floorShort, rankOf, shortName, tierOf, type Category, type Lang, type Landmark, type PathNode } from './catalogue'
 import { ageLabel, ageMs, crowdLevel, crowdWords, isQueue, isStale, people, rowFor, trend, TREND_MARK, waitBand, type Flow, type Level as Crowd } from './crowd'
 import { PointGlyph } from './icons'
 import { placeItems, textWidth, type PlaceItem, type Rect } from './placement'
-import { along, boxAround, clampView, fitView, lerpView, limitsFor, toMap, viewBox, zoomAt, type Size, type View } from './view'
+import { floorRuns, remainingRoute } from './team'
+import { boxAround, clampView, fitView, lerpView, limitsFor, toMap, viewBox, zoomAt, type Size, type View } from './view'
 import '../t2/t2map.css'
 import './live.css'
 
@@ -19,8 +20,8 @@ import './live.css'
  */
 export type WorldPt = { level: Level; x: number; z: number }
 export interface ReportPin { id: string; at: WorldPt; state: 'sent' | 'taken' | 'en_route' | 'resolved'; label: string; priority?: string; fade?: number }
-export interface TeamMark { at: WorldPt; heading: number; label: string; badge: string | null; pin: string }
-export interface RouteDraw { path: PathNode[]; changes: { at: PathNode; to: PathNode; up: boolean; text: string }[]; endLabel?: string; assembly?: (PathNode & { name: string }) | null }
+export interface TeamMark { at: WorldPt; heading: number; label: string; badge: string | null; pin: string; remaining: RouteDraw }
+export interface RouteDraw { path: PathNode[]; changes: { at: PathNode; to: PathNode; up: boolean; text: string }[]; endLabel?: string; exit?: (PathNode & { name: string }) | null; assembly?: (PathNode & { name: string }) | null }
 export interface Focus { key: string; pts: WorldPt[]; minW?: number }
 
 interface Props {
@@ -371,16 +372,8 @@ export function LiveMap(p: Props) {
   /* ---------- Route ---------- */
   const routeEls = useMemo(() => {
     if (!route || route.path.length < 2) return null
-    const plate = (l: Level) => l === 'U' ? 1 : 0
-    const runs: Pt[][] = []
-    let prev: PathNode | null = null
-    for (const n of route.path) {
-      if (prev && plate(prev.level) === plate(n.level)) runs[runs.length - 1]!.push(at(n))
-      else runs.push([at(n)])
-      prev = n
-    }
     const end = at(route.path[route.path.length - 1]!)
-    return { runs: runs.filter(r => r.length > 1).map(r => `M${r.map(q => `${fmt(q[0])},${fmt(q[1])}`).join('L')}`), end }
+    return { runs: floorRuns(route.path).map(run => `M${run.map(n => { const q = at(n); return `${fmt(q[0])},${fmt(q[1])}` }).join('L')}`), end }
   }, [route])
 
   /* ---------- Floors ---------- */
@@ -410,12 +403,27 @@ export function LiveMap(p: Props) {
     </g>
   })
 
+  const renderChanges = (changes: RouteDraw['changes']) => changes.map((c, i) => {
+    const a = at(c.at), b = at(c.to), s = 12 * u
+    return <g key={i} className="lm-change">
+      {[a, b].map((q, k) => <g key={k}>
+        <rect x={fmt(q[0] - s)} y={fmt(q[1] - s)} width={fmt(2 * s)} height={fmt(2 * s)} rx={fmt(2 * u)} />
+        <path d={c.up ? `M${fmt(q[0])},${fmt(q[1] - s * 0.6)}V${fmt(q[1] + s * 0.6)}M${fmt(q[0] - s * 0.5)},${fmt(q[1] - s * 0.05)}L${fmt(q[0])},${fmt(q[1] - s * 0.6)}L${fmt(q[0] + s * 0.5)},${fmt(q[1] - s * 0.05)}`
+          : `M${fmt(q[0])},${fmt(q[1] + s * 0.6)}V${fmt(q[1] - s * 0.6)}M${fmt(q[0] - s * 0.5)},${fmt(q[1] + s * 0.05)}L${fmt(q[0])},${fmt(q[1] + s * 0.6)}L${fmt(q[0] + s * 0.5)},${fmt(q[1] + s * 0.05)}`} strokeWidth={fmt(2.4 * u)} />
+      </g>)}
+      {flip(a, c.text) ? <Tag x={a[0] - s - 6 * u} y={a[1]} u={u} text={c.text} end /> : <Tag x={a[0] + s + 6 * u} y={a[1]} u={u} text={c.text} />}
+    </g>
+  })
+
   const teamEl = team && (() => {
     const m = at(team.at)
-    const pinAt = pins.find(q => q.id === team.pin)
-    const line = pinAt ? at(pinAt.at) : null
     return <>
-      {line && <path className="lm-team-line" d={`M${fmt(m[0])},${fmt(m[1])}L${fmt(line[0])},${fmt(line[1] - 16 * u)}`} strokeWidth={fmt(2.5 * u)} strokeDasharray={`${fmt(6 * u)} ${fmt(5 * u)}`} />}
+      <g data-testid="lm-team-route">
+        {floorRuns(team.remaining.path).map((run, i) => <path key={i} className="lm-team-line" data-floor={run[0]!.level}
+          d={`M${run.map(n => { const q = at(n); return `${fmt(q[0])},${fmt(q[1])}` }).join('L')}`}
+          strokeWidth={fmt(2.5 * u)} strokeDasharray={`${fmt(6 * u)} ${fmt(5 * u)}`} />)}
+        {renderChanges(team.remaining.changes)}
+      </g>
       <g className="lm-team" data-testid="lm-team" style={{ transform: `translate(${fmt(m[0])}px, ${fmt(m[1])}px)` }} role="img" aria-label={team.label}>
         <g transform={`rotate(${fmt((team.heading * 180) / Math.PI)})`}>
           <rect x={fmt(-11 * u)} y={fmt(-11 * u)} width={fmt(22 * u)} height={fmt(22 * u)} rx={fmt(3 * u)} className="body" strokeWidth={fmt(2.5 * u)} />
@@ -452,21 +460,19 @@ export function LiveMap(p: Props) {
       <path d={d} className="line" strokeWidth={fmt(7 * u)} />
       <path d={d} className="flow" strokeWidth={fmt(3 * u)} strokeDasharray={`${fmt(3 * u)} ${fmt(15 * u)}`} style={{ ['--dash' as string]: `${fmt(18 * u)}` }} />
     </g>)}
-    {changes.map((c, i) => {
-      const a = at(c.at), b = at(c.to), s = 12 * u
-      return <g key={i} className="lm-change">
-        {[a, b].map((q, k) => <g key={k}>
-          <rect x={fmt(q[0] - s)} y={fmt(q[1] - s)} width={fmt(2 * s)} height={fmt(2 * s)} rx={fmt(2 * u)} />
-          <path d={c.up ? `M${fmt(q[0])},${fmt(q[1] - s * 0.6)}V${fmt(q[1] + s * 0.6)}M${fmt(q[0] - s * 0.5)},${fmt(q[1] - s * 0.05)}L${fmt(q[0])},${fmt(q[1] - s * 0.6)}L${fmt(q[0] + s * 0.5)},${fmt(q[1] - s * 0.05)}`
-            : `M${fmt(q[0])},${fmt(q[1] + s * 0.6)}V${fmt(q[1] - s * 0.6)}M${fmt(q[0] - s * 0.5)},${fmt(q[1] + s * 0.05)}L${fmt(q[0])},${fmt(q[1] + s * 0.6)}L${fmt(q[0] + s * 0.5)},${fmt(q[1] + s * 0.05)}`} strokeWidth={fmt(2.4 * u)} />
-        </g>)}
-        {flip(a, c.text) ? <Tag x={a[0] - s - 6 * u} y={a[1]} u={u} text={c.text} end /> : <Tag x={a[0] + s + 6 * u} y={a[1]} u={u} text={c.text} />}
+    {renderChanges(changes)}
+    {route?.exit && (() => {
+      const e = at(route.exit)
+      return <g className="lm-exit" data-testid="lm-exit">
+        <circle cx={fmt(e[0])} cy={fmt(e[1])} r={fmt(8 * u)} />
+        {flip(e, route.exit.name) ? <Tag x={e[0] - 22 * u} y={e[1] - 24 * u} u={u} text={route.exit.name} dark end />
+          : <Tag x={e[0] + 22 * u} y={e[1] - 24 * u} u={u} text={route.exit.name} dark />}
       </g>
-    })}
+    })()}
     {route?.assembly && (() => {
       const e = routeEls.end, a = at(route.assembly)
       return <g className="lm-assembly">
-        <path d={`M${fmt(e[0])},${fmt(e[1])}L${fmt(a[0])},${fmt(a[1])}`} className="out" strokeWidth={fmt(5 * u)} strokeDasharray={`${fmt(9 * u)} ${fmt(6 * u)}`} />
+        {!route.exit && <path d={`M${fmt(e[0])},${fmt(e[1])}L${fmt(a[0])},${fmt(a[1])}`} className="out" strokeWidth={fmt(5 * u)} strokeDasharray={`${fmt(9 * u)} ${fmt(6 * u)}`} />}
         <circle cx={fmt(a[0])} cy={fmt(a[1])} r={fmt(12 * u)} className="spot" strokeWidth={fmt(3 * u)} />
         <Tag x={a[0]} y={a[1] - 20 * u} u={u} text={route.assembly.name} dark center />
       </g>
@@ -511,13 +517,13 @@ function Tag({ x, y, u, text, dark = false, center = false, end = false }: { x: 
 
 /** Team position along its route, as a map mark. */
 export function teamMark(path: readonly PathNode[], t: number, label: string, pinLevel: Level, pinId: string, lang: Lang): TeamMark | null {
-  if (path.length < 1) return null
-  const pts = path.map(at)
-  const { at: m, heading, index } = along(pts, t)
-  const level = path[Math.min(index + 1, path.length - 1)]!.level === path[index]!.level ? path[index]!.level : path[index]!.level
+  const remaining = remainingRoute(path, t)
+  if (!remaining) return null
+  const m = at(remaining.at), next = at(remaining.next), level = remaining.at.level
+  const heading = Math.atan2(next[1] - m[1], next[0] - m[0])
   const plate = (l: Level) => l === 'U' ? 1 : 0
-  const w = PLATE.toWorld(m)
-  return { at: { level: w.level, x: w.x, z: w.z }, heading, label, pin: pinId,
+  return { at: remaining.at, heading, label, pin: pinId,
+    remaining: { path: remaining.path, changes: floorChanges(remaining.path, lang) },
     badge: plate(level) !== plate(pinLevel) ? `${floorShort(level, lang)} ${plate(pinLevel) > plate(level) ? '↑' : '↓'}` : null }
 }
 

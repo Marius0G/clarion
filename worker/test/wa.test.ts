@@ -71,7 +71,7 @@ describe('whenToArrive (D5)', () => {
     expect(p.gateCloseAt).toBe('09:10');
     expect(p.minutesFromNow).toBe(85);
     expect(p.steps.map(s => s.step)).toEqual(['Predare bagaje, grupul 1', 'Control de securitate', 'Drum până la poarta 2', 'Marjă']);
-    expect(p.clock).toBe('ora simulării');
+    expect(p.clock).toBe('');
     // Hand luggage only: no bag drop. 18 + 2 + 10 = 30 -> 08:40 -> 08:40.
     expect(arrivalPlan(W6, flow, sim7, false).beAtEntranceAt).toBe('08:40');
   });
@@ -284,7 +284,9 @@ describe('WhatsAppAgent turn', () => {
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang, position: { node: 'entrance', at: sim7.now * 1000 } });
     await agent.inbound(inbound(text));
     expect(meta().filter(b => b.type === 'reaction')).toEqual([]);
-    expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Received . Exit 1 → 2.']);
+    // The model's words are kept (no deterministic override); urgency strips reactions and emoji.
+    const expected = 'Received . Exit 1 → 2.';
+    expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual([expected]);
   });
 
   it('keeps the queue reaction and Moni prompt in English', async () => {
@@ -376,7 +378,7 @@ describe('passenger language (D23)', () => {
     await agent.inbound(inbound('English'));
     await agent.inbound(inbound('gate?'));
     const request = calls.filter(c => String(c.url).includes('anthropic')).at(-1).body;
-    expect(JSON.stringify(request.system)).toContain('Passenger language: English. You MUST answer entirely in this language');
+    expect(JSON.stringify(request.system)).toContain('Passenger language: English. Answer in the language of the current question');
   });
   it('localizes automatic flight changes, admin decisions, staff and evacuation', async () => {
     const { agent, store, texts, airport } = languageHarness();

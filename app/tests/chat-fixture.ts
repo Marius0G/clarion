@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { checkButtons } from './button-states'
 export async function chatCoverage(page: Page) {
   const history: { role: string; text: string; at: string; channel: string; buttons?: { id: string; title: string }[]; image?: string }[] = [
     { role: 'clarion', text: 'Poarta 3 · Îmbarcare', at: '14:10', channel: 'whatsapp' },
@@ -22,8 +23,9 @@ export async function chatCoverage(page: Page) {
   await expect(dialog).toBeVisible()
   expect(await dialog.boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 })
   await expect(dialog.getByText('Poarta 3 · Îmbarcare')).toBeVisible()
+  await checkButtons(page)
   await dialog.getByRole('button', { name: 'Da', exact: true }).click()
-  await expect(dialog.getByText('Da', { exact: true })).toBeVisible()
+  await expect(dialog.locator('.chat-user').getByText('Da', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('img', { name: 'Traseu' })).toBeVisible()
   await dialog.getByLabel('Mesaj', { exact: true }).fill('Securitate?')
   await dialog.getByRole('button', { name: 'Trimite', exact: true }).click()

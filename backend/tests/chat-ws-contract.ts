@@ -116,7 +116,7 @@ export function socketContract(harness: () => ChatHarness) {
       expect((await h.post(`/api/reports/${report.id}/state`, { state: 'taken' })).status).toBe(200);
       await expect.poll(() => b.events.some(e => e.type === 'report' && e.report.state === 'taken')).toBe(true);
       await expect.poll(() => b.events.filter(e => e.type === 'chat').length).toBeGreaterThan(before);
-      expect(b.events.some(e => e.type === 'chat' && /Preluat|Taken/i.test(e.entry.text))).toBe(true);
+      expect(b.events.some(e => e.type === 'chat' && /Confirmat|Confirmed/i.test(e.entry.text))).toBe(true);
       expect(b.events.some(e => e.type === 'me')).toBe(true);
       expect(other.events.every(e => ['history', 'pong'].includes(e.type))).toBe(true);
       expect(a.events.some(e => e.type === 'state')).toBe(false);

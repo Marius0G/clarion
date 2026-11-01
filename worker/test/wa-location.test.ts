@@ -37,6 +37,21 @@ describe('catalogue location conversation', () => {
     expect(h.sends.at(-1)).toEqual({ ...envelope, type: 'image', image: { link: 'https://site.test/routes/G_CENTER__G_WC.png', caption: 'Toalete parter · ~1 min' } });
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
   });
+  it.each(['whatsapp', 'web'] as const)('sends route text and optional images without links on %s', async channel => {
+    for (const text of ['Sunt la Hol central, cum ajung la poarta 3', 'Unde e toaleta? Sunt la Hol central.', 'Where can I eat? I am at Duty free.', 'Sunt la Hol central, cum ajung la Informații?']) {
+      for (const hasImage of [true, false]) {
+        const h = harness(hasImage ? manifest : { ...manifest, routes: {} });
+        await h.store.put(`wa:profile:${phone}`, { phone, role: 'passenger', flight: 'W4 3625' });
+        const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+        const texts = channel === 'web' ? entries.map(e => e.text) : h.sends.filter(s => s.type === 'text').map(s => s.text.body);
+        const images = channel === 'web' ? entries.filter(e => e.image) : h.sends.filter(s => s.type === 'image');
+        expect(texts.join(' '), text).toContain('→');
+        expect(texts.join(' '), text).not.toMatch(/https?:|\/m\//);
+        expect(images, text).toHaveLength(hasImage ? 1 : 0);
+        expect((await h.agent.profile(phone))?.pageToken).toBeUndefined();
+      }
+    }
+  });
   it('clarifies generic ATM origins and resumes BCR using its graph anchor when the direct key is absent', async () => {
     const index = structuredClone(manifest);
     delete (index.routes as any).atm_bcr__U_GATE_3;
@@ -87,10 +102,39 @@ describe('catalogue location conversation', () => {
     expect(h.sends.some(s => s.type === 'image')).toBe(false);
   });
   it('sends the exact evacuation Graph image after text', async () => {
-    const h = harness(); await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+    const h = harness(manifest, ['G_CAFE']); await h.store.put('msg:evacuation', { active: true, zones: ['G_CAFE'] });
     await h.receive('Unde e toaleta? Sunt la Hol central.');
     expect(h.sends.at(-1)).toEqual({ ...envelope, type: 'image', image: { link: 'https://site.test/routes/evac/G_CENTER.png', caption: 'Traseu de evacuare' } });
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
+  });
+  it.each(['whatsapp', 'web'] as const)('uses the normal image after evacuation ends on %s', async channel => {
+    const blocked = ['G_CAFE'];
+    const h = harness(manifest, blocked);
+    await h.agent.messaging.plan({ id: 'ended', blocked: [...blocked], clearSec: 10, exits: [], routes: [{ from: 'G_CENTER', exit: 'door_exit_west', nodes: ['G_CENTER', 'door_exit_west'] }] });
+    blocked.length = 0;
+    await h.agent.messaging.adminChanged({ type: 'open', zone: 'G_CAFE' });
+    expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
+    expect(await h.store.get('msg:evacPlan')).toBeUndefined();
+    h.advance(3600);
+    const text = 'Unde e toaleta? Sunt la Hol central.';
+    const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+    const images = channel === 'web' ? entries.filter(e => e.image).map(e => e.image) : h.sends.filter(s => s.type === 'image').map(s => s.image.link);
+    expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
+  });
+  it.each(['whatsapp', 'web'] as const)('ends stale evacuation state and uses normal images on %s', async channel => {
+    for (const blocked of [[], ['G_CAFE']]) {
+      const h = harness(manifest, blocked);
+      await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+      await h.store.put('msg:evacPlan', { id: 'stale', blocked: ['G_CENTER'], clearSec: 10, exits: [], routes: [{ from: 'G_CENTER', exit: 'door_exit_west', nodes: ['G_CENTER', 'door_exit_west'] }] });
+      h.advance(3600);
+      const text = 'Unde e toaleta? Sunt la Hol central.';
+      const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+      const images = channel === 'web' ? entries.filter(e => e.image).map(e => e.image) : h.sends.filter(s => s.type === 'image').map(s => s.image.link);
+      expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
+      expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
+      expect(await h.agent.messaging.evacRouteFor(undefined)).toBeNull();
+      expect(await h.store.get('msg:evacPlan')).toBeUndefined();
+    }
   });
   it('shares list rows as web history chips, including Other and free text', async () => {
     const h = harness(), entries = await h.agent.chat(phone, 'unde e toaleta');

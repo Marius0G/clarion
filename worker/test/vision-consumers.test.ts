@@ -47,17 +47,19 @@ describe('routeTo exit during an evacuation uses evac.plan (A10)', () => {
     const store = new MemoryStore();
     const fetcher = vi.fn(async () => Response.json({}));
     const agent = new WhatsAppAgent({ WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_NUMBER_ID: 'PN1' }, store, view, { fetcher, pause: 0, toUnity: () => true, evacWaitMs: 20 });
+    state.blocked = ['G_CHECKIN_QUEUE'];
     await agent.messaging.plan(plan);
     const tools = () => toolsFor({ view, profile: () => ({ phone: '+40700000001', role: 'passenger', flight: 'W6 3751' }), save: async () => {},
       evacRoute: f => agent.messaging.evacRouteFor(f) });
-    // Nothing blocked any more (all clear): the ordinary nearest-exit route.
-    expect(await agent.messaging.evacRouteFor(undefined)).toBeNull();
-    expect(((await tools().routeTo({ to: 'exit', from: 'Intrare plecări' })) as any).status).toBe('ready');
-    state.blocked = ['G_CHECKIN_QUEUE'];
     const r: any = await tools().routeTo({ to: 'exit', from: 'Intrare plecări' });
     // 07:00 with the gate closing at 09:10: still landside, at the check-in of group 2.
     expect(r).toMatchObject({ status: 'evacuation', from: 'check_in:2', to: 'exit_2', nodes: ['check_in:2', 'entrance', 'exit_2'] });
     expect(r.note).toMatch(/^Evacuare: /);
     expect(((await tools().routeTo({ to: 'gate' })) as any).status).not.toBe('evacuation');
+    // Nothing blocked any more (all clear): the ordinary nearest-exit route.
+    state.blocked = [];
+    expect(await agent.messaging.evacRouteFor(undefined)).toBeNull();
+    expect(((await tools().routeTo({ to: 'exit', from: 'Intrare plecări' })) as any).status).toBe('ready');
+    expect(await store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
   });
 });

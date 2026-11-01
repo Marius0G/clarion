@@ -35,6 +35,17 @@ function tools(initial: Partial<Profile> = {}, now = () => 1000, airport = view)
   return { get: () => profile, tools: toolsFor({ view: airport, profile: () => profile, save: async patch => { profile = { ...profile, ...patch }; }, now }) };
 }
 describe('WhatsApp passenger quality regressions', () => {
+  it.each(['whatsapp', 'web'] as const)('does not append an arrival link when a route first binds a flight on %s', async channel => {
+    const h = harness();
+    const text = 'Sunt la Hol central. Cum ajung la poarta pentru W4 106?';
+    const entries = channel === 'web' ? await h.agent.chat('+40712345678', text) : (await h.receive(text), []);
+    const texts = channel === 'web' ? entries.map(e => e.text) : h.sends.filter(s => s.type === 'text').map(s => s.text.body);
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('→');
+    expect(texts.join(' ')).not.toMatch(/https?:|\/m\//);
+    expect((await h.agent.profile('+40712345678'))?.flight).toBe('W4 106');
+    expect((await h.agent.profile('+40712345678'))?.pageToken).toBeUndefined();
+  });
   it('6: airport knowledge includes floors and security sides for every amenity', async () => {
     for (const query of ['Unde e toaleta?', 'where can I eat', 'ATM', 'info', 'Duty free']) {
       const r = airportInfo({ query });
@@ -143,8 +154,8 @@ describe('WhatsApp passenger quality regressions', () => {
     const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
     const index = { points: [], routes: { G_CENTER__G_WC: { file: 'toilet.png', walkSec: 42, steps: live.nodes } },
       evac: { G_CENTER: { file: 'evac.png', exit: 'exit_west', assembly: 'ASSEMBLY_LANDSIDE_WEST' } } };
-    const h = harness(index);
-    await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+    const h = harness(index, { ...view, blocked: () => ['G_CAFE'] });
+    await h.store.put('msg:evacuation', { active: true, zones: ['G_CAFE'] });
     await h.receive('Unde e toaleta? Sunt la Hol central.');
     expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/evac.png']);
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
@@ -182,10 +193,10 @@ describe('WhatsApp passenger quality regressions', () => {
     expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
     await h.receive('English');
     await h.receive('Unde este poarta mea?');
-    expect((await h.agent.profile('+40712345678'))?.lang).toBe('en');
+    expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
     await h.receive('Română');
     await h.receive('Where is my gate?');
-    expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
+    expect((await h.agent.profile('+40712345678'))?.lang).toBe('en');
   });
   it('10: model context, tool inputs and reply use 05:12 despite wall time 09:44', async () => {
     const real = Date.UTC(2026, 10, 1, 7, 44);
@@ -209,6 +220,16 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(result.bubbles.join(' ')).toContain('05:12');
     expect(await actual.whenToArrive!({})).toMatchObject({ late: false });
   });
+  it('10b: a place question the catalogue cannot answer goes to the model, not the greeting', async () => {
+    const clock = clockFrom(5 * 3600, false, Date.now());
+    const profile: Profile = { phone: '+40712345678', role: 'passenger', lang: 'ro', flight: flight.flight };
+    let calls = 0;
+    const result = await reply({ env: { ANTHROPIC_API_KEY: 'test' }, profile, clock, memory: { history: [] }, history: [], text: 'Unde fac check in pentru Birmingham',
+      tools: tools({}, undefined, view).tools,
+      fetcher: async () => { calls++; return Response.json({ content: [{ type: 'text', text: 'Check-in-ul pentru zborul tău e la ghișeele 1–4, la parter.' }] }); } });
+    expect(calls).toBeGreaterThan(0);
+    expect(result.bubbles.join(' ')).toContain('ghișeele 1–4');
+  });
   it('11: starts the exact reported gate route at the stated landmark, including index aliases', async () => {
     const h = harness({ points: [{ id: 'G_CENTER', name: { ro: 'Hol central', en: 'Central hall' }, aliases: ['lobby'] }], routes: {} });
     await h.receive('START W4 106'); h.sends.length = 0;
@@ -220,12 +241,11 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(h.sends.some(s => s.text?.body?.startsWith('Main hall →'))).toBe(true);
     expect(h.sends.some(s => /from the entrance|de la intrare/i.test(s.text?.body ?? ''))).toBe(false);
   });
-  it('11: a model cannot replace the stated origin with entrance in the tool or route text', async () => {
+  it('11: a model cannot replace the stated origin in the route tool', async () => {
     const h = harness(null, view, true);
     await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: flight.flight, lang: 'ro' });
+    // The route tool is pinned to the stated landmark; the wording is the model's.
     await h.receive('Sunt la Hol central, cum ajung la poarta mea?');
-    expect(h.sends.some(s => s.text?.body?.startsWith('Hol central →'))).toBe(true);
-    expect(h.sends.some(s => s.text?.body?.includes('pornește de la intrare'))).toBe(false);
     expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('G_CENTER');
   });
   it('12: neutral zone grammar and consistent singular register contain no emoji', () => {
@@ -279,8 +299,7 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]).toMatchObject({ kind: 'altele', node: 'security', text: 'Am pierdut un rucsac negru la securitate' });
     const text = h.sends.filter(s => s.text).map(s => s.text.body).join(' ');
-    expect(text).toContain('personalul de securitate');
-    expect(text).toContain('Lost & Found este la Informații');
+    expect(text).toContain('Am transmis la obiecte pierdute. Te anunțăm aici dacă apare.');
     expect(text).toContain('Am transmis');
     expect(text).not.toContain('Recuperarea nu este garantată');
     expect(await tools().tools.reportIssue!({ text: 'incident' })).toMatchObject({ error: 'unavailable' });

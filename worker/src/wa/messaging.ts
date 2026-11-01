@@ -213,10 +213,24 @@ export class Messaging {
       evacuation,
     };
   }
+  /** Stored evacuations end when none of their zones remain blocked in the live sim. */
+  async activeEvacuation() {
+    const state = await this.deps.store.get<{ active: boolean; zones: string[]; reopenInMin?: number | null }>('msg:evacuation');
+    if (!state?.active) return null;
+    const blocked = this.deps.view.blocked?.() ?? [];
+    const zones = state.zones.filter(zone => blocked.some(b => mapNodeId(b) === mapNodeId(zone)));
+    if (!zones.length) {
+      await this.deps.store.put('msg:evacuation', { active: false, zones: [] });
+      // The old plan's routes may use exits a later evacuation closes.
+      await this.deps.store.delete('msg:evacPlan');
+      return null;
+    }
+    return { ...state, zones };
+  }
   /** D33: during an evacuation the page shows the exit route for his estimated place, or that he should not come yet. */
   private async evacuationFor(s: { sub: Subscriber; hasCheckedBag?: boolean }, f: Flight, lang?: Lang): Promise<PassengerData['evacuation']> {
-    const state = await this.deps.store.get<{ active: boolean; zones: string[]; reopenInMin?: number | null }>('msg:evacuation');
-    if (!state?.active) return { active: false, zones: [] };
+    const state = await this.activeEvacuation();
+    if (!state) return { active: false, zones: [] };
     const now = this.deps.view.clock().now;
     const plan = await this.deps.store.get<EvacPlan>('msg:evacPlan');
     const r = plan?.routes.length ? routeFor(plan, f, now) : await this.fallbackRoute(s.sub, f);
@@ -368,7 +382,7 @@ export class Messaging {
       const future = peak(q), before = old && peak(old);
       const changedBand = !old || queueBand(old.nowMin) !== queueBand(q.nowMin) || queueBand(before?.waitMin ?? null) !== queueBand(future?.waitMin ?? null);
       if (bandsOnly ? !changedBand : old && old.nowMin === q.nowMin && before?.waitMin === future?.waitMin && before?.inMin === future?.inMin) return [];
-      if (bandsOnly || q.nowMin === null) return [queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)];
+      if (bandsOnly || q.nowMin === null || queueBand(q.nowMin) === 'none') return [queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)];
       const direction = !old || old.nowMin === null || q.nowMin === old.nowMin ? '' : q.nowMin > old.nowMin ? (lang === 'en' ? ' has grown' : ' a crescut') : (lang === 'en' ? ' has shrunk' : ' a scăzut');
       const name = q.zone === 'security' ? (lang === 'en' ? 'The security queue' : 'Coada la securitate') : nodeName(q.zone, lang);
       const forecast = future && future.waitMin !== q.nowMin ? (lang === 'en' ? `, ~${Math.round(future.waitMin)} min around ` : `, ~${Math.round(future.waitMin)} min în jur de `) + clockText(this.deps.view.clock().now + future.inMin * 60) : '';
@@ -512,9 +526,10 @@ export class Messaging {
       }
       if (command.type === 'open' && (await this.deps.store.get<{ active: boolean }>('msg:evacuation'))?.active) {
         const left = (this.deps.view.blocked?.() ?? []).filter(z => mapNodeId(z) !== mapNodeId(command.zone));
-        if (!left.length) return this.allClear();
         const state = await this.deps.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
-        await this.deps.store.put('msg:evacuation', { ...state, zones: state!.zones.filter(z => left.includes(z)) });
+        const zones = state!.zones.filter(zone => left.some(blocked => mapNodeId(blocked) === mapNodeId(zone)));
+        if (!zones.length) return this.allClear();
+        await this.deps.store.put('msg:evacuation', { ...state, zones });
         const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
         for (const s of await this.subscribers()) {
           if (!told.has(this.identity(s.sub))) continue;
@@ -542,7 +557,8 @@ export class Messaging {
   /** Pitch: open on the last blocked zone is the all clear. Everyone told to leave or stay away hears that it reopened, with the situation now. */
   private async allClear() {
     const told = new Set(await this.deps.store.get<string[]>('msg:evacuated') ?? []);
-    for (const key of ['msg:evacuation', 'msg:evacPlan', 'msg:evacuated']) await this.deps.store.delete(key);
+    await this.deps.store.put('msg:evacuation', { active: false, zones: [] });
+    for (const key of ['msg:evacPlan', 'msg:evacuated']) await this.deps.store.delete(key);
     const flights = this.deps.view.flights();
     let sent = 0;
     for (const s of await this.subscribers()) {
@@ -613,7 +629,7 @@ export class Messaging {
   }
   /** routeTo('exit') during an evacuation: the latest plan's route for this flight's estimated stage; null once nothing is blocked. */
   async evacRouteFor(f: Flight | undefined): Promise<EvacRoute | null> {
-    if (!(this.deps.view.blocked?.() ?? []).length) return null;
+    if (!await this.activeEvacuation()) return null;
     const p = await this.deps.store.get<EvacPlan>('msg:evacPlan');
     return p?.routes.length ? routeFor(p, f, this.deps.view.clock().now) : null;
   }
