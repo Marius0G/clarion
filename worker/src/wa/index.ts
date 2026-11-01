@@ -415,13 +415,7 @@ export class WhatsAppAgent {
     const started = Date.now();
     const tools = toolsFor({ reports: () => this.reports.list(), routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => channel === 'web'
       ? this.fileWebReport({ ...r, phone: m.phone, source: profile.role })
-      : this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
-      pageLink: async () => {
-        const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
-        const stored = await this.profile(m.phone);
-        if (stored?.pageToken) profile.pageToken = stored.pageToken;
-        return link;
-      } });
+      : this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f) });
     let waitEstimate: Profile['lastWaitEstimate'];
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
@@ -436,10 +430,10 @@ export class WhatsAppAgent {
     const answer = pending ? await (async () => {
       const r = await trackedTools.routeTo!({ ...pending, from: landmark });
       const result = r as any;
-      return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
+      return { bubbles: [result.note], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = ((['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = ((['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) || ['ready', 'evacuation'].includes(routeResult?.status)) ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
     const delivered = ['needs_location', 'ambiguous_location'].includes(routeResult?.status)

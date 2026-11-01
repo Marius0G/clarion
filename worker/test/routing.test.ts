@@ -14,14 +14,15 @@ function setup(flow: Record<string, ZoneRow> = {}, blocked: string[] = []) {
   const view: AirportView = { clock: () => ({ now: 0, sim: true }), flights: () => PROVISIONAL_FLIGHTS,
     flow: () => flow, provisional: () => true, blocked: () => blocked };
   const tools = toolsFor({ view, profile: () => profile, save: async p => { profile = { ...profile, ...p }; },
-    report: r => reports.add(r), pageLink: async () => 'https://passenger.example/m/token' });
+    report: r => reports.add(r) });
   return { tools, reports, view, staff: () => { profile.role = 'staff'; } };
 }
 describe('live routing tools', () => {
-  it('routes to the flight gate and desk group and gives a step list, minutes and passenger link', async () => {
+  it('routes to the flight gate and desk group and gives a step list, minutes without a link', async () => {
     const { tools } = setup();
     const result = await tools.routeTo!({ to: 'gate' }) as any;
-    expect(result).toMatchObject({ status: 'ready', minutes: 4, from: 'entrance', to: 'gate_2', link: 'https://passenger.example/m/token' });
+    expect(result).toMatchObject({ status: 'ready', minutes: 4, from: 'entrance', to: 'gate_2' });
+    expect(result).not.toHaveProperty('link');
     expect(result.nodes).toContain('U_SECURITY');
     expect(result.nodes.some((n: string) => n === 'escalator_east_U' || n === 'stairs_east_U')).toBe(true);
     expect(result.steps.at(-1)).toBe('Poarta 2');
@@ -62,9 +63,10 @@ describe('live routing tools', () => {
     sim.sent({ type: 'evacuate', zones: ['gate_1', 'gate_2'] });
     expect(view.blocked?.()).toEqual(['gate_1', 'gate_2']);
   });
-  it('answers routing requests without an LLM, including the page link', async () => {
+  it('answers routing requests without an LLM, without a page link', async () => {
     const answer = await fallbackReply('cum ajung la poarta?', setup().tools);
     expect(answer[0]).toContain('Poarta 2');
-    expect(answer[1]).toBe('https://passenger.example/m/token');
+    expect(answer).toHaveLength(1);
+    expect(answer.join(' ')).not.toMatch(/https?:|\/m\//);
   });
 });

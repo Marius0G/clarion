@@ -27,16 +27,15 @@ afterEach(() => vi.restoreAllMocks());
 const quiet = () => { vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); };
 
 describe('passenger page profiles', () => {
-  it('sends route steps and a working passenger link, preserving its token on subsequent turns', async () => {
+  it('sends route text without a passenger link or creating a page token', async () => {
     quiet();
     const h = harness(fakeSim().view);
     await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751' });
     await h.inbound('Sunt la Intrare plecări. Cum ajung la poarta?');
     const p = await h.agent.profile('+40712345678');
-    expect(p?.pageToken).toBeTruthy();
+    expect(p?.pageToken).toBeUndefined();
     expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~4 min'))).toBe(true);
-    expect(h.texts().some(m => m.text.includes(`/m/${p!.pageToken}`))).toBe(true);
-    expect(await h.m.passenger(p!.pageToken!)).toBeDefined();
+    expect(h.texts().some(m => /https?:|\/m\//.test(m.text))).toBe(false);
     await h.inbound('când să fiu la aeroport?');
     expect((await h.agent.profile('+40712345678'))?.pageToken).toBe(p!.pageToken);
   });

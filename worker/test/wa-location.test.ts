@@ -37,6 +37,21 @@ describe('catalogue location conversation', () => {
     expect(h.sends.at(-1)).toEqual({ ...envelope, type: 'image', image: { link: 'https://site.test/routes/G_CENTER__G_WC.png', caption: 'Toalete parter · ~1 min' } });
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
   });
+  it.each(['whatsapp', 'web'] as const)('sends route text and optional images without links on %s', async channel => {
+    for (const text of ['Sunt la Hol central, cum ajung la poarta 3', 'Unde e toaleta? Sunt la Hol central.', 'Where can I eat? I am at Duty free.', 'Sunt la Hol central, cum ajung la Informații?']) {
+      for (const hasImage of [true, false]) {
+        const h = harness(hasImage ? manifest : { ...manifest, routes: {} });
+        await h.store.put(`wa:profile:${phone}`, { phone, role: 'passenger', flight: 'W4 3625' });
+        const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+        const texts = channel === 'web' ? entries.map(e => e.text) : h.sends.filter(s => s.type === 'text').map(s => s.text.body);
+        const images = channel === 'web' ? entries.filter(e => e.image) : h.sends.filter(s => s.type === 'image');
+        expect(texts.join(' '), text).toContain('→');
+        expect(texts.join(' '), text).not.toMatch(/https?:|\/m\//);
+        expect(images, text).toHaveLength(hasImage ? 1 : 0);
+        expect((await h.agent.profile(phone))?.pageToken).toBeUndefined();
+      }
+    }
+  });
   it('clarifies generic ATM origins and resumes BCR using its graph anchor when the direct key is absent', async () => {
     const index = structuredClone(manifest);
     delete (index.routes as any).atm_bcr__U_GATE_3;

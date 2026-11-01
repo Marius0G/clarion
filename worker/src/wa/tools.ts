@@ -145,7 +145,6 @@ export interface ToolDeps {
   reports?: () => Promise<Report[]>;
   /** Stores a report (D11/D34); absent in read-only contexts. */
   report?: (input: ReportInput) => Promise<Report>;
-  pageLink?: () => Promise<string>;
   routeIndex?: () => Promise<RouteIndex | null>;
   now?: () => number;
   /** During an evacuation: the latest evac.plan route for this passenger's estimated place (A10, D9); null otherwise. */
@@ -153,7 +152,7 @@ export interface ToolDeps {
 }
 
 /** The five D15 tools for one person, using the shared provisional terminal graph. */
-export function toolsFor({ view, profile, save, report, reports, pageLink, evacRoute, routeIndex, now = () => view.clock().now * 1000 }: ToolDeps): Tools {
+export function toolsFor({ view, profile, save, report, reports, evacRoute, routeIndex, now = () => view.clock().now * 1000 }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -219,7 +218,7 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
       if (['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to.toLowerCase())) to = to.toLowerCase();
       const evac = to === 'exit' && evacRoute ? await evacRoute(p.flight ? findFlight(view.flights(), p.flight) : undefined) : null;
       if (evac) return { status: 'evacuation', from: evac.from, to: evac.exit, nodes: evac.nodes,
-        note: copy.evacuationRoute(lang, '', evac), ...(pageLink && { link: await pageLink() }) };
+        note: copy.evacuationRoute(lang, '', evac) };
       let f = p.flight ? findFlight(view.flights(), p.flight) : undefined;
       if (to === 'gate' || to === 'check_in') {
         const r = await resolve(input?.flight);
@@ -286,7 +285,7 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
       const staffCrowd = [...new Set(best.nodes.map(zone => crowdNote(observations, zone, lang)).filter(Boolean))];
       const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
       return { status: 'ready', ...best, rerouted, minutes, from, to: to === 'gate' ? f!.gate : destination, destination: name(destination),
-        steps: best.nodes.map(name), staffCrowd, note: [note, ...staffCrowd].join(' '), ...(pageLink && profile().flight && { link: await pageLink() }) };
+        steps: best.nodes.map(name), staffCrowd, note: [note, ...staffCrowd].join(' ') };
     },
     async reportLostItem(input: { text?: string }) {
       const text = String(input?.text ?? '').trim();
