@@ -14,7 +14,7 @@ import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
 //   wa:profile:<phone> -> Profile           wa:ctx:<phone> -> { history }        wa:last:<phone> -> ms of last inbound (24h window)
-import { reply, foldHistory, type HistoryEntry } from './agent.js';
+import { reply, foldHistory, hasLlm, type HistoryEntry } from './agent.js';
 import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
 import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType, type ReportInput } from './reports.js';
@@ -317,7 +317,9 @@ export class WhatsAppAgent {
     // Reports from either role use one bounded slot-filling flow; missing type/place are button choices.
     const reportKey = `wa:report:${m.phone}`;
     let draft = await this.store.get<{ text: string; type?: ReportType; node?: string; photo?: string }>(reportKey);
-    if (draft || (profile.role === 'staff' && classifyReportType(m.text) === 'crowd') || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))) || /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) || m.replyId?.startsWith('rep:')) {
+    // With the model, free-text problems go to the agent (reportIssue); the slot flow keeps the explicit command and its buttons.
+    const freeTextReport = !hasLlm(this.env) && ((profile.role === 'staff' && classifyReportType(m.text) === 'crowd') || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))));
+    if (draft || freeTextReport || /^(raportează|raporteaza|raport|report)(?=$|[\s:.,!])/i.test(m.text) || m.replyId?.startsWith('rep:')) {
       const en = profile.lang === 'en';
       const index = await this.images.index();
       const words = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -432,7 +434,7 @@ export class WhatsAppAgent {
       return { bubbles: [result.note], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = ((['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) || ['ready', 'evacuation'].includes(routeResult?.status)) ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = (['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
     const delivered = ['needs_location', 'ambiguous_location'].includes(routeResult?.status)

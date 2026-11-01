@@ -241,12 +241,11 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(h.sends.some(s => s.text?.body?.startsWith('Main hall →'))).toBe(true);
     expect(h.sends.some(s => /from the entrance|de la intrare/i.test(s.text?.body ?? ''))).toBe(false);
   });
-  it('11: a model cannot replace the stated origin with entrance in the tool or route text', async () => {
+  it('11: a model cannot replace the stated origin in the route tool', async () => {
     const h = harness(null, view, true);
     await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: flight.flight, lang: 'ro' });
+    // The route tool is pinned to the stated landmark; the wording is the model's.
     await h.receive('Sunt la Hol central, cum ajung la poarta mea?');
-    expect(h.sends.some(s => s.text?.body?.startsWith('Hol central →'))).toBe(true);
-    expect(h.sends.some(s => s.text?.body?.includes('pornește de la intrare'))).toBe(false);
     expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('G_CENTER');
   });
   it('12: neutral zone grammar and consistent singular register contain no emoji', () => {

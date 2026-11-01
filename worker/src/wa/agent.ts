@@ -328,18 +328,6 @@ export async function reply({ env, fetcher, profile, clock, history, memory, tex
     urgent ||= bubbles.some(urgentText);
     return { bubbles: urgent ? urgentBubbles(bubbles) : paceReactions(bubbles, history), used };
   };
-  if (lostItemClaim(text)) {
-    used.push('reportLostItem');
-    const result = await trackedTools.reportLostItem!({ text }) as any;
-    return finish([result.note ?? say(profile.lang, 'fallback')]);
-  }
-  // Location/route requests use the same deterministic catalogue on every channel.
-  // Only when it actually answered with a tool; otherwise its last resort is the greeting, so the agent takes the question.
-  if (profile.role === 'passenger' && /unde|where|cum ajung|how.*get|nearest|closest/i.test(text) && (resolvePlace(text) || amenityKind(text))) {
-    const before = used.length;
-    const deterministic = await fallbackReply(text, trackedTools, used, profile.role, profile.lang);
-    if (used.length > before || !hasLlm(env)) return finish(deterministic);
-  }
   if (!hasLlm(env)) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   try {
     const context = contextBlock(profile, clock, memory);
