@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { backend } from '../backend/config'
 import { authHeaders, sessionToken } from '../backend/auth'
 import { ReportForm, ReportList } from '../reports/Reports'
-import { normalizePassenger, simTimeLabel, statusLabel } from './format'
+import { normalizePassenger, statusLabel } from './format'
 import './me.css'
+import { Chat } from '../chat/Chat'
 import { pageText, pageZone, pageSource } from './texts'
 
 export default function Me() {
@@ -48,7 +49,10 @@ export default function Me() {
   const t = (text: string) => pageText(text, lang)
   useEffect(() => { document.documentElement.lang = lang }, [lang])
   const { flight, evacuation } = data
-  const alerts = [...(data.timeline?.length ? data.timeline : data.alerts)].reverse()
+  const security = data.queues?.find(q => /security|SECURITY/.test(q.zone))?.nowMin ?? null
+  const checkin = data.queues?.find(q => /check_in|CHECKIN/.test(q.zone))?.nowMin ?? null
+  const walk = data.steps.find(s => s.zone === 'walk')?.waitMin ?? null
+  const reports = data.reports ?? []
 
   if ((!sessionToken() && window.location.pathname === '/m') || error === 'auth') return <main className="me-shell"><div className="me-page"><h1>Clarion</h1><a href="/join">{lang === 'en' ? 'Connect with WhatsApp' : 'Conectează-te cu WhatsApp'}</a></div></main>
   if (evacuation.active) return <main className="me-shell"><div className="me-page" role="alert"><h1>{t('Evacuare')}</h1>
@@ -59,57 +63,31 @@ export default function Me() {
   </div></main>
   return <main className="me-shell">
     <div className="me-page">
-      <header className="me-arrival">
-        <h1>{t('Situația din terminal')}</h1>
-        {(data.queues ?? []).map(queue => <p key={queue.zone} data-band={waitBand(queue.nowMin)}>
-          {pageZone(queue.zone, queue.label, lang)}: {queue.nowMin === null ? t('timp necunoscut acum') : `${Math.ceil(queue.nowMin)} ${t('min acum')}`},
-          {' '}{queue.forecastMin === null ? t('prognoză necunoscută') : `~${Math.ceil(queue.forecastMin)} ${t('min la')} ${queue.forecastAt}`} ({pageSource(queue.source, lang)}) · {waitBand(queue.nowMin)} / {waitBand(queue.forecastMin)} min.
-        </p>)}
-        {!data.queues?.length && <p>{t('Cozi acum și prognoză: necunoscut')}</p>}
-        <p>{t('Poarta')} {flight.gate} {t('se închide la')} {flight.gateCloseAt}.</p>
-        <p>{t('Cu situația de acum, de la intrare la poartă')} {data.entranceToGateMin == null ? t('durată necunoscută') : `~${Math.round(data.entranceToGateMin)} ${t('min, inclusiv 10 min marjă')}`}.</p>
-        <p><time>{pageText(simTimeLabel(data.simTime), lang)}</time> · {t('ora simulării')}</p>
+      <header className="dashboard-header me-flight">
+        <h1>{flight.flight} <span>· {t('Poartă')} <b className={changed.includes('gate') ? 'flight-change' : ''}>{flight.gate}{changed.includes('gate') && <small> · {lang === 'en' ? 'Change' : 'Schimbare'}</small>}</b></span></h1>
+        <p className={changed.includes('gateCloseAt') ? 'flight-change' : ''}>{t('Închidere poartă')} <strong>{flight.gateCloseAt}</strong></p>
         {loading && <small role="status">{t('Se încarcă…')}</small>}
         {error && <p role="alert">{lang === 'en' ? 'Data unavailable' : 'Date indisponibile'}</p>}
       </header>
-      <section className="me-flight" aria-label={t('Zbor')}>
-        <dl>
-          <div><dt>{t('Zbor')}</dt><dd>{flight.flight}</dd></div>
-          <div><dt>{t('Destinație')}</dt><dd>{flight.destination}</dd></div>
-          <div><dt>{t('Poartă')}</dt><dd className={`me-number ${changed.includes('gate') ? 'flight-change' : ''}`}>{flight.gate}{changed.includes('gate') && <small> · {lang === 'en' ? 'Change' : 'Schimbare'}</small>}</dd></div>
-          <div><dt>{t('Închidere poartă')}</dt><dd className={`me-number ${changed.includes('gateCloseAt') ? 'flight-change' : ''}`}>{flight.gateCloseAt}</dd></div>
-          <div><dt>{t('Plecare')}</dt><dd>{flight.std}</dd></div>
-          <div><dt>{t('Status')}</dt><dd className={flight.status === 'delayed' || flight.status === 'cancelled' ? 'flight-change' : ''}>{statusLabel(flight.status, flight.delayMin, lang)}</dd></div>
-        </dl>
-      </section>
-      <section className="me-section" aria-labelledby="me-steps">
-        <h2 id="me-steps">{t('Etape')}</h2>
-        <ol className="me-steps">
-          {data.steps.map((step, index) => <li key={`${step.zone}-${index}`}>
-            <span>{pageZone(step.zone, step.label, lang)}</span>
-            <strong>{step.waitMin === null ? t('necunoscut') : <>{Math.round(step.waitMin)} <small>min</small></>}</strong>
-          </li>)}
-        </ol>
-        {!data.steps.length && <p className="me-muted">{t('Timpi: necunoscut')}</p>}
-      </section>
-      <section className="me-map" aria-labelledby="me-map-title">
-        <h2 id="me-map-title">{t('Hartă')}</h2>
-        <p>{lang === 'en' ? { public: 'Before security', airside: 'After security', gate: 'At gate' }[data.stage ?? 'public'] : { public: 'Înainte de securitate', airside: 'După securitate', gate: 'La poartă' }[data.stage ?? 'public']}</p>
+      <div className="dashboard-tiles">
+        <details><summary><span>{lang === 'en' ? 'Security' : 'Securitate'}</span><strong>{security == null ? '—' : Math.ceil(security)} <small>min</small></strong></summary><QueueDetails /></details>
+        <details><summary><span>Check-in</span><strong>{checkin == null ? '—' : Math.ceil(checkin)} <small>min</small></strong></summary><QueueDetails /></details>
+        <details><summary><span>{lang === 'en' ? 'Gate walk' : 'Până la poartă'}</span><strong>{walk == null ? '—' : Math.ceil(walk)} <small>min</small></strong></summary><p>{data.steps.map(s => `${pageZone(s.zone, s.label, lang)}: ${s.waitMin ?? '—'} min`).join(' · ')}</p></details>
+        <details><summary><span>{lang === 'en' ? 'Reports' : 'Raportări'}</span><strong>{reports.filter(r => r.state !== 'resolved').length}</strong></summary><ReportList en={lang === 'en'} reports={reports} /></details>
+      </div>
+      <section className="me-map" aria-label={lang === 'en' ? 'Route' : 'Traseu'}>
+        <h2>{lang === 'en' ? 'Next step' : 'Pasul următor'}</h2>
         {data.routeImage ? <img className="route-image" src={data.routeImage} alt={`${t('Poartă')} ${flight.gate}`} /> : <p>{lang === 'en' ? 'Route unavailable' : 'Traseu indisponibil'}</p>}
       </section>
-      <section className="me-section" aria-labelledby="me-alerts">
-        <h2 id="me-alerts">{lang === 'en' ? 'Timeline' : 'Cronologie'}</h2>
-        <ul className="me-alerts">
-          {alerts.map((alert, index) => <li key={`${alert.at}-${index}`}>
-            <time>{alert.at}</time><p>{alert.text}</p>
-          </li>)}
-        </ul>
-        {!alerts.length && <p className="me-muted">{t('Nicio alertă.')}</p>}
-      </section>
+      <Chat en={lang === 'en'} />
+      <details className="dashboard-details"><summary>{t('Zbor')}</summary><p>{flight.destination} · {t('Plecare')} {flight.std} · {statusLabel(flight.status, flight.delayMin, lang)}</p></details>
       <ReportForm en={lang === 'en'} onSent={() => window.dispatchEvent(new Event('personal-refresh'))} />
-      <ReportList en={lang === 'en'} reports={data.reports ?? []} />
     </div>
   </main>
+
+  function QueueDetails() {
+    return <div>{data.queues?.map(q => <p key={q.zone}>{pageZone(q.zone, q.label, lang)} · {waitBand(q.nowMin)} / {waitBand(q.forecastMin)} min · ~{q.forecastMin == null ? '—' : Math.ceil(q.forecastMin)} {t('min la')} {q.forecastAt} · {pageSource(q.source, lang)}</p>)}</div>
+  }
 }
 
 export function waitBand(value: number | null) { return value == null ? '—' : Math.ceil(value) <= 3 ? '0–3' : Math.ceil(value) <= 10 ? '4–10' : '>10' }

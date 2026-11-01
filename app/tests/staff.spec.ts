@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { chatCoverage } from './chat-fixture'
 const screenshot = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad/staff.png'
 test.use({ viewport: { width: 390, height: 844 } })
 test('staff confirms and completes shared tasks, sees zone alerts and reports', async ({ page }) => {
@@ -15,9 +16,15 @@ test('staff confirms and completes shared tasks, sees zone alerts and reports', 
   })
   await page.route('**/api/reports', route => { report = true; expect(route.request().postDataJSON().type).toBe('cleaning'); return route.fulfill({ status: 201, json: { id: 'R8' } }) })
   await page.goto('/s')
-  await expect(page.getByRole('heading', { name: 'Sarcinile mele' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Supervizor' })).toBeVisible()
+  await expect(page.locator('.dashboard-tiles > *')).toHaveCount(4)
+  await page.screenshot({ path: screenshot, fullPage: false })
+  await chatCoverage(page)
+  await page.locator('.dashboard-tiles details').first().locator('summary').click()
   await expect(page.getByText('P2 · Țintă depășită', { exact: false })).toBeVisible()
-  await expect(page.getByText('ETA ~2 min')).toBeVisible()
+  await page.locator('.dashboard-tiles details').nth(1).locator('summary').click()
+  await expect(page.locator('.dashboard-tiles details').nth(1).getByText('ETA ~2 min')).toBeVisible()
+  await page.locator('.staff-task summary').click()
   await page.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(page.getByText('Confirmat', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Făcut', exact: true }).click()
@@ -29,7 +36,6 @@ test('staff confirms and completes shared tasks, sees zone alerts and reports', 
   await page.getByRole('button', { name: 'Trimite', exact: true }).click()
   await expect(page.getByText('Securitate · Podea murdară')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: screenshot, fullPage: false })
 })
 test('passengers see access restriction and guests see login', async ({ page }) => {
   await page.route('**/api/staff', route => route.fulfill({ status: 401, json: {} }))
@@ -47,11 +53,14 @@ test('staff handles empty data and reports a task failure without marking it don
   await page.route('**/api/staff', route => route.fulfill({ json: { zone: 'Securitate', reports: [], alerts: [], tasks: empty ? [] : [{ id: 'T1', type: 'staff', zone: 'security' }] } }))
   await page.route('**/api/staff/tasks/**', route => route.fulfill({ status: 400, json: {} }))
   await page.goto('/s')
+  await page.locator('.staff-task summary').click()
   await page.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveText('Acțiune netrimisă')
   await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled()
   empty = true; await page.reload()
   await expect(page.getByText('Nicio sarcină')).toBeVisible()
+  await page.locator('.dashboard-tiles details').first().locator('summary').click()
   await expect(page.getByText('Nicio alertă')).toBeVisible()
+  await page.locator('.dashboard-tiles details').nth(1).locator('summary').click()
   await expect(page.getByText('Niciun raport')).toBeVisible()
 })

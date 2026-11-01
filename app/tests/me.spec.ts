@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { chatCoverage } from './chat-fixture'
 import { fixture } from '../src/me/fixture'
 const screenshot = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad/me.png'
 test.use({ viewport: { width: 390, height: 844 } })
 const session = 'a'.repeat(64)
-test('session page shows bands, route, timeline, reports and submits shared report', async ({ page }) => {
+test('passenger dashboard shows four tiles, collapsed details, route, chat and fixed reporting', async ({ page }) => {
   await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
   let submitted = false
   await page.route('**/api/me', async route => {
@@ -18,22 +19,29 @@ test('session page shows bands, route, timeline, reports and submits shared repo
     submitted = true; return route.fulfill({ status: 201, json: { id: 'R1' } })
   })
   await page.goto('/m')
-  await expect(page.getByRole('heading', { name: 'Situația din terminal' })).toBeVisible()
-  await expect(page.locator('.me-arrival')).toContainText('>10 / >10 min')
-  await expect(page.locator('.me-arrival')).toContainText('4–10 / 4–10 min')
+  await expect(page.getByRole('heading', { name: 'W6 3751', exact: false })).toBeVisible()
+  await expect(page.locator('.dashboard-tiles > *')).toHaveCount(4)
+  await expect(page.locator('.dashboard-tiles')).toContainText('12 min')
+  await expect(page.locator('.dashboard-tiles')).toContainText('5 min')
   await expect(page.locator('.route-image')).toBeVisible()
   await expect.poll(() => page.locator('.route-image').evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
-  await expect(page.locator('.me-alerts')).toContainText('Poarta 3 · Îmbarcare')
+  const reportButton = page.getByRole('button', { name: 'Raportează', exact: true })
+  expect((await reportButton.boundingBox())!.y).toBeLessThan(844)
+  await page.screenshot({ path: screenshot, fullPage: false })
+  await chatCoverage(page)
+  await page.locator('.dashboard-tiles details').first().locator('summary').click()
+  await expect(page.locator('.dashboard-tiles details').first()).toContainText('>10 / >10 min')
+  await page.locator('.dashboard-tiles details').first().locator('summary').click()
   await page.getByRole('button', { name: 'Raportează', exact: true }).click()
   await page.getByRole('button', { name: 'Medical', exact: true }).click()
   await page.getByLabel('Reper').selectOption('U_GATE_3')
   await page.getByLabel('Descriere').fill('O persoană a leșinat')
   await page.getByRole('button', { name: 'Trimite', exact: true }).click()
+  await page.locator('.dashboard-tiles details').last().locator('summary').click()
   await expect(page.getByText('R1 · Trimis', { exact: false })).toBeVisible()
   await expect(page.getByText('ETA ~3 min')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
-  await page.screenshot({ path: screenshot, fullPage: false })
 })
 test('missing session requests WhatsApp login, failed legacy token shows no invented data', async ({ page }) => {
   await page.route('**/api/me*', route => route.fulfill({ status: 401, json: {} }))
@@ -68,8 +76,10 @@ test('evacuation shows only exit image and assembly, with no ordinary sections',
 test('English page preserves the passenger language', async ({ page }) => {
   await page.route('**/api/me?token=english', route => route.fulfill({ json: { ...fixture, lang: 'en', flight: { ...fixture.flight, status: 'delayed', delayMin: 15 } } }))
   await page.goto('/m/english')
-  await expect(page.getByRole('heading', { name: 'Terminal conditions' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'W6 3751', exact: false })).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
-  await expect(page.getByText('Delayed +15 min')).toBeVisible()
+  await page.locator('.dashboard-details summary').click()
+  await expect(page.getByText('Delayed +15 min', { exact: false })).toBeVisible()
+  await page.locator('.dashboard-tiles details').last().locator('summary').click()
   await expect(page.getByRole('heading', { name: 'My reports' })).toBeVisible()
 })
