@@ -35,8 +35,8 @@ interface Props {
   base?: boolean
   lang?: 'ro' | 'en'
   className?: string
-  /** Report pins, in pixels of this level. */
-  markers?: { id: string; at: Pt; label: string }[]
+  /** Report pins, in pixels of their own `level` (default: the highlighted one). */
+  markers?: { id: string; at: Pt; label: string; level?: Level }[]
   /** data-testid prefix for the highlighted floor's zones (`t2-zone-` by default). */
   testIdPrefix?: string
   layers?: MapLayers
@@ -423,7 +423,7 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
       <g className="t2-floors">{floorEls}</g>
       {show.pins && <g className="t2-pins">
         {markers.map(mk => {
-          const [x, y] = P(level, fromLevel(mk.at, level))
+          const [x, y] = P(mk.level ?? level, fromLevel(mk.at, mk.level ?? level))
           return <g key={mk.id} className="t2-pin" transform={`translate(${fmt(x)} ${fmt(y)}) scale(${fmt(1.3 * u)})`} data-testid="report-pin" role="img" aria-label={`Raport: ${mk.label}`}>
             <title>{mk.label}</title>
             <path d="M0 0 L-7 -13 A8 8 0 1 1 7 -13 Z" /><text y={-13} fontSize={11}>!</text>
