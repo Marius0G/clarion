@@ -262,10 +262,7 @@ Gri deschis, plat, o culoare = un singur sens. Normalul e o rampă de gri, nu ve
 - Tema e deschisă, pentru proiector.
 
 ### D30. Deciziile devin sarcini; contractul cu Unity rămâne același
-În interfață, fiecare decizie e o sarcină: recomandare → Trimite → trimis / confirmat / făcut → efectul măsurat de camere față de prognoza fără acțiune. Fiecare sarcină spune cine o execută în realitate:
-- linie: supervizorul de securitate;
-- redirecționare: agent pe hol, ecrane și mesaj către zborurile afectate;
-- evacuare: incident commander, cu o listă de pași (alarmă, anunț, verificare, numărătoare la punctul de adunare).
+În consola adminului, fiecare decizie rămâne o sarcină: recomandare → Trimite → trimis / confirmat / făcut → efectul măsurat de camere față de prognoza fără acțiune. Adminul decide capacitatea și urmărește starea aici. Sarcinile nu se trimit pe telefoanele angajaților și nu cer confirmare sau execuție de la ei.
 **În spate nu se schimbă nimic:** se trimite tot `ops.command` din D12 către Unity (`staff`, `redirect`, `evacuate`, `close`, `open`), cu efectele scrise de Marius (secțiunea „Pentru Marius”, punctul 4). „Confirmat” = `ops.ack`. „Făcut” = efectul văzut în `flow.report`.
 
 ### D31. Bug-uri cunoscute pe partea backend (din d600f1a)
@@ -292,7 +289,8 @@ Extinde `/m/<token>` (există deja). Pasagerul vede, fără să întrebe pe What
 Decizie Bogdan, 1 nov. Ce se vede pe WhatsApp se vede și pe web, mai frumos. Cele două sunt aceeași conversație și aceleași date.
 - **Raportare, ambele roluri.** Pe WhatsApp: text liber, iar agentul extrage locul și tipul (D11). Când locul nu e clar, întreabă reperul cu butoane. Fotografia e opțională. Pe web: butonul „Raportează”, apoi tipul (butoane), locul (reper sau hartă) și o descriere scurtă. Rapoartele pasagerilor intră în același jurnal ca ale angajaților (D28), cu sursa marcată. Prioritatea o pune backend-ul după tip (securitate, medical: P1).
 - **Pagina pasagerului** (`/m`, D33): situația lui (coada, prognoza, zborul), traseul ca imagine pre-randată, cronologia mesajelor primite pe WhatsApp (alerte, schimbări de zbor, evacuare) și rapoartele lui cu starea lor.
-- **Pagina angajatului** (`/s`, logat cu D3 și rolul `staff`): rapoartele lui cu starea și ETA-ul echipei, alertele pentru zona lui, sarcinile din D30 care îi revin (de exemplu supervizorul de securitate la +1 linie), cu „Confirm” și „Făcut”, plus același buton „Raportează”.
+- **Pagina angajatului** (`/s`, logat cu D3 și rolul `staff`): situația zonei lui (coadă, prognoză, număr de oameni, Normal / Ocupat / Plin; necunoscut fără camere), alertele zonei, rapoartele lui cu starea și ETA-ul echipei, butonul „Prea multă lume aici” și „Raportează”. Angajatul raportează ce vede; adminul decide. Nicio sarcină D30 și nicio comandă de capacitate nu ajung la angajat.
+- **Aglomerare:** raportul `crowd` al angajatului, din zona lui sau de la un reper ales, intră în jurnalul existent și ridică alerta P2 D32 pe zonă. Confirmarea: „Am transmis. Dispeceratul decide.” Cât timp raportul rămâne deschis și are cel mult 15 minute, răspunsurile și actualizările pasagerilor despre zona respectivă și subeticheta de pe `/m` spun „Personalul semnalează aglomerație la securitate.” (adaptat zonei și limbii), fără ordine, conform D22. Vârsta folosește timestamp-ul comun al rapoartelor; timpii de coadă și prognoză rămân în ora simulării D13.
 - **Chat web** (`/m`, `/s`): același agent și istoric per telefon ca WhatsApp, canal marcat (`whatsapp` / `web`), cu limită de mesaje per sesiune.
 - Stările unui raport: trimis, preluat, echipa pe drum (ETA), rezolvat. Fiecare schimbare ajunge și pe WhatsApp, și pe pagină.
 
