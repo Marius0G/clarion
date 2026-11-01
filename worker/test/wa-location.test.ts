@@ -133,6 +133,7 @@ describe('catalogue location conversation', () => {
       expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
       expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
       expect(await h.agent.messaging.evacRouteFor(undefined)).toBeNull();
+      expect(await h.store.get('msg:evacPlan')).toBeUndefined();
     }
   });
   it('shares list rows as web history chips, including Other and free text', async () => {

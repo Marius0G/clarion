@@ -221,6 +221,8 @@ export class Messaging {
     const zones = state.zones.filter(zone => blocked.some(b => mapNodeId(b) === mapNodeId(zone)));
     if (!zones.length) {
       await this.deps.store.put('msg:evacuation', { active: false, zones: [] });
+      // The old plan's routes may use exits a later evacuation closes.
+      await this.deps.store.delete('msg:evacPlan');
       return null;
     }
     return { ...state, zones };
