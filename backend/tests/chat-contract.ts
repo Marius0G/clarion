@@ -99,7 +99,9 @@ export function chatContract() {
       expect(h.sends).toHaveLength(0);
       const other = await h.login('+40711111111');
       h.choose('routeTo', { from: 'door_departures', to: 'gate' });
-      const routed = await (await h.request(other, { text: 'Traseu?' }))!.json() as any;
+      const asked = await (await h.request(other, { text: 'Traseu?' }))!.json() as any;
+      expect(asked.bubbles[0].buttons.some((b: any) => b.id === 'loc:door_departures')).toBe(true);
+      const routed = await (await h.request(other, { text: 'Intrare plecări', replyId: 'loc:door_departures' }))!.json() as any;
       expect(routed.bubbles.some((b: any) => b.image?.endsWith('.png'))).toBe(true);
       expect(h.sends).toHaveLength(0);
     });
