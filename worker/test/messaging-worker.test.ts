@@ -54,7 +54,7 @@ describe('passenger messaging in the Tower', () => {
     u.ws.send(envelope('agent.register', { agentId: 'a1', role: 'passenger_terminal', channel: 'sim', flight: 'W6 3751' }));
     u.ws.send(envelope('agent.register', { agents: [{ agentId: 'u1', role: 'taxi', channel: 'whatsapp' }] }));
     await expect.poll(() => u.of('agent.message').length).toBe(1);
-    expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Cu situația de acum') });
+    expect(u.of('agent.message')[0]).toMatchObject({ agentId: 'a1', kind: 'arrive', text: expect.stringContaining('Până la poarta') });
     const simLink = /https:\/\/clarion-craiova.pages.dev\/m\/([a-f0-9-]+)/.exec(u.of('agent.message')[0].text)!;
     const passengerPath = `/api/me?token=${simLink[1]}`;
     const response = await mf.dispatchFetch(`https://worker.example${passengerPath}`, { headers: { Origin: 'https://clarion-craiova.pages.dev' } });
@@ -154,7 +154,7 @@ it('evaluates bound passengers on flow.report and rate-limits repeated reports',
   v.ws.send(envelope('flow.report', { zones: [{ zone: 'security', waiting: 5, waitMin: 5, forecast: [{ inMin: 60, waitMin: 20 }] }] }));
   await expect.poll(() => u.of('agent.message').filter(m => m.agentId === 'flow-agent' && m.kind === 'arrive').length).toBe(1);
   const message = u.of('agent.message').find(m => m.agentId === 'flow-agent' && m.kind === 'arrive');
-  expect(message.text).toContain('Control de securitate: 5 min acum, ~20 min');
+  expect(message.text).toContain('Control de securitate: coadă moderată, ~5 min acum; coadă mare, ~20 min');
   v.ws.send(envelope('flow.report', { zones: [{ zone: 'security', waiting: 50, waitMin: 5, forecast: [{ inMin: 60, waitMin: 40 }] }] }));
   await expect.poll(async () => (await (await api('/api/sim')).json() as any).flow.security.forecast[0].waitMin).toBe(40);
   expect(u.of('agent.message').filter(m => m.agentId === 'flow-agent' && m.kind === 'arrive')).toHaveLength(1);

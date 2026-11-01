@@ -201,9 +201,10 @@ export class WhatsAppAgent {
       const clock = this.view.clock();
       const text = say(profile.lang, 'startConnected', flight.flight, flight.destination, gateName(flight.gate), clockText(closeAt(flight)), say(profile.lang, clock.sim ? 'simClock' : 'realClock'));
       const ask = say(profile.lang, 'bagQuestion');
-      await this.wa.sendReaction(m.phone, m.id, '✈️');
-      await this.wa.sendText(m.phone, text);
-      await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag);
+      const urgentStart = flight.status === 'delayed' || flight.status === 'cancelled';
+      if (!urgentStart) await this.wa.sendReaction(m.phone, m.id, '✈️');
+      await this.wa.sendText(m.phone, urgentStart ? text.replace(/✈️\s*/gu, '') : text);
+      await this.messaging.arrive({ channel: 'whatsapp', phone: m.phone }, flight, profile.hasCheckedBag, true);
       await this.wa.sendButtons(m.phone, ask, [{ id: 'bag:yes', title: say(profile.lang, 'bagYes') }, { id: 'bag:no', title: say(profile.lang, 'bagNo') }]);
       await remember(`START ${flight.flight}`, [text, ask]);
       return;

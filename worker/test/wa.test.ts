@@ -112,7 +112,7 @@ describe('agent tools', () => {
     const { tools, profile } = setup();
     expect(await tools.myFlight!({})).toMatchObject({ error: 'no_flight' });
     expect(await tools.myFlight!({ flight: 'XX 0001' })).toMatchObject({ error: 'unknown_flight' });
-    expect(await tools.myFlight!({ flight: 'w6-3751' })).toMatchObject({ flight: 'W6 3751', gate: '2', gateCloseAt: '09:10', departure: '09:40', checkIn: ['Check-in, grupul 1'], note: expect.stringContaining('provizoriu') });
+    expect(await tools.myFlight!({ flight: 'w6-3751' })).toMatchObject({ flight: 'W6 3751', gate: '2', gateCloseAt: '09:10', departure: '09:40', checkIn: ['Check-in, grupul 1'] });
     expect(profile()).toMatchObject({ flight: 'W6 3751', airline: 'W6', verified: false });
   });
   it('whenToArrive saves the bag answer and handles cancelled flights', async () => {
@@ -138,7 +138,7 @@ describe('agent tools', () => {
   });
   it('the no-key fallback answers from the same tools', async () => {
     const { tools } = setup({ flight: 'W6 3751', airline: 'W6', hasCheckedBag: true });
-    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~39 min');
+    expect((await fallbackReply('cand sa fiu la aeroport?', tools))[0]).toContain('~27 min la cozi');
     expect((await fallbackReply('de la ce poarta plec?', tools))[0]).toContain('poarta 2,');
   });
 });
@@ -308,7 +308,7 @@ describe('WhatsAppAgent turn', () => {
     await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751', airline: 'W6' });
     await agent.inbound(inbound('', { type: 'interactive', text: undefined, interactive: { button_reply: { id: 'bag:no', title: 'Doar de mână' } } }));
     expect((await store.get<Profile>('wa:profile:+40712345678'))!.hasCheckedBag).toBe(false);
-    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~30 min');
+    expect(meta().find(b => b.type === 'text')?.text.body).toContain('~18 min la cozi');
   });
 
   it('answers the fallback when Claude fails, and respects WA_ALLOWLIST', async () => {
@@ -361,8 +361,8 @@ describe('passenger language (D23)', () => {
     await agent.inbound(inbound(`START ${W6.flight} ${token}`));
     expect(await agent.profile(phone)).toMatchObject({ lang: 'en', verified: true });
     expect(texts()[0]).toContain('Connected ✈️');
-    expect(texts()[1]).toContain('Security: 10 min now');
-    expect(texts()[1]).toContain('simulation time');
+    expect(texts()[1]).toContain('Security: moderate queue, ~10 min now');
+    expect(texts().join(' ')).not.toMatch(/simulation|simulăr|estimare|demo/i);
     const p = await agent.profile(phone);
     expect(await agent.messaging.passenger(p!.pageToken!)).toMatchObject({ lang: 'en', queues: expect.arrayContaining([expect.objectContaining({ label: 'Security', source: 'forecast' })]) });
     await agent.inbound(inbound('RO'));

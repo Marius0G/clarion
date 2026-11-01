@@ -185,7 +185,7 @@ export class Messaging {
       flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
         gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin },
       arriveBy: plan.beAtEntranceAt,
-      queues: plan.queues.map(q => ({ ...q, label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
+      queues: plan.queues.map(({ forecast: _forecast, ...q }) => ({ ...q, label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
       steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.zone === 'walk' ? say(p.lang, 'walk', gateName(f.gate)) : nodeName(s.zone, p.lang), waitMin: s.min })),
       alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
       evacuation: await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang),
@@ -217,11 +217,10 @@ export class Messaging {
   connectLink(phone: string) {
     return new Auth(this.deps.store).createLink(phone.startsWith('+') ? phone : `+${phone}`, this.deps.appUrl ?? 'https://clarion-craiova.pages.dev');
   }
-  async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean) {
+  async arrive(sub: Subscriber, f: Flight, hasCheckedBag?: boolean, requested = false) {
     const map = await this.pageLink(sub);
-    const link = sub.channel === 'whatsapp' && /^\+?\d{8,15}$/.test(sub.phone)
-      ? `${map}\nConectare: ${await this.connectLink(sub.phone)}` : map;
-    return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag, (await this.subscriberProfile(sub))?.lang)}\n${link}`, estimate: this.estimate(f, hasCheckedBag) });
+    const link = map;
+    return this.notify(sub, { kind: 'arrive', text: `${this.arriveText(f, hasCheckedBag, (await this.subscriberProfile(sub))?.lang)}\n${link}`, estimate: this.estimate(f, hasCheckedBag), requested });
   }
 
   /** Serialises fan-outs so two quick flight.updates cannot both announce one change. */
@@ -233,18 +232,18 @@ export class Messaging {
 
   /** The one way out for a passenger message: WhatsApp inside the 24h window, or agent.message to Unity. */
   private deliveryChain: Promise<unknown> = Promise.resolve();
-  notify(sub: Subscriber, m: { kind: NotifyKind; text: string; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+  notify(sub: Subscriber, m: { kind: NotifyKind; text: string; requested?: boolean; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
     const next = this.deliveryChain.then(() => this.deliver(sub, m));
     this.deliveryChain = next.catch(() => {});
     return next;
   }
-  private async deliver(sub: Subscriber, { estimate, ...m }: { kind: NotifyKind; text: string; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+  private async deliver(sub: Subscriber, { estimate, requested, ...m }: { kind: NotifyKind; text: string; requested?: boolean; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
     if (m.kind === 'flight' || m.kind === 'evacuate') m.text = urgentBubbles(toBubbles(m.text)).join('\n');
     const now = this.deps.now?.() ?? Date.now();
     const nonUrgent = m.kind !== 'flight' && m.kind !== 'evacuate';
     const lastKey = `msg:last:${this.identity(sub)}`;
     const last = await this.deps.store.get<number>(lastKey);
-    if (nonUrgent && last !== undefined && now - last < NON_URGENT_MS) return 'rate_limited';
+    if (nonUrgent && !requested && last !== undefined && now - last < NON_URGENT_MS) return 'rate_limited';
     let delivery: Delivery;
     if (sub.channel === 'sim') {
       delivery = this.deps.toUnity('agent.message', { agentId: sub.agentId, text: m.text, kind: m.kind }) ? 'sent' : 'offline';

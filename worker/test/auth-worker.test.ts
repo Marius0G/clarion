@@ -71,20 +71,14 @@ it('delivers OTP only inside the window, hides it, verifies once and validates i
   expect((await post('/api/auth/otp', { phone: 'bad' })).status).toBe(400);
   expect((await post('/api/auth/link', { token: 'bad' })).status).toBe(401);
 });
-it('links a signed-in join to its phone and consumes the outgoing connect link once', async () => {
+it('links a signed-in join to its phone with only the personal map link in START', async () => {
   const result = await login();
   const joined = await (await post('/api/join', { flight: 'W6 3751' }, result.session)).json() as any;
   expect(await (await me(result.session)).json()).toMatchObject({ flight: 'W6 3751' });
   await webhook(`START W6 3751 ${joined.token}`);
-  let link: string | undefined;
-  await expect.poll(() => {
-    link = sent.map(m => m.text?.body as string | undefined).find(t => t?.includes('/join?login='));
-    return Boolean(link);
-  }, { timeout: 10000 }).toBe(true);
-  const token = /[?]login=([a-f0-9]{64})/.exec(link!)![1];
-  const session = await (await post('/api/auth/link', { token })).json() as any;
-  expect((await me(session.session)).status).toBe(200);
-  expect((await post('/api/auth/link', { token })).status).toBe(401);
+  await expect.poll(() => sent.some(m => m.text?.body.includes('/m/')), { timeout: 10000 }).toBe(true);
+  expect(sent.some(m => m.text?.body.includes('/join?login='))).toBe(false);
+  expect((await me(result.session)).status).toBe(200);
 });
 it('keeps STAFF_CODE roles and supports auth CORS preflights', async () => {
   await webhook('STAFF CRAIOVA2026');

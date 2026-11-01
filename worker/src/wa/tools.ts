@@ -106,7 +106,7 @@ export function arrivalPlan(flight: Flight, flow: Record<string, ZoneRow>, clock
   const likelyAt = Math.max(clock.now, close - totalMin * 60);
   const queues = plan.filter(s => !['walk', 'margin'].includes(s.zone)).map(s => ({
     zone: s.zone, label: s.step, nowMin: flowRow(flow, s.zone)?.waitMin ?? null,
-    forecastMin: s.min, forecastAt: clockText(likelyAt), source: s.source,
+    forecast: flowRow(flow, s.zone)?.forecast ?? [], forecastMin: s.min, forecastAt: clockText(likelyAt), source: s.source,
   }));
   // Rounded down to 5 minutes: "14:20" reads better than "14:23" and errs on the early side.
   const at = Math.floor((close - totalMin * 60) / 300) * 300;
@@ -128,7 +128,7 @@ function flightView(f: Flight, clock: Clock, provisional: boolean, lang?: Lang) 
     departure: clockText(etd(f)), gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin,
     ...(f.delayMin > 0 && { scheduledDeparture: clockText(f.std) }),
     checkIn: f.checkIn ? [zoneName(f.checkIn, lang)] : f.checkInDesks.map(n => zoneName(n, lang)), now: clockText(clock.now), clock: say(lang, clock.sim ? 'simClock' : 'realClock'),
-    ...(provisional && { note: say(lang, 'provisional') }),
+
   };
 }
 

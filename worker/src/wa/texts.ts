@@ -33,15 +33,15 @@ const texts = {
   "unknownNow": ["timp necunoscut acum", "current wait unknown"],
   "cancelled": [" Zborul e anulat.", " Flight cancelled."],
   "delay": [" Întârziat {0} min.", " Delayed by {0} min."],
-  "flightInfo": ["{0} spre {1}: poarta {2}, plecare {3}, poarta se închide la {4} ({5}).{6}", "{0} to {1}: gate {2}, departure {3}, gate closes at {4} ({5}).{6}"],
+  "flightInfo": ["{0} spre {1}: poarta {2}, plecare {3}, poarta se închide la {4}.{6}", "{0} to {1}: gate {2}, departure {3}, gate closes at {4}.{6}"],
   "staffReport": ["Am primit ({0}): {1}, {2}. {3}", "Received ({0}): {1}, {2}. {3}"],
   "greeting": ["Salut! Sunt Clarion, asistentul Aeroportului Craiova ✈️ Aici sunt disponibile cozile acum și prognoza, durata estimată până la poartă și informațiile despre zbor.", "Hi! I am Clarion, Craiova Airport’s assistant ✈️ I can share current queues and forecasts, estimated time to the gate and flight information."],
   "bagAssumed": ["Am socotit și predarea bagajului. Ai bagaj de cală?", "The estimate includes bag drop. Do you have checked baggage?"],
   "askFlight": ["Care este numărul zborului (ex: W6 3751)?", "What is your flight number (for example W6 3751)?"],
   "refusal": ["Aici nu te pot ajuta, dar pentru zbor și aeroport sunt aici oricând 🙂", "I can help with your flight and the airport 🙂"],
   "tangled": ["Hmm, m-am încurcat puțin 😅 Poți să o spui altfel?", "I lost track a little 😅 Could you rephrase that?"],
-  "situation": ["{0} {5} Poarta {1} se închide la {2}. Cu situația de acum, de la intrare la poartă ~{3} min, inclusiv 10 min marjă ({4}).", "{0} {5} Gate {1} closes at {2}. With current conditions, entrance to gate takes ~{3} min, including a 10 min margin ({4})."],
-  "estimated": ["~{0} min (estimare)", "~{0} min (estimate)"],
+  "situation": ["{0} {5} Poarta {1} se închide la {2}. Cu situația de acum, de la intrare la poartă ~{3} min, inclusiv 10 min marjă.", "{0} {5} Gate {1} closes at {2}. With current conditions, entrance to gate takes ~{3} min, including a 10 min margin."],
+  "estimated": ["~{0} min", "~{0} min"],
   "forecast": ["~{0} min la {1}", "~{0} min at {1}"],
   "now": ["{0} min acum", "{0} min now"],
   "walk": ["Drum până la poarta {0}", "Walk to gate {0}"],
@@ -94,16 +94,16 @@ const texts = {
     "Invalid staff code. Check with your shift coordinator and send STAFF <code> again."
   ],
   "bagQuestion": [
-    "Ai bagaj de cală? Estimarea include cozile corespunzătoare.",
-    "Do you have checked baggage? The estimate includes the relevant queues."
+    "Ai bagaj de cală?",
+    "Do you have checked baggage?"
   ],
   "unknownFlight": [
     "Nu găsesc zborul {0} în orarul de azi. Numărul zborului apare pe boarding pass.",
     "Flight {0} is not in today's schedule. The flight number is on your boarding pass."
   ],
   "startConnected": [
-    "Gata ✈️ Te-am conectat la zborul {0} spre {1}. Poarta {2} se închide la {3} ({4}).",
-    "Connected ✈️ Your flight is {0} to {1}. Gate {2} closes at {3} ({4})."
+    "Gata ✈️ Te-am conectat la zborul {0} spre {1}. Poarta {2} se închide la {3}.",
+    "Connected ✈️ Your flight is {0} to {1}. Gate {2} closes at {3}."
   ]
 } as const;
 export function say(lang: Lang | undefined, key: keyof typeof texts, ...values: (string | number)[]): string {
@@ -136,14 +136,12 @@ export const copy = {
   blockedAreas: (lang: Lang | undefined, p: EvacPlan) => lang === 'en' ? `${p.blocked.map(z => nodeName(z, lang)).join(', ')} closed. ` : `${p.blocked.map(n => nodeName(n)).join(', ')} ${p.blocked.length > 1 ? 'sunt închise' : 'e închisă'}. `,
   evacuationRoute: (lang: Lang | undefined, blocked: string, r: EvacRoute) => lang === 'en' ? `Evacuation: ${blocked}Exit via ${nodeName(r.exit, lang)}: ${r.nodes.map(z => nodeName(z, lang)).join(' → ')}. Follow signs and staff instructions.` : `Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(n => nodeName(n)).join(' → ')}. Urmează indicatoarele și personalul.`,
   situation: (lang: Lang | undefined, plan: ReturnType<typeof arrivalPlan>) => {
-    const queues = plan.queues.map(q => {
-      const now = q.nowMin === null ? null : say(lang, 'now', Math.round(q.nowMin));
-      const later = q.source === 'prognoză' ? say(lang, 'forecast', q.forecastMin, q.forecastAt) : q.source === 'istoric' ? say(lang, 'history', q.forecastMin, q.forecastAt) : q.nowMin === null ? say(lang, 'estimated', q.forecastMin) : null;
-      return `${nodeName(q.zone, lang)}: ${[now, later].filter(Boolean).join(', ')}.`;
-    }).join(' ');
-    const walk = plan.steps.find(s => s.zone === 'walk')?.min;
-    return say(lang, 'situation', queues, plan.gate, plan.gateCloseAt, plan.totalMin, plan.clock === 'ora simulării' ? say(lang, 'simClock') : say(lang, 'realClock'), walk == null ? '' : say(lang, 'fromSecurity', plan.gate, walk))
-      .replace(/  +/g, ' ');
+    const queues = plan.queues.map(q => queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)).join(' ');
+    const walk = plan.steps.find(s => s.zone === 'walk')?.min ?? 0;
+    const wait = plan.steps.filter(s => !['walk', 'margin'].includes(s.zone)).reduce((n, s) => n + s.min, 0);
+    return lang === 'en'
+      ? `${queues} To gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}.`
+      : `${queues} Până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min la cozi`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
   },
 };
 export function localSource(source: string, lang?: Lang) {
@@ -172,3 +170,30 @@ export function nodeName(id: string, lang?: Lang) {
 
 
 export const RO_ISSUES = { bagaj_abandonat: 'bagaj abandonat', medical: 'urgență medicală', securitate: 'problemă de securitate', aglomerare: 'aglomerare', altele: 'incident' };
+
+/** Hamburg bands, keeping approximate figures only where they add information. */
+export function waitBand(min: number | null, lang?: Lang): string {
+  if (min === null) return lang === 'en' ? 'wait unknown' : 'timp necunoscut';
+  if (min < 1) return lang === 'en' ? 'no queue' : 'fără coadă';
+  const band = min <= 3 ? (lang === 'en' ? 'short queue' : 'coadă mică') : min <= 10 ? (lang === 'en' ? 'moderate queue' : 'coadă moderată') : (lang === 'en' ? 'long queue' : 'coadă mare');
+  return `${band}, ~${Math.round(min)} min`;
+}
+export function queueText(name: string, now: number | null, forecast: { inMin: number; waitMin: number }[] = [], lang?: Lang) {
+  const future = forecast.filter(p => p.inMin > 0 && p.inMin <= 120);
+  const full = [30, 60, 90, 120].every(m => future.some(p => p.inMin === m));
+  if (now !== null && now < 1 && full && future.every(p => p.waitMin < 1)) {
+    return lang === 'en' ? `No queue at ${name === 'Security' ? 'security' : name}, and none is expected in the next 2 hours.` : `Nu e coadă la ${name === 'Control de securitate' ? 'securitate' : name} și nu se așteaptă să se formeze în următoarele 2 ore.`;
+  }
+  const peak = future.reduce<typeof future[number] | undefined>((a, b) => !a || b.waitMin > a.waitMin ? b : a, undefined);
+  return `${name}: ${waitBand(now, lang)} ${lang === 'en' ? 'now' : 'acum'}${peak ? `; ${waitBand(peak.waitMin, lang)} ${lang === 'en' ? 'in' : 'peste'} ${peak.inMin} min` : ''}.`;
+}
+/** Last-line guard for generated copy; the clock itself remains the airport clock. */
+export function passengerText(text: string) {
+  let personal = false;
+  return text.replace(/https?:\/\/[^\s]+/g, url => {
+    if (!url.includes('/m/')) return text.includes('/m/') || url.includes('/join?login=') ? '' : url;
+    if (personal) return '';
+    personal = true; return url;
+  }).replace(/\s*\([^)]*(?:simul|simulation|estimare|estimate|ora locală|local time|ora din chat|demo)[^)]*\)/gi, '')
+    .replace(/[^.!?\n]*(?:simulăr|simulation|estimare|demo)[^.!?\n]*[.!?]?/gi, '').trim();
+}
