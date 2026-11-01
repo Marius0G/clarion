@@ -1,74 +1,159 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { chatCoverage } from './chat-fixture'
-test.use({ viewport: { width: 390, height: 844 } })
-const session = 'b'.repeat(64)
-const zone = { zone: 'security', role: 'security_supervisor', situation: { waitMin: 22, people: 62, state: 'full', forecast: [{ inMin: 30, waitMin: 12 }] }, reports: [], alerts: [] }
-test('staff sees zone situation and reports crowd in one tap without tasks', async ({ page }) => {
-  await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
-  let reported = false
-  await page.route('**/api/staff', route => route.fulfill({ json: { ...zone,
-    alerts: [{ id: 'A1', priority: 'P2', kind: 'zone-target', zoneId: 'security', text: 'Țintă depășită', numbers: { waitMin: 22, targetMin: 10 } }],
-    reports: reported ? [{ id: 'R1', priority: 'P2', state: 'sent', text: 'Prea multă lume aici', place: { name: 'Securitate' } }] : [] } }))
+import { mockLive, opsFixture, staffData, staffSession } from './live-fixture'
+const shots = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad'
+test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+async function open(page: Page, data: () => unknown = () => staffData(), ops: unknown[] = opsFixture()) {
+  await page.addInitScript(s => localStorage.setItem('clarion.session', s), staffSession)
+  await mockLive(page, { ops })
+  await page.route('**/api/staff', route => route.fulfill({ json: data() }))
   await page.route('**/api/staff/tasks/**', () => { throw new Error('Staff must never call task endpoints') })
-  await page.route('**/api/reports', route => {
-    expect(route.request().headers().authorization).toBe(`Bearer ${session}`)
-    expect(route.request().postDataJSON()).toEqual({ type: 'crowd', place: { node: 'security', name: 'Securitate' }, text: 'Prea multă lume aici' })
-    reported = true; return route.fulfill({ status: 201, json: { id: 'R1' } })
-  })
   await page.goto('/s')
-  await expect(page.getByRole('heading', { name: 'Securitate · supervizor' })).toBeVisible()
-  await expect(page.locator('.dashboard-tiles > *')).toHaveCount(4)
-  await expect(page.locator('.dashboard-tiles')).toContainText('Coadă22 minPlin~12 min · +30 minOameni62')
-  await expect(page.locator('body')).not.toContainText(/Sarcini|Deschide o linie|Confirm|Gata/)
-  const crowd = page.getByRole('button', { name: 'Prea multă lume aici', exact: true })
+  await expect(page.getByTestId('live-map')).toBeVisible()
+}
+
+test('staff map: own zone, live numbers, forecast, report pins and the moving team', async ({ page }) => {
+  await open(page)
+  await expect(page.getByRole('heading', { name: 'Coadă securitate · supervizor' })).toBeVisible()
+  await expect(page.getByTestId('queue-wait')).toContainText('14 min')
+  await expect(page.getByTestId('queue-wait')).toContainText('Ocupat')
+  await expect(page.getByTestId('queue-people')).toContainText('62')
+  await expect(page.getByTestId('lm-zone-U_SECURITY_QUEUE')).toHaveAttribute('data-home', '1')
+  // ISA-101: exact count, trend and data age on the map.
+  await expect(page.getByTestId('lm-point-U_SECURITY_QUEUE')).toHaveAttribute('aria-label', /62 → · 14 min · \d+ s/)
+  // Pins: state by shape and word.
+  await expect(page.getByTestId('lm-pin-R1')).toHaveAttribute('data-state', 'sent')
+  await expect(page.getByTestId('lm-pin-R1')).toHaveAttribute('aria-label', 'Aglomerație · Trimis')
+  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Echipa vine')
+  await expect(page.getByTestId('lm-pin-R3')).toHaveAttribute('data-state', 'resolved')
+  expect(Number(await page.getByTestId('lm-pin-R3').evaluate(e => getComputedStyle(e).opacity))).toBeLessThan(1)
+  const team = page.getByTestId('lm-team')
+  await expect(team).toHaveAttribute('aria-label', 'Echipa · ~3 min')
+  const before = await team.evaluate(e => (e as SVGGElement).style.transform)
+  await expect.poll(() => team.evaluate(e => (e as SVGGElement).style.transform), { timeout: 4000 }).not.toBe(before)
+  await expect(page.locator('.lm-team-line')).toBeVisible()
+  await page.getByRole('button', { name: 'Extinde' }).press('Enter')
+  await expect(page.getByTestId('zone-forecast')).toContainText('Peste 30 min: ▲~18 min'.replace('▲', '●'))
+  await expect(page.getByTestId('zone-forecast')).toContainText('Peste 60 min: ~8 min')
+  await expect(page.getByTestId('team-eta')).toContainText('Echipa · ~3 min · Poarta 3')
+  await expect(page.getByTestId('dispatch-notices')).toContainText('Dispeceratul a deschis o linie în plus la Coadă securitate')
+  await expect(page.getByTestId('dispatch-notices')).not.toContainText('Poarta 9')
+  await expect(page.locator('body')).not.toContainText(/Sarcini|Deschide o linie|Confirm|Gata|demo/)
+  await page.screenshot({ path: `${shots}/staff.png` })
+})
+
+test('one tap: too many people in my zone, or in the selected place', async ({ page }) => {
+  const bodies: unknown[] = []
+  await page.route('**/api/reports', route => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${staffSession}`)
+    bodies.push(route.request().postDataJSON()); return route.fulfill({ status: 201, json: { id: 'R9' } })
+  })
+  await open(page)
+  const crowd = page.getByRole('button', { name: 'Prea multă lume aici', exact: true }).first()
   expect((await crowd.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   await crowd.click()
-  await expect(page.getByRole('status')).toHaveText('Am transmis. Dispeceratul decide.')
-  await page.locator('.dashboard-tiles details').first().locator('summary').click()
-  await expect(page.getByText('▲ Securitate · 12 min peste țintă')).toBeVisible()
-  await page.locator('.dashboard-tiles details').last().locator('summary').click()
-  await expect(page.getByText('Securitate · Prea multă lume aici')).toBeVisible()
-  await chatCoverage(page)
-  await page.getByRole('button', { name: 'Raportează o problemă' }).click()
-  await expect(page.getByRole('button', { name: 'Aglomerație', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Aglomerație', exact: true }).click()
-  await page.getByLabel('Caută un reper').fill('Poarta 3')
-  await expect(page.getByRole('button', { name: 'Poarta 3', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await expect(page.getByRole('status').filter({ hasText: 'Am transmis. Dispeceratul decide.' })).toBeVisible()
+  expect(bodies[0]).toEqual({ type: 'crowd', place: { node: 'security', name: 'Securitate' }, text: 'Prea multă lume aici' })
+  await page.getByPlaceholder('Caută un loc').fill('poarta 5')
+  await page.getByRole('list', { name: 'Rezultate' }).getByRole('button').first().click()
+  const card = page.getByTestId('point-card')
+  await expect(card.getByRole('heading', { name: 'Poarta 5' })).toBeVisible()
+  await expect(card).toContainText('Necunoscut')
+  await card.getByRole('button', { name: 'Prea multă lume aici' }).click()
+  await expect.poll(() => bodies.length).toBe(2)
+  expect(bodies[1]).toEqual({ type: 'crowd', place: { node: 'U_GATE_5', name: 'Poarta 5' }, text: 'Prea multă lume aici' })
 })
+
+test('tap-to-report: tap, drag the pin, pick the type, Trimite', async ({ page }) => {
+  let body: { type?: string; place?: { node: string; name: string }; text?: string } = {}
+  await page.route('**/api/reports', route => { body = route.request().postDataJSON(); return route.fulfill({ status: 201, json: { id: 'R9' } }) })
+  await open(page)
+  await page.getByRole('button', { name: 'Raportează pe hartă' }).click()
+  await expect(page.getByText('Atinge harta unde este').first()).toBeVisible()
+  const target = (await page.getByTestId('lm-point-U_SECURITY_QUEUE').boundingBox())!
+  await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2 + 4)
+  const pin = page.getByTestId('lm-draft')
+  await expect(pin).toBeVisible()
+  const form = page.getByRole('form', { name: 'Raportează' })
+  const first = await form.locator('.place b').textContent()
+  // Drag the pin somewhere else: the place follows.
+  const box = (await pin.locator('.grab').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2 - 140, { steps: 8 })
+  await page.mouse.up()
+  await expect(form.locator('.place b')).not.toHaveText(first!)
+  await form.getByRole('button', { name: 'Curățenie' }).click()
+  await form.getByRole('button', { name: 'Trimite' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Am transmis. Dispeceratul decide.' })).toBeVisible()
+  expect(body.type).toBe('cleaning')
+  expect(body.text).toBe('')
+  expect(body.place?.node).toMatch(/^[A-Za-z]/)
+  await expect(pin).toHaveCount(0)
+})
+
+test('reads the newer staff API: zone object, forecast and notices', async ({ page }) => {
+  let simCalls = 0
+  await page.addInitScript(s => localStorage.setItem('clarion.session', s), staffSession)
+  await mockLive(page)
+  await page.route('**/api/sim', route => { simCalls++; return route.fulfill({ json: { ops: [] } }) })
+  await page.route('**/api/staff', route => route.fulfill({ json: { ...staffData(), zone: { id: 'security', forecast: [{ inMin: 30, waitMin: 25 }, { inMin: 60, waitMin: 9 }] },
+    notices: [{ text: 'Dispeceratul a deschis o linie în plus la securitate', at: '14:12', timestamp: 1, zone: 'security' }] } }))
+  await page.goto('/s')
+  await page.getByRole('button', { name: 'Extinde' }).press('Enter')
+  await expect(page.getByTestId('zone-forecast')).toContainText('Peste 30 min: ●~25 min')
+  await expect(page.getByTestId('dispatch-notices')).toHaveText('Dispeceratul a deschis o linie în plus la securitate14:12')
+  expect(simCalls).toBe(0)
+})
+
+test('chat from the staff sheet', async ({ page }) => {
+  await open(page)
+  await page.getByRole('button', { name: 'Extinde' }).press('Enter')
+  await page.getByRole('button', { name: 'Extinde' }).press('Enter')
+  await chatCoverage(page)
+})
+
 test('passengers see access restriction and guests see login', async ({ page }) => {
   await page.route('**/api/staff', route => route.fulfill({ status: 401, json: {} }))
   await page.goto('/s')
   await expect(page.getByRole('link', { name: 'Conectează-te cu WhatsApp' })).toBeVisible()
-  await page.evaluate(s => localStorage.setItem('clarion.session', s), session)
+  await page.evaluate(s => localStorage.setItem('clarion.session', s), staffSession)
   await page.route('**/api/staff', route => route.fulfill({ status: 403, json: {} }))
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Acces personal' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Prea multă lume aici' })).toHaveCount(0)
 })
-test('staff handles unknown cameras, empty data and failed crowd submission', async ({ page }) => {
-  await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
-  await page.route('**/api/staff', route => route.fulfill({ json: { ...zone, situation: { waitMin: null, people: null, state: 'unknown', forecast: [] } } }))
+
+test('unknown cameras, empty lists and a failed crowd report', async ({ page }) => {
   await page.route('**/api/reports', route => route.fulfill({ status: 500, json: {} }))
-  await page.goto('/s')
-  await expect(page.locator('.dashboard-tiles')).toContainText('Necunoscut')
-  await expect(page.locator('.dashboard-tiles strong').first()).toHaveText('— min')
+  await open(page, () => ({ ...staffData(), reports: [], alerts: [], situation: { waitMin: null, people: null, state: 'unknown', forecast: [] } }), [])
+  await expect(page.getByTestId('queue-wait')).toContainText('Necunoscut')
   await page.getByRole('button', { name: 'Prea multă lume aici' }).click()
   await expect(page.getByRole('alert')).toHaveText('Raport netrimis')
   await expect(page.getByRole('button', { name: 'Prea multă lume aici' })).toBeEnabled()
-  await expect(page.getByText('Am transmis. Dispeceratul decide.')).toHaveCount(0)
-  await page.locator('.dashboard-tiles details').first().locator('summary').click()
+  await page.getByRole('button', { name: 'Extinde' }).press('Enter')
   await expect(page.getByText('Nicio alertă')).toBeVisible()
-  await page.locator('.dashboard-tiles details').last().locator('summary').click()
   await expect(page.getByText('Niciun raport')).toBeVisible()
+  await expect(page.getByText('Nicio decizie pentru zona ta')).toBeVisible()
 })
-test('staff renders English situation and reporting', async ({ page }) => {
-  await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
-  await page.route('**/api/staff', route => route.fulfill({ json: { ...zone, lang: 'en' } }))
-  await page.goto('/s')
-  await expect(page.getByRole('heading', { name: 'Security · supervisor' })).toBeVisible()
-  await expect(page.locator('.dashboard-tiles')).toContainText('Queue22 minFull')
+
+test('English staff page', async ({ page }) => {
+  await open(page, () => ({ ...staffData(), lang: 'en' }))
+  await expect(page.getByRole('heading', { name: 'Security queue · supervisor' })).toBeVisible()
+  await expect(page.getByTestId('queue-wait')).toContainText('Busy')
   await expect(page.getByRole('button', { name: 'Too many people here' })).toBeEnabled()
-  await page.getByRole('button', { name: 'Report a problem' }).click()
-  await expect(page.getByLabel('Details')).toBeVisible()
+  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Team en route')
+})
+
+test.describe('desktop', () => {
+  test.use({ viewport: { width: 1440, height: 900 }, hasTouch: false })
+  test('side panel instead of the sheet', async ({ page }) => {
+    await open(page)
+    await expect(page.locator('.lm-sheet')).toHaveCount(0)
+    const panel = page.getByRole('complementary', { name: 'Detalii' })
+    await expect(panel.getByTestId('dispatch-notices')).toBeVisible()
+    await expect(panel.getByRole('region', { name: 'Mesaje' })).toBeVisible()
+    await expect(page.getByTestId('lm-team')).toBeVisible()
+  })
 })
