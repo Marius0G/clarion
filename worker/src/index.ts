@@ -20,6 +20,7 @@ import { JoinTokens, JOIN_TTL_MS, joinKey, pendingJoin, waLink, type PendingJoin
 import { findFlight } from './wa/flights.js';
 import { evacPlan, splitRegister } from './wa/messaging.js';
 import { airportView } from './wa/tower.js';
+import { CameraFeeds } from './cams.js';
 
 export interface Env extends Secrets, WaEnv, AuthEnv {
   TOWER: DurableObjectNamespace<Tower>;
@@ -93,6 +94,8 @@ export class Tower extends DurableObject<Env> {
   private fids = new FidsAdapter((input, init) => fetch(input, init));
   private nextFidsRefresh = 0;
   private lastAlarm = 0;
+  /** Latest camera.frame per camera (contract), in memory only. */
+  private cams = new CameraFeeds();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -261,6 +264,7 @@ export class Tower extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === '/lab' || path.startsWith('/lab/')) return this.lab(request, path);
+    if (path === '/cams' || path.startsWith('/cams/')) return this.camsRoute(request, new URL(request.url));
     return this.ordered(async () => {
       const url = new URL(request.url);
       const path = url.pathname;
@@ -421,7 +425,36 @@ export class Tower extends DurableObject<Env> {
       }
     });
   }
+  /** GET /cams and GET /cams/<camera>.jpg, behind the console's token check (Bearer, or ?token= for an <img>). */
+  private async camsRoute(request: Request, url: URL): Promise<Response> {
+    if (request.method !== 'GET') return json({ error: 'Not found' }, 404);
+    if (this.env.DEMO_TOKEN && !await equalSecret(request.headers.get('Authorization'), `Bearer ${this.env.DEMO_TOKEN}`) &&
+      !await equalSecret(url.searchParams.get('token'), this.env.DEMO_TOKEN)) return json({ error: 'Operator token required' }, 401);
+    if (url.pathname === '/cams') return json(this.cams.list());
+    const match = /^\/cams\/([a-z0-9_]{1,64})\.jpg$/.exec(url.pathname);
+    const frame = match ? this.cams.meta(match[1]!) : undefined;
+    if (!frame) return json({ error: 'Unknown camera' }, 404);
+    return new Response(frame.jpeg, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Sim-Time': String(frame.simTime) } });
+  }
+  /** camera.frame from vision: kept and forwarded to consoles, outside the engine queue (no engine state, nothing persisted). */
+  private cameraFrame(ws: WebSocket, event: Envelope) {
+    try {
+      if (ws.deserializeAttachment()?.client !== 'vision') throw new Error('Client cannot issue this event');
+      if (!Number.isFinite(Date.parse(event.ts))) throw new Error('Invalid JSON envelope');
+      const frame = this.cams.accept(event.data);
+      if (!frame) return;
+      const value = packet('camera.frame', frame);
+      for (const console of this.ctx.getWebSockets('console')) { try { console.send(value); } catch { /* Closed peer. */ } }
+    } catch (error) {
+      ws.send(packet('error', { message: error instanceof Error ? error.message : 'Invalid camera.frame' }));
+    }
+  }
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    if (typeof message === 'string' && message.length <= 1048576 && message.includes('"camera.frame"')) {
+      let event: Envelope | undefined;
+      try { event = JSON.parse(message); } catch { /* Reported below like any invalid payload. */ }
+      if (event?.type === 'camera.frame') { this.cameraFrame(ws, event); return; }
+    }
     await this.ordered(async () => {
       try {
         if (typeof message !== 'string' || new TextEncoder().encode(message).length > 1048576) throw new Error('Invalid WebSocket payload');

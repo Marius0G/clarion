@@ -38,6 +38,12 @@ Set Meta's callback to `https://<worker>/webhooks/whatsapp`. GET verifies the to
 - `STAFF <code>` (see `STAFF_CODE`) gives the staff role; the agent's `reportIssue` stores reports. `GET /api/reports` → `[{ id, at, kind, node, text, status }]` and `POST /api/reports/:id/close`, both with `Authorization: Bearer <DEMO_TOKEN>`. `kind` ∈ `bagaj_abandonat | medical | securitate | aglomerare | altele`; `node` is the best-match provisional zone/node id or null.
 - An `evacuate` ops.command waits 3 s for `evac.plan` (vision, A10; accepted from any non-viewer client until `client=vision` exists). With the plan, each subscriber gets the route for the node its stage (estimated from the clock, D9) maps to, and sim agents also get `agent.route`; without it, everyone gets the generic evacuation message.
 
+## Camera feeds
+
+Vision sends `camera.frame { camera, zone, simTime, w, h, jpeg, count, detector }` on its socket (SPEC-v2 contract): the latest JPEG per camera, with the detection boxes already drawn. `src/cams.ts` keeps only the latest frame per camera, in memory (lost on hibernation, refilled by the next frame), for at most 4 cameras. A camera silent for 30 s gives up its slot. Frames faster than ~1/s per camera are dropped without an error. Only `client=vision` may send them, and they never enter the engine, its snapshot or the state broadcast. Each accepted frame is forwarded as `camera.frame` to `client=console` sockets.
+
+`GET /cams` returns `[{ camera, zone, simTime, count, detector, w, h, age }]` (`age` in real seconds), and `GET /cams/<camera>.jpg` returns the latest JPEG (`Cache-Control: no-store`). Both need the operator token when `DEMO_TOKEN` is set, as `Authorization: Bearer` or `?token=` (for an `<img>`). Without Unity or vision: `python vision/tools/send_test_frames.py --synthetic` (see its `--help`).
+
 ## Google Wallet
 
 `POST /api/join { flight }` issues a single-use flight token. `POST /api/wallet/pass { subscriptionId }` accepts an active subscription; `{ joinToken }` creates a pending-flight pass with its WhatsApp link and QR code, returning `{ saveUrl, demo }`. All three credentials enable signed Clarion save JWTs; otherwise the result is `/join/wallet-demo?sub=<id>`. Pass registrations and per-pass UTC daily attempt counters persist. OAuth token caching, status PATCHes and the three-notification attempt budget remain. The removed incident lifecycle no longer triggers updates. Keep the Google Wallet demo issuer, service account and test users configured.
