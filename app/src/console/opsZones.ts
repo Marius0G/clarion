@@ -101,9 +101,9 @@ export function zoneStats(plan: TerminalPlan, sim: SimSnapshot | null): ZoneStat
   })
 }
 
-export type CommandStatus = 'sent' | 'acked' | 'offline' | 'auth' | 'invalid' | 'network'
+export type CommandStatus = 'sent' | 'acked' | 'offline' | 'auth' | 'invalid' | 'network' | 'view'
 export const commandStatusLabels: Record<CommandStatus, string> = {
-  sent: 'Trimis', acked: 'Confirmat', offline: 'Unity offline', auth: 'Fără token', invalid: 'Respins', network: 'Fără conexiune',
+  sent: 'Trimis', acked: 'Confirmat', offline: 'Unity offline', auth: 'Fără token', invalid: 'Respins', network: 'Fără conexiune', view: 'Doar vizualizare',
 }
 
 /** Short noun label for a D12 command, with zone names from the plan. */

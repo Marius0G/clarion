@@ -1,10 +1,11 @@
 import { backend } from './config'
 import type { OpsCommand, OpsRecord } from './sim'
 
-export type OpsResult = { ok: true; command: OpsRecord } | { ok: false; reason: 'offline' | 'auth' | 'invalid' | 'network' }
+export type OpsResult = { ok: true; command: OpsRecord } | { ok: false; reason: 'offline' | 'auth' | 'invalid' | 'network' | 'view' }
 
 /** D12: POST /api/ops/command. 202 = sent to Unity, 409 = Unity not connected. */
 export async function sendOps(command: OpsCommand): Promise<OpsResult> {
+  if (backend.readOnly) return { ok: false, reason: 'view' }
   try {
     const res = await fetch(`${backend.http}/api/ops/command`, {
       method: 'POST',
@@ -18,6 +19,7 @@ export async function sendOps(command: OpsCommand): Promise<OpsResult> {
 
 /** Sim speed (same as `demo_step.sh speed N`): POST /api/sim/command `{ action: 'start', speed }`. 202 = Unity has it. */
 export async function setSimSpeed(speed: number): Promise<boolean> {
+  if (backend.readOnly) return false
   try {
     const res = await fetch(`${backend.http}/api/sim/command`, {
       method: 'POST',

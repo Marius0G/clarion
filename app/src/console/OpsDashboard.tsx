@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSim, type OpsCommand } from '../backend/sim'
 import { sendOps, setSimSpeed } from '../backend/ops'
+import { backend } from '../backend/config'
 import { useReports } from '../backend/reports'
 import { liveRow, zoneStateLabels, commandLabel, commandStatusLabels, commandTouchesZone, laneKey, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
 import { realPlan, type TerminalPlan, type ZoneKind } from './terminal'
@@ -187,11 +188,12 @@ export function OpsDashboard() {
       <div className="ops-clock" data-testid="sim-clock" aria-label="Ceas simulare">
         <span className="ops-clock-time">{simClock(sim?.simTime)}</span>
         <span className="ops-speed" role="group" aria-label="Viteză simulare">
-          {[1, 10].map(v => <button key={v} type="button" aria-pressed={speed === v} disabled={speedBusy || !sim?.connected} data-testid={`speed-${v}`}
+          {[1, 10].map(v => <button key={v} type="button" aria-pressed={speed === v} disabled={speedBusy || !sim?.connected || backend.readOnly} data-testid={`speed-${v}`}
             onClick={async () => { setSpeedBusy(true); await setSimSpeed(v); setSpeedBusy(false) }}>×{v}</button>)}
           {speed != null && speed !== 1 && speed !== 10 && <span className="ops-chip">×{speed}</span>}
         </span>
         {sim?.run.scenario && <span className="ops-chip">{sim.run.scenario}</span>}
+        {backend.readOnly && <span className="ops-chip" data-testid="view-only">demo · doar vizualizare</span>}
       </div>
       <div className="ops-bar-flights">
         {delayed.map(f => <span key={f.flight} className="ops-chip is-near"><b>{f.flight}</b> {f.destination} · {f.status === 'cancelled' ? 'anulat' : `+${f.delayMin} min`}</span>)}

@@ -55,6 +55,7 @@ export function alertNumbers(a: Alert): string {
 }
 
 export async function sendAlertCommand(command: AlertCommand): Promise<Alert[]> {
+  if (backend.readOnly) throw new Error('Doar vizualizare')
   const response = await fetch(`${backend.http}/api/alerts/command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(backend.token ? { Authorization: `Bearer ${backend.token}` } : {}) },

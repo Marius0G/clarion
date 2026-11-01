@@ -35,7 +35,9 @@ export function backendConfig(
   if (token) ws.searchParams.set('token', token)
   else ws.searchParams.delete('token')
   http.protocol = ['https:', 'wss:'].includes(http.protocol) ? 'https:' : 'http:'
-  return { token: token || undefined, ws: ws.href, http: http.origin, host: ws.host, override: override?.origin }
+  // `/console?demo`: the public link from the landing page. Live cameras and numbers, no operator commands.
+  const readOnly = new URLSearchParams(location.search).has('demo')
+  return { token: token || undefined, ws: ws.href, http: http.origin, host: ws.host, override: override?.origin, readOnly }
 }
 export const backend = backendConfig()
 // The operator token is now in storage; keep it off the projected address bar and history.

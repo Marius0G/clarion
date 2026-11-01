@@ -32,6 +32,7 @@ export function useReports(intervalMs = 3000): StaffReport[] {
 }
 
 export async function reportState(id: string, state: string): Promise<boolean> {
+  if (backend.readOnly) return false
   try {
     const response = await fetch(`${backend.http}/api/reports/${encodeURIComponent(id)}/state`, { method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(backend.token ? { Authorization: `Bearer ${backend.token}` } : {}) }, body: JSON.stringify({ state }) })
