@@ -96,31 +96,64 @@ export function personalContract() {
       const h = setup(), session = await h.login('+40711111111', { role: 'staff', lang: 'en' });
       expect(await (await h.call('/api/staff', session))!.json()).toMatchObject({ lang: 'en' });
     });
-    it('assigns tasks by executor and zone, validates completion, and updates console records without changing Unity wire', async () => {
+    it('keeps admin tasks private and rejects staff confirm and done actions', async () => {
       const h = setup(), staff = await h.login('+40711111111', { role: 'staff' });
       const lane = h.sim.sent({ type: 'staff', zone: 'security', delta: 1 });
-      h.sim.sent({ type: 'redirect', from: 'security', to: 'entrance' });
-      h.sim.sent({ type: 'staff', zone: 'check_in:2', delta: 1 });
-      let data = await (await h.call('/api/staff', staff))!.json() as any;
-      expect(data.tasks.map((t: any) => t.id)).toEqual([lane.id]);
-      expect((await h.call(`/api/staff/tasks/${lane.id}/done`, staff, {}))?.status).toBe(400);
-      expect((await h.call(`/api/staff/tasks/${lane.id}/confirm`, staff, {}))?.status).toBe(200);
-      expect((await h.call(`/api/staff/tasks/${lane.id}/done`, staff, {}))?.status).toBe(200);
-      data = await (await h.call('/api/staff', staff))!.json() as any;
-      expect(data.tasks[0]).toMatchObject({ staffState: 'done', status: 'sent' });
-      expect(h.sim.snapshot(false, {}).ops.find(t => t.id === lane.id)!.staffState).toBe('done');
-      expect(opsWire(h.sim.snapshot(false, {}).ops.find(t => t.id === lane.id)!)).toEqual({ type: 'staff', zone: 'security', delta: 1, id: lane.id });
+      h.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1, forecast: [{ inMin: 30, waitMin: 12 }] }] }, 'vision');
+      const data = await (await h.call('/api/staff', staff))!.json() as any;
+      expect(data).not.toHaveProperty('tasks');
+      expect(data.situation).toMatchObject({ waitMin: 20, people: 40, state: 'full', forecast: [{ inMin: 30, waitMin: 12 }] });
+      for (const action of ['confirm', 'done']) expect((await h.call(`/api/staff/tasks/${lane.id}/${action}`, staff, {}))?.status).toBe(404);
+      expect(h.sim.snapshot(false, {}).ops[0]!.staffState).toBeUndefined();
+      expect(opsWire(h.sim.snapshot(false, {}).ops[0]!)).toEqual({ type: 'staff', zone: 'security', delta: 1, id: lane.id });
     });
-    it.each([['hall_agent', 'redirect'], ['incident_commander', 'evacuate']] as const)('assigns %s its own tasks and only local alerts', async (role, type) => {
-      const h = setup(), session = await h.login('+40711111111', { role: 'staff', staffRole: role, zone: 'security' });
-      const redirect = h.sim.sent({ type: 'redirect', from: 'security', to: 'entrance' });
-      const evac = h.sim.sent({ type: 'evacuate', zones: ['gate_2'] });
+    it('shows unknown without cameras and only local alerts', async () => {
+      const h = setup(), session = await h.login('+40711111111', { role: 'staff', zone: 'security' });
+      h.sim.truth({ zones: [{ zone: 'security', waiting: 40, waitMin: 20 }, { zone: 'check_in:2', waiting: 40, waitMin: 20 }] });
+      let data = await (await h.call('/api/staff', session))!.json() as any;
+      expect(data.situation).toMatchObject({ people: null, waitMin: null, state: 'unknown' });
+      h.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }] }, 'twin');
+      data = await (await h.call('/api/staff', session))!.json() as any;
+      expect(data.situation).toMatchObject({ people: null, waitMin: null, state: 'unknown' });
       h.sim.flow({ zones: [{ zone: 'security', waiting: 40, waitMin: 20, coverage: 1 }, { zone: 'check_in:2', waiting: 40, waitMin: 20, coverage: 1 }] }, 'vision');
-      const data = await (await h.call('/api/staff', session))!.json() as any;
-      expect(data.tasks.map((t: any) => t.id)).toEqual([type === 'redirect' ? redirect.id : evac.id]);
+      data = await (await h.call('/api/staff', session))!.json() as any;
       expect(data.alerts.length).toBeGreaterThan(0);
       expect(data.alerts.every((a: any) => a.zoneId === 'security')).toBe(true);
-      expect((await h.call(`/api/staff/tasks/${type === 'redirect' ? evac.id : redirect.id}/confirm`, session, {}))?.status).toBe(404);
+    });
+    it('sends crowd reports to the existing journal and P2 zone alerts without capacity commands', async () => {
+      const h = setup(), staff = await h.login('+40711111111', { role: 'staff' });
+      const response = await h.call('/api/reports', staff, { type: 'crowd', place: { node: 'security', name: 'Securitate' }, text: 'Prea multă lume aici' });
+      expect(response!.status).toBe(201);
+      expect(h.sim.reportSnapshot()[0]).toMatchObject({ source: 'staff', type: 'crowd', priority: 'P2', node: 'security' });
+      expect(h.sim.alertSnapshot()).toContainEqual(expect.objectContaining({ active: true, priority: 'P2', zoneId: 'security', kind: 'staff-report' }));
+      expect(h.sim.snapshot(false, {}).ops).toEqual([]);
+    });
+    it.each([
+      ['security', 5, 0.5, 8, 1, 'normal'],
+      ['security', 5, 0.5, 11, 1, 'busy'],
+      ['security', 11, 0.5, 8, 1, 'busy'],
+      ['security', 20, 0.5, 8, 1, 'full'],
+      ['security', 5, 0.5, 8, 0, 'unknown'],
+      ['gate_3', 0, 0.5, 0, 1, 'normal'],
+      ['gate_3', 0, 1, 0, 1, 'busy'],
+      ['gate_3', 0, 2.1, 0, 1, 'full'],
+    ])('derives %s situation from cameras: wait=%s density=%s forecast=%s coverage=%s', async (zone, waitMin, density, next, coverage, state) => {
+      const h = setup(), session = await h.login('+40711111111', { role: 'staff', zone });
+      h.sim.flow({ zones: [{ zone, waiting: 12, waitMin, density, coverage, forecast: [{ inMin: 30, waitMin: next }] }] }, 'vision');
+      const data = await (await h.call('/api/staff', session))!.json() as any;
+      expect(data.situation.state).toBe(state);
+      expect(data.situation.people).toBe(coverage ? 12 : null);
+    });
+    it('shares WhatsApp crowd reports with the admin journal, P2 alert and passenger tile', async () => {
+      const h = setup(), phone = '+40711111111', staff = await h.login(phone, { role: 'staff', zone: 'gate_3' });
+      await h.agent.receive({ id: 'crowd-wa', phone, name: '', type: 'text', text: 'e prea multă lume la securitate', replyId: null, at: Date.now() });
+      expect(h.sim.reportSnapshot()[0]).toMatchObject({ type: 'crowd', priority: 'P2', node: 'U_SECURITY_QUEUE' });
+      expect(h.sim.alertSnapshot()).toContainEqual(expect.objectContaining({ active: true, priority: 'P2', zoneId: 'U_SECURITY_QUEUE' }));
+      const passenger = await h.login();
+      const data = await (await h.call('/api/me', passenger))!.json() as any;
+      expect(data.queues.find((q: any) => q.zone === 'security').staffCrowd).toBe('Personalul semnalează aglomerație la securitate.');
+      expect((await (await h.call('/api/staff', staff))!.json() as any).reports).toHaveLength(1);
+      expect(h.sim.snapshot(false, {}).ops).toEqual([]);
     });
     it('uses only exit imagery and the assembly point during evacuation', async () => {
       const h = setup(), session = await h.login();
@@ -135,9 +168,10 @@ export function personalContract() {
     it('uses server-configured staff assignments and accepts an optional report photo', async () => {
       const h = setup(), phone = '+40711111111', session = await h.login(phone, { role: 'staff' });
       h.env.STAFF_ASSIGNMENTS = JSON.stringify({ [phone]: { role: 'hall_agent', zone: 'G_CENTER' } });
-      const task = h.sim.sent({ type: 'redirect', from: 'G_CENTER', to: 'entrance' });
+      h.sim.sent({ type: 'redirect', from: 'G_CENTER', to: 'entrance' });
       const data = await (await h.call('/api/staff', session))!.json() as any;
-      expect(data.tasks[0].id).toBe(task.id);
+      expect(data).toMatchObject({ zone: 'G_CENTER', role: 'hall_agent' });
+      expect(data).not.toHaveProperty('tasks');
       const response = await h.call('/api/reports', session, { ...h.input, photo: 'https://photos.example/incident.jpg' });
       expect(await response!.json()).toMatchObject({ source: 'staff', phone, photo: 'https://photos.example/incident.jpg' });
     });

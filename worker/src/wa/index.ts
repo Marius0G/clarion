@@ -1,3 +1,4 @@
+import { staffAssignment } from './staff.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import { zoneDensities, route } from '../../../backend/src/routing.js';
 import { zoneAreas, terminalGraph } from '../../../backend/src/terminal.js';
@@ -54,11 +55,9 @@ export class WhatsAppAgent {
   private fetcher: Fetch;
   private observe?: Observe;
   private images: RouteImages;
-  private staffTasks?: (phone: string, input: { id?: string; action?: string }) => Promise<unknown>;
   private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
-    opts: { staffTasks?: (phone: string, input: { id?: string; action?: string }) => Promise<unknown>; fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
-    this.staffTasks = opts.staffTasks;
+    opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.observe = opts.observe;
     this.images = new RouteImages(env.APP_URL ?? 'https://clarion-craiova.pages.dev', this.fetcher);
@@ -72,7 +71,7 @@ export class WhatsAppAgent {
       if (!r.phone) return;
       const en = (await this.profile(r.phone))?.lang === 'en';
       await this.messaging.notify({ channel: 'whatsapp', phone: r.phone }, { kind: 'admin', requested: true,
-        text: `${r.id} · ${reportStateLabel(r.state, en)} · ${r.place.name === r.node && r.node ? nodeName(r.node, en ? 'en' : 'ro') : r.place.name}${r.etaMin == null || r.state === 'resolved' ? '' : ` · ETA ~${r.etaMin} min`}` });
+        text: r.source === 'staff' && r.type === 'crowd' && r.state === 'sent' ? (en ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.') : `${r.id} · ${reportStateLabel(r.state, en)} · ${r.place.name === r.node && r.node ? nodeName(r.node, en ? 'en' : 'ro') : r.place.name}${r.etaMin == null || r.state === 'resolved' ? '' : ` · ETA ~${r.etaMin} min`}` });
     });
   }
 
@@ -186,6 +185,7 @@ export class WhatsAppAgent {
     const key = `wa:profile:${m.phone}`;
     let profile: Profile = { phone: m.phone, role: 'passenger', lang: 'ro', ...(await this.store.get<Profile>(key)) };
     if ((this.env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === m.phone)) profile.role = 'staff';
+    if (profile.role === 'staff') profile.zone = staffAssignment(this.env, profile).zone;
     // Check urgency before sending even a provisional reaction.
     const flight = profile.flight && findFlight(this.view.flights(), profile.flight);
     const flightAlert = flight && (flight.status === 'delayed' || flight.status === 'cancelled')
@@ -270,7 +270,7 @@ export class WhatsAppAgent {
     // Reports from either role use one bounded slot-filling flow; missing type/place are button choices.
     const reportKey = `wa:report:${m.phone}`;
     let draft = await this.store.get<{ text: string; type?: ReportType; node?: string; photo?: string }>(reportKey);
-    if (draft || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))) || /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) || m.replyId?.startsWith('rep:')) {
+    if (draft || (profile.role === 'staff' && classifyReportType(m.text) === 'crowd') || (profile.role === 'passenger' && (clearProblem(m.text) || lostItemClaim(m.text))) || /^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text) || m.replyId?.startsWith('rep:')) {
       const en = profile.lang === 'en';
       const index = await this.images.index();
       const words = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -290,6 +290,7 @@ export class WhatsAppAgent {
         draft.node ??= mentioned ?? resolveLandmark(m.text, index) ?? matchNode(m.text, this.view.flights()) ?? undefined;
         if (!draft.text && !/^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text)) draft.text = m.text;
       }
+      if (profile.role === 'staff' && draft.type === 'crowd') draft.node ??= profile.zone;
       await this.store.put(reportKey, draft);
       if (!draft.type) {
         const names = en ? ['Security', 'Medical', 'Cleaning', 'Lost item', 'Crowd', 'Other'] : ['Securitate', 'Medical', 'Curățenie', 'Obiect pierdut', 'Aglomerare', 'Altele'];
@@ -308,8 +309,9 @@ export class WhatsAppAgent {
         'team_post', draft.node, zoneDensities(this.view.flow(), zoneAreas), this.view.blocked?.());
       const reported = await this.reports.add({ kind: kindForType(draft.type), type: draft.type, node: draft.node,
         place: { node: draft.node, name: index?.points.find(p => p.id === draft!.node)?.name[en ? 'en' : 'ro'] ?? draft.node },
-        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null }, Date.now(), channel === 'whatsapp');
-      if (channel === 'web') await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
+        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: draft.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null }, Date.now(), channel === 'whatsapp' && !(profile.role === 'staff' && draft.type === 'crowd'));
+      if (profile.role === 'staff' && draft.type === 'crowd') await transport.sendText(m.phone, en ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.');
+      if (channel === 'web' && !(profile.role === 'staff' && draft.type === 'crowd')) await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
       if (draft.type === 'lost item') await transport.sendText(m.phone, en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
           : `${/security|securitate/i.test(draft.text) ? 'Obiectele pierdute la securitate sunt păstrate de personalul de securitate. ' : ''}Lost & Found este la Informații. Am transmis personalului descrierea și locul.`);
       await this.store.delete(reportKey);
@@ -336,14 +338,13 @@ export class WhatsAppAgent {
     const spokenFlight = code && findFlight(this.view.flights(), code);
     if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
-    const tools = toolsFor({ routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
+    const tools = toolsFor({ reports: () => this.reports.list(), routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
       pageLink: async () => {
         const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
         const stored = await this.profile(m.phone);
         if (stored?.pageToken) profile.pageToken = stored.pageToken;
         return link;
       } });
-    if (profile.role === 'staff' && this.staffTasks) tools.staffTasks = input => this.staffTasks!(m.phone, input);
     let waitEstimate: Profile['lastWaitEstimate'];
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {

@@ -60,7 +60,6 @@
 .me-shell .report-form textarea { min-height: 88px; resize: vertical; }
 .me-shell fieldset { border: 1px solid #999; padding: 8px; min-width: 0; }
 .me-shell .type-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.me-shell .staff-task { border-top: 1px solid #999; padding: 16px 0; }
 .me-shell .priority-P1 { color: #D40000; }
 .me-shell .priority-P2, .me-shell .flight-change { color: #E07800; }
 .me-shell .priority-P3 { color: #E6B800; }
@@ -101,11 +100,7 @@
 .chat-compose { display: flex; gap: 8px; }
 .chat-compose input { min-width: 0; flex: 1; padding: 8px; }
 .report-sheet { width: calc(100% - 16px); max-width: 480px; max-height: 95dvh; overflow-y: auto; }
-.task-list { margin-top: 16px; max-height: 280px; overflow-y: auto; }
-.me-shell .staff-task { padding: 8px 0; }
 .dashboard-tiles > div > small, .dashboard-tiles summary > small { display: block; }
 .dashboard-tiles .queue-band, .dashboard-tiles .queue-forecast { display: block; color: var(--cx-muted); font-size: 12px; margin-top: 2px; }
-.task-actions { display: flex; gap: 8px; }
-.me-shell .task-actions button { min-height: 44px; min-width: 88px; font-size: 16px; border-color: #0E2F57; background: #0E2F57; color: #fff; }
-.me-shell .task-actions button:first-child { background: #eee; color: #0E2F57; }
-.task-meta { font-size: 14px; color: var(--cx-muted); }
+
+.me-shell .crowd-action { width: 100%; margin-top: 16px; min-height: 52px; background: #0E2F57; color: #fff; font-size: 16px; }

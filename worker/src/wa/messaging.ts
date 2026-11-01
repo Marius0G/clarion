@@ -1,3 +1,4 @@
+import { crowdNote, Reports } from './reports.js';
 import { evacuationRoute } from '../../../backend/src/evacuation.js';
 import { LANDMARK_TTL_MS } from './airport-info.js';
 import { RouteImages } from './airport-info.js';
@@ -183,6 +184,7 @@ export class Messaging {
     const clock = this.deps.view.clock();
     // Unknown bag choice uses the same conservative assumption as WhatsApp.
     const plan = arrivalPlan(f, this.deps.view.flow(), clock, p.hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history);
+    const observations = await new Reports(this.deps.store).list();
     const stage = estimateStage(f, clock.now);
     const from = stage === 'gate' ? f.gate : stage === 'airside' ? 'U_CORRIDOR_EAST' : 'door_departures';
     const evacuation = await this.evacuationFor({ sub, hasCheckedBag: p.hasCheckedBag }, f, p.lang);
@@ -192,6 +194,7 @@ export class Messaging {
     const path = route(terminalGraph, from, f.gate, zoneDensities(this.deps.view.flow(), zoneAreas), this.deps.view.blocked?.());
     const image = !evacuation.active && path ? await this.deps.images?.image(from, f.gate, path, this.deps.view.blocked?.()) : null;
     return {
+      gateCrowd: crowdNote(observations, f.gate, p.lang),
       stage, routeImage: evacuation.active ? (preview && (!liveEvac || mapNodeId(preview.exit) === mapNodeId(liveEvac.exit)) ? preview.link : undefined) : image?.link,
       assembly: liveEvac?.assembly ?? preview?.assembly,
       timeline: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-50),
@@ -200,7 +203,7 @@ export class Messaging {
       flight: { flight: f.flight, destination: f.destination, std: clockText(f.std), gate: f.gate,
         gateCloseAt: clockText(closeAt(f)), status: f.status, delayMin: f.delayMin },
       arriveBy: plan.beAtEntranceAt,
-      queues: plan.queues.map(({ forecast: _forecast, ...q }) => ({ ...q, label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
+      queues: plan.queues.map(({ forecast: _forecast, ...q }) => ({ ...q, staffCrowd: crowdNote(observations, q.zone, p.lang), label: nodeName(q.zone, p.lang), source: localSource(q.source, p.lang) })), entranceToGateMin: plan.totalMin,
       steps: plan.steps.filter(s => s.zone !== 'margin').map(s => ({ zone: s.zone, label: s.zone === 'walk' ? say(p.lang, 'walk', gateName(f.gate)) : nodeName(s.zone, p.lang), waitMin: s.min })),
       alerts: (await this.deps.store.get<PassengerData['alerts']>(`msg:alerts:${this.identity(sub)}`) ?? []).slice(-5),
       evacuation,
@@ -272,6 +275,16 @@ export class Messaging {
     return next;
   }
   private async deliver(sub: Subscriber, { estimate, requested, ...m }: { kind: NotifyKind; text: string; requested?: boolean; estimate?: { flight: string; totalMin: number } }): Promise<Delivery> {
+    if (m.kind !== 'evacuate') {
+      const p = await this.subscriberProfile(sub);
+      const f = p?.flight ? findFlight(this.deps.view.flights(), p.flight) : undefined;
+      if (f && p?.role !== 'staff') {
+        const reports = await new Reports(this.deps.store).list();
+        const relevant = [...new Set(arrivalPlan(f, this.deps.view.flow(), this.deps.view.clock(), p?.hasCheckedBag, this.deps.view.blocked?.(), this.deps.view.history).queues.map(q => q.zone).concat(f.gate))];
+        const notes = relevant.map(zone => crowdNote(reports, zone, p?.lang)).filter((note): note is string => !!note && !m.text.includes(note));
+        if (notes.length) m.text += `\n${notes.join(' ')}`;
+      }
+    }
     if (m.kind === 'flight' || m.kind === 'evacuate') m.text = urgentBubbles(toBubbles(m.text)).join('\n');
     const now = this.deps.now?.() ?? (this.deps.view.clock().sim ? this.deps.view.clock().now * 1000 : Date.now());
     const nonUrgent = m.kind !== 'flight' && m.kind !== 'evacuate';

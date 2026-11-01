@@ -34,3 +34,9 @@ it('describes excess wait above target rather than the full wait', () => {
   expect(staffAlertLabel({ ...alert, numbers: { waitMin: 5, targetMin: 10 } }, 'security')).toBe('Securitate · 0 min peste țintă')
   expect(staffAlertLabel({ id: 'A2', priority: 'P1', text: 'Evacuare' }, 'security')).toBe('Evacuare')
 })
+
+it('preserves only string crowd observations on passenger queue tiles', () => {
+  const queues = normalizePassenger({ queues: [{ zone: 'security', staffCrowd: 'Personalul semnalează aglomerație la securitate.' }, { zone: 'check_in:1', staffCrowd: { text: 'invalid' } }] }).queues!
+  expect(queues[0].staffCrowd).toBe('Personalul semnalează aglomerație la securitate.')
+  expect(queues[1].staffCrowd).toBeUndefined()
+})

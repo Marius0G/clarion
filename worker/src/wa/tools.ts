@@ -6,11 +6,12 @@ import { route, zoneDensities } from '../../../backend/src/routing.js';
 import { terminalGraph, zoneAreas, points, zones } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
-import { classifyIssue, classifyReportType, typeForKind, REPORT_TYPES, isIssueKind, matchNode, type Report, type ReportInput } from './reports.js';
+import { crowdNote, classifyIssue, classifyReportType, typeForKind, REPORT_TYPES, isIssueKind, matchNode, type Report, type ReportInput } from './reports.js';
 import { estimateStage, type EvacRoute } from './messaging.js';
 
 export interface ZoneRow {
-  density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
+  source?: 'vision' | 'twin';
+  coverage?: number | null; density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
   forecast?: { inMin: number; waitMin: number }[] | null;
 }
 /** What the agent may read from the Tower. Implemented in index.ts over the sim store; plain data in tests. */
@@ -138,7 +139,9 @@ export interface ToolDeps {
   view: AirportView;
   profile: () => Profile;
   save: (patch: Partial<Profile>) => Promise<void>;
-  /** Stores a staff report (D11); absent in read-only contexts. */
+  /** Shared open observations for passenger situation text (D34). */
+  reports?: () => Promise<Report[]>;
+  /** Stores a report (D11/D34); absent in read-only contexts. */
   report?: (input: ReportInput) => Promise<Report>;
   pageLink?: () => Promise<string>;
   routeIndex?: () => Promise<RouteIndex | null>;
@@ -148,7 +151,7 @@ export interface ToolDeps {
 }
 
 /** The five D15 tools for one person, using the shared provisional terminal graph. */
-export function toolsFor({ view, profile, save, report, pageLink, evacRoute, routeIndex, now = () => view.clock().now * 1000 }: ToolDeps): Tools {
+export function toolsFor({ view, profile, save, report, reports, pageLink, evacRoute, routeIndex, now = () => view.clock().now * 1000 }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -175,7 +178,9 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
     },
     async myFlight(input: { flight?: string }) {
       const r = await resolve(input?.flight);
-      return 'error' in r ? r : flightView(r.flight, view.clock(), view.provisional(), profile().lang);
+      if ('error' in r) return r;
+      return { ...flightView(r.flight, view.clock(), view.provisional(), profile().lang),
+        staffCrowd: crowdNote(await reports?.() ?? [], r.flight.gate, profile().lang) };
     },
     async whenToArrive(input: { flight?: string; hasCheckedBag?: boolean }) {
       const r = await resolve(input?.flight);
@@ -185,18 +190,21 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       if (f.status === 'cancelled') return { flight: f.flight, status: 'cancelled', note: say(profile().lang, 'cancelledNote') };
       if (f.status === 'departed') return { flight: f.flight, status: 'departed', note: say(profile().lang, 'departedNote') };
       const plan = arrivalPlan(f, view.flow(), view.clock(), profile().hasCheckedBag, view.blocked?.(), view.history);
-      return { ...plan, situation: situationText(plan, profile().lang), status: f.status, delayMin: f.delayMin };
+      const observations = await reports?.() ?? [];
+      const notes = plan.queues.map(q => crowdNote(observations, q.zone, profile().lang)).filter(Boolean);
+      return { ...plan, situation: [situationText(plan, profile().lang), ...notes].join(' '), status: f.status, delayMin: f.delayMin };
     },
     async queues() {
-      const flow = view.flow(), clock = view.clock(), p = profile();
+      const flow = view.flow(), clock = view.clock(), p = profile(), observations = await reports?.() ?? [];
+      const staffCrowd = [...new Set(observations.map(r => r.node).filter((n): n is string => !!n).map(zone => crowdNote(observations, zone, p.lang)).filter(Boolean))];
       const mine = new Set(ownZones(p.flight ? findFlight(view.flights(), p.flight) : p.airline ? { airline: p.airline } : undefined).slice(0, 2).map(mapNodeId));
       const zones = Object.entries(flow).map(([zone, z]) => ({
-        zone: zoneName(zone, p.lang), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
+        staffCrowd: crowdNote(observations, zone, p.lang), zone: zoneName(zone, p.lang), waiting: z.waiting, waitMin: z.waitMin, peak30min: z.peak, staff: z.staff,
         ...(z.forecast?.length && { forecast: z.forecast.map(p => ({ inMin: p.inMin, waitMin: p.waitMin })) }),
         ...(mine.has(mapNodeId(zone)) && { yours: true }),
       }));
-      if (!zones.length) return { available: false, note: say(profile().lang, 'noQueues'), now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
-      return { available: true, zones, now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
+      if (!zones.length) return { available: false, staffCrowd, note: say(profile().lang, 'noQueues'), now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
+      return { available: true, zones, staffCrowd, now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
     },
     async routeTo(input: { to?: string; from?: string; flight?: string }) {
       const p = profile(), lang = p.lang;
@@ -255,9 +263,11 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       const amenity = amenities.find(a => a.id === destination);
       const name = (id: string) => amenities.find(a => a.id === id)?.name[lang === 'en' ? 'en' : 'ro'] ?? nodeName(id, lang);
       const walk = lang === 'en' ? `~${minutes} min walking` : `~${minutes} min de mers`;
+      const observations = await reports?.() ?? [];
+      const staffCrowd = [...new Set(best.nodes.map(zone => crowdNote(observations, zone, lang)).filter(Boolean))];
       const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
       return { status: 'ready', ...best, rerouted, minutes, from, to: destination, destination: name(destination),
-        steps: best.nodes.map(name), note, ...(pageLink && profile().flight && { link: await pageLink() }) };
+        steps: best.nodes.map(name), staffCrowd, note: [note, ...staffCrowd].join(' '), ...(pageLink && profile().flight && { link: await pageLink() }) };
     },
     async reportLostItem(input: { text?: string }) {
       const text = String(input?.text ?? '').trim();
@@ -277,19 +287,19 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute, rou
       if (!report) return { error: 'unavailable', note: say(profile().lang, 'reportUnavailable') };
       const kind = isIssueKind(input?.kind) ? input.kind : classifyIssue(text);
       const type = REPORT_TYPES.find(type => type === input?.type) ?? classifyReportType(text) ?? typeForKind(kind);
-      const node = resolveLandmark(input?.location ?? '', await routeIndex?.() ?? null) ?? matchNode(`${input?.location ?? ''} ${text}`, view.flights());
+      const node = resolveLandmark(input?.location ?? '', await routeIndex?.() ?? null) ?? matchNode(`${input?.location ?? ''} ${text}`, view.flights()) ?? (profile().role === 'staff' && type === 'crowd' ? profile().zone ?? 'security' : null);
       const density = zoneDensities(view.flow(), zoneAreas);
       const path = node ? route(terminalGraph, 'team_post', node, density, view.blocked?.()) : null;
-      const etaMin = path ? Math.ceil(path.totalSec / 60) : null;
+      const etaMin = type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null;
       // The airport police posts Unity places (POLICE_POSTS), crowd-penalised like the team's route (A8); the nearest one.
       const police = node ? POLICE_POSTS.map(post => route(terminalGraph, post, node, density, view.blocked?.())).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0] : undefined;
-      const policeEtaMin = police ? Math.ceil(police.totalSec / 60) : null;
+      const policeEtaMin = type === 'crowd' ? null : police ? Math.ceil(police.totalSec / 60) : null;
       const r = await report({ kind, type, node, place: { node, name: node ? nodeName(node, profile().lang) : say(profile().lang, 'unknownPlace') }, etaMin, policeEtaMin, text: input?.location ? `${text} (loc: ${input.location})` : text });
       const lang = profile().lang;
       const eta = etaMin === null && policeEtaMin === null ? say(lang, 'noEta')
         : [etaMin === null ? '' : say(lang, 'eta', etaMin), policeEtaMin === null ? '' : say(lang, 'policeEta', policeEtaMin)].filter(Boolean).join('. ') + '.';
-      return { status: 'sent', id: r.id, etaMin, policeEtaMin, kind: lang === 'en' ? EN_ISSUES[kind] : RO_ISSUES[kind], place: node ? nodeName(node, lang) : say(lang, 'unknownPlace'),
-        note: say(lang, 'reportSent', eta) };
+      return { status: 'sent', type, id: r.id, etaMin, policeEtaMin, kind: lang === 'en' ? EN_ISSUES[kind] : RO_ISSUES[kind], place: node ? nodeName(node, lang) : say(lang, 'unknownPlace'),
+        note: type === 'crowd' && profile().role === 'staff' ? (lang === 'en' ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.') : say(lang, 'reportSent', eta) };
     },
   };
 }

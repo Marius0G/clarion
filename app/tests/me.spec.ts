@@ -115,3 +115,17 @@ test('report details are optional after selecting type and landmark', async ({ p
   await expect.poll(() => submitted).toBe(true)
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+
+test('recent staff crowd observation appears on its zone tile and disappears on refresh', async ({ page }) => {
+  await page.clock.install()
+  let active = true
+  await page.route('**/api/me?token=crowd', route => route.fulfill({ json: { ...fixture,
+    gateCrowd: active ? 'Personalul semnalează aglomerație la poarta 3.' : undefined,
+    queues: fixture.queues!.map(q => ({ ...q, staffCrowd: active && /security/i.test(q.zone) ? 'Personalul semnalează aglomerație la securitate.' : undefined })) } }))
+  await page.goto('/m/crowd')
+  await expect(page.locator('.dashboard-tiles > div').nth(1)).toContainText('Personalul semnalează aglomerație la securitate.')
+  await expect(page.locator('.dashboard-tiles > div').first()).not.toContainText('Personalul')
+  await expect(page.locator('.dashboard-tiles > div').nth(2)).toContainText('Personalul semnalează aglomerație la poarta 3.')
+  active = false; await page.clock.runFor(5000)
+  await expect(page.getByText('Personalul semnalează aglomerație la securitate.')).toHaveCount(0)
+})

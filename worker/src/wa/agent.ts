@@ -61,11 +61,12 @@ const STYLE = `<style>
 - Zbor, poartă, status, ora de închidere a porții: myFlight. Întârziat sau anulat: spune clar, apoi ce poate face.
 - Cozi, aglomerație, „e lume la securitate?”: queues. Coada grupului lui de check-in e cea cu yours=true. Dacă are prognoză,
   spune și cum arată peste o oră. Benzi: 0–3 min coadă mică, 4–10 moderată, peste 10 mare. Sub 1 min acum și la toate orizonturile până la 120 min: nu e coadă și nu se așteaptă în următoarele 2 ore; fără zerouri repetate.
+- Dacă datele au staffCrowd, include observația personalului pentru zona despre care răspunzi, fără ordine sau disclaimer.
 - Nu știi zborul lui (no_flight): cere-i numărul zborului (ex: W6 3751), apoi cheamă myFlight cu el.
 - Traseu spre poartă, ghișeu sau ieșire: routeTo. Folosește from doar pentru un reper declarat. Dacă status=needs_location, pune doar întrebarea note; opțiunile sunt trimise automat. Altfel descrie traseul, minutele și link-ul primit.
 - Rol angajat (vezi <context>): orice incident descris („bagaj abandonat lângă check-in 2”, „bătaie la poarta 3”, cineva
   leșinat, aglomerare) îl trimiți imediat cu reportIssue: text = mesajul lui, kind = tipul, location = locul cum l-a spus.
-  Dacă nu spune unde, întreabă o dată. După trimitere confirmi scurt: tipul, locul, că e pe harta din dashboard și „Echipa ajunge în ~N min” din ETA. Dacă ETA e indisponibil, spune asta.
+  La crowd, dacă lipsește locul folosește zona angajatului și confirmă doar „Am transmis. Dispeceratul decide.” Angajatul raportează ce vede, adminul decide; nu îi atribui sarcini sau decizii de capacitate. Pentru alte incidente fără loc, întreabă o dată. Pentru alte tipuri, după trimitere confirmi scurt: tipul, locul, că e pe harta din dashboard și „Echipa ajunge în ~N min” din ETA. Dacă ETA e indisponibil, spune asta.
 - Dacă rezultatul are note despre orar provizoriu, nu insista pe asta decât dacă întreabă.
 </how_you_help>
 
@@ -113,11 +114,12 @@ const EN_STYLE = `<style>
 - Flight, gate, status, gate closing time: myFlight. Delayed or cancelled: say it clearly, then what they can do.
 - Queues, crowding, “is security busy?”: queues. Their check-in desk group's queue has yours=true. If it has a forecast,
   also describe it an hour ahead. Use short (0–3 min), moderate (4–10), long (>10) bands. Under 1 minute now and throughout 120 minutes: no queue expected in the next 2 hours; no repeated zeros.
+- When data includes staffCrowd, include that staff observation for the zone being discussed, without orders or disclaimers.
 - Unknown flight (no_flight): ask for the flight number (e.g. W6 3751), then call myFlight with it.
 - Route to gate, desk or exit: routeTo. Use from only for a stated landmark. For needs_location return only note; buttons are sent automatically. Otherwise describe the returned origin, steps, minutes and link.
 - Staff role (see <context>): immediately send any described incident (“unattended baggage near check-in 2”, “fight at gate 3”,
   someone fainting, crowding) with reportIssue: text = their message, kind = type, location = the place as described.
-  If the location is missing, ask once. After sending, briefly confirm the type, place, that it is on the dashboard map and
+  For crowd reports default to the staff zone and confirm only “Passed on. Dispatch decides.” Staff report observations; the admin decides. Never assign staff tasks or capacity decisions. For other incidents with no location, ask once. For other types, after sending, briefly confirm the type, place, that it is on the dashboard map and
   “The team arrives in ~N min” from the ETA. If the ETA is unavailable, say so.
 - If the result notes a provisional schedule, do not dwell on it unless asked.
 </how_you_help>
@@ -167,7 +169,6 @@ export function contextBlock(profile: Profile, clock: Clock, memory?: PassengerC
 const NONE = { type: 'object', properties: {} };
 const FLIGHT = { flight: { type: 'string', description: 'număr de zbor, ex. "W6 3751"; implicit zborul lui' } };
 export const TOOL_SPECS = [
-  { name: 'staffTasks', description: 'Staff only: read assigned tasks or confirm/complete one by id.', input_schema: { type: 'object', properties: { id: { type: 'string' }, action: { type: 'string', enum: ['confirm', 'done'] } } } },
   { name: 'airportInfo', description: 'Sourced static airport information: parking, security rules, baggage, check-in, assistance, services, contacts, transport. Supply topic and/or a precise query. found=false means say you do not know. Label official=false as unconfirmed, cite source, translate to passenger language, describe rules without orders. Use live tools for current flight, gate, queues and routes.', input_schema: { type: 'object', properties: { topic: { type: 'string' }, query: { type: 'string' } } } },
   { name: 'rememberFact', description: 'Remember an explicit passenger self-report or correction only. Never infer needs. Keys: hasCheckedBag, groupSize, kids, reducedMobility, needs (short other need), lang (ro/en), flight (validated against schedule); gates and waits use live tools.', input_schema: { type: 'object', properties: { key: { type: 'string', enum: ['hasCheckedBag', 'groupSize', 'kids', 'reducedMobility', 'needs', 'lang', 'flight'] }, value: { type: ['string', 'boolean', 'number'] } }, required: ['key', 'value'] } },
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
@@ -356,6 +357,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
   if (role === 'staff' && !ACK.test(text) && !/^\s*(salut|bun[aă]|hei|hello)\b/i.test(text)) {
     const r = await call('reportIssue', { text });
     if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? say(lang, 'fallback')];
+    if (r.type === 'crowd') return [r.note];
     return [say(lang, 'staffReport', r.id, r.kind, r.place, r.note)];
   }
   if (amenityKind(text) && !/price|cost|pret|program|hours|open|inchid|deschid/.test(t)) {
@@ -373,7 +375,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
   const flightInfo = async () => {
     const r = await call('myFlight', code ? { flight: code } : {});
     if (noFlight(r)) return [askFlight];
-    return [say(lang, 'flightInfo', r.flight, r.destination, r.gate, r.departure, r.gateCloseAt, r.clock, r.status === 'delayed' ? say(lang, 'delay', r.delayMin) : r.status === 'cancelled' ? say(lang, 'cancelled') : '')];
+    return [say(lang, 'flightInfo', r.flight, r.destination, r.gate, r.departure, r.gateCloseAt, r.clock, r.status === 'delayed' ? say(lang, 'delay', r.delayMin) : r.status === 'cancelled' ? say(lang, 'cancelled') : ''), ...(r.staffCrowd ? [r.staffCrowd] : [])];
   };
   if (/(route|exit|trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire|how.*get|way to)/.test(t)) {
     const destination = /(?:ajung|merg|route|traseu|get|way)[^?]*?(?:la|to)\s+([^?.]+)/i.exec(text)?.[1];
@@ -392,8 +394,8 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
   }
   if (/(queue|crowd|security|coad|aglomer|securitate|lume|așteptare|asteptare)/.test(t)) {
     const r = await call('queues');
-    if (!r.available) return [r.note];
-    return [r.zones.slice(0, 3).map((z: any) => queueText(z.zone, z.waitMin, z.forecast, lang)).join('\n')];
+    if (!r.available) return [r.note, ...(r.staffCrowd ?? [])];
+    return [r.zones.slice(0, 3).map((z: any) => [queueText(z.zone, z.waitMin, z.forecast, lang), z.staffCrowd].filter(Boolean).join(' ')).join('\n')];
   }
   if (/flight|zbor/.test(t) || code) return flightInfo();
   return [say(lang, 'greeting')];

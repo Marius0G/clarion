@@ -1,3 +1,6 @@
+import { staffAssignment } from '../../worker/src/wa/staff.js';
+import { flowRow } from './mapIds.js';
+import { waitTarget } from './alerts.js';
 import { Auth, bearer, normalizePhone } from './auth.js';
 import type { WhatsAppAgent, WaStore } from '../../worker/src/wa/index.js';
 import type { Profile, AirportView } from '../../worker/src/wa/tools.js';
@@ -58,7 +61,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
         (input.photo !== undefined && (typeof input.photo !== 'string' || input.photo.length > 2000 || !/^https:\/\//.test(input.photo)))) throw new Error('Invalid report');
       const path = route(terminalGraph, 'team_post', input.place.node, zoneDensities(deps.view.flow(), zoneAreas), deps.view.blocked?.());
       return json(await deps.agent.reports.add({ kind: kindForType(input.type), type: input.type, node: input.place.node,
-        place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: path ? Math.ceil(path.totalSec / 60) : null }), 201);
+        place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: input.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null }), 201);
     }
     if (path === '/api/chat') {
       if (request.method === 'GET') return json({ history: await deps.agent.chatHistory(phone) });
@@ -71,39 +74,22 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
       return json({ bubbles, history: await deps.agent.chatHistory(phone) });
     }
     if (!staff) return json({ error: 'Staff role required' }, 403);
-    const { role, zone, tasks } = assignedTasks(deps.sim, deps.env, profile);
-    if (path === '/api/staff' && request.method === 'GET') return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone, reports: await deps.agent.reports.own(phone),
-      tasks, alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });
-    const task = /^\/api\/staff\/tasks\/([^/]+)\/(confirm|done)$/.exec(path);
-    if (task && request.method === 'POST') {
-      if (!tasks.some(t => t.id === task[1])) return json({ error: 'Unknown task' }, 404);
-      return json(deps.sim.staffTask(task[1]!, task[2] === 'confirm' ? 'confirmed' : 'done'));
+    const { role, zone } = staffAssignment(deps.env, profile);
+    if (path === '/api/staff' && request.method === 'GET') {
+      const row = flowRow(deps.view.flow(), zone);
+      const known = row && row.source === 'vision' && !row.stale && row.coverage !== 0;
+      const target = waitTarget(zone);
+      const forecast = known ? (row.forecast ?? []).filter(p => p.inMin > 0 && p.inMin <= 60) : [];
+      const state = !known ? 'unknown' : target !== null
+        ? row.waitMin == null ? 'unknown' : row.waitMin >= 2 * target ? 'full' : row.waitMin > target || forecast.some(p => p.waitMin > target) ? 'busy' : 'normal'
+        : row.density == null ? 'unknown' : row.density > 2 ? 'full' : row.density >= 1 ? 'busy' : 'normal';
+      return json({ lang: profile.lang === 'en' ? 'en' : 'ro', role, zone, situation: {
+        waitMin: known ? row.waitMin : null, people: known ? row.waiting : null, forecast, state,
+      }, reports: await deps.agent.reports.own(phone),
+        alerts: deps.sim.alertSnapshot().filter(a => a.active && a.zoneId && mapNodeId(a.zoneId) === mapNodeId(zone)) });
     }
     return json({ error: 'Not found' }, 404);
   } catch (error) { return json({ error: error instanceof Error ? error.message : 'Invalid request' }, 400); }
-}
-
-export function assignedTasks(sim: SimStore, env: PersonalRoutes['env'], profile: Profile) {
-  const phone = profile.phone;
-  const directory = JSON.parse(env.STAFF_ASSIGNMENTS ?? '{}') as Record<string, { role?: Profile['staffRole']; zone?: string }>;
-  const assignment = directory[phone];
-  const role = assignment?.role ?? profile.staffRole ?? 'security_supervisor', zone = assignment?.zone ?? profile.zone ?? 'security';
-  if (!['security_supervisor', 'hall_agent', 'incident_commander'].includes(role) || !terminalGraph.nodes.some(n => n.id === mapNodeId(zone))) throw new Error('Invalid staff assignment');
-  const tasks = sim.snapshot(false, {}).ops.filter(t => {
-    const owner = t.type === 'staff' ? 'security_supervisor' : t.type === 'redirect' ? 'hall_agent' : t.type === 'evacuate' ? 'incident_commander' : null;
-    const zones = t.type === 'evacuate' ? t.zones : [t.type === 'redirect' ? t.from : t.zone];
-    return owner === role && (role === 'incident_commander' || zones.some(id => mapNodeId(id) === mapNodeId(zone)));
-  });
-  return { role, zone, tasks };
-}
-
-export async function staffTaskTool(store: WaStore, sim: SimStore, env: PersonalRoutes['env'], phone: string, input: { id?: string; action?: string }) {
-  const stored = await store.get<Profile>(`wa:profile:${phone}`);
-  if (stored?.role !== 'staff' && !(env.STAFF_PHONES ?? '').split(',').some(p => normalizePhone(p.trim()) === phone)) throw new Error('Staff role required');
-  const { tasks } = assignedTasks(sim, env, { phone, ...stored, role: 'staff' });
-  if (!input.id && !input.action) return tasks;
-  if (!tasks.some(t => t.id === input.id) || !['confirm', 'done'].includes(input.action ?? '')) throw new Error('Invalid assigned task');
-  return sim.staffTask(input.id!, input.action === 'confirm' ? 'confirmed' : 'done');
 }
 
 export const CHAT_PER_MINUTE = 12;

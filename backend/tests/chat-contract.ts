@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Auth } from '../src/auth.js';
-import { personalRoute, staffTaskTool, CHAT_PER_MINUTE } from '../src/personal-routes.js';
+import { personalRoute, CHAT_PER_MINUTE } from '../src/personal-routes.js';
 import { SimStore } from '../src/sim.js';
 import { airportView } from '../../worker/src/wa/tower.js';
 import { WhatsAppAgent } from '../../worker/src/wa/index.js';
@@ -12,7 +12,7 @@ export function chatContract() {
       const store = new MemoryStore(), sim = new SimStore(), calls: any[] = [], sends: any[] = [];
       const view = airportView(sim, () => true), env = { STAFF_PHONES: '', ANTHROPIC_API_KEY: 'test', WA_TOKEN: 'test', WA_PHONE_NUMBER_ID: 'PN', APP_URL: 'https://app.example' };
       let tool = 'queues', input = {};
-      const agent = new WhatsAppAgent(env, store, view, { pause: 0, staffTasks: (phone, args) => staffTaskTool(store, sim, env, phone, args), fetcher: async (url, init) => {
+      const agent = new WhatsAppAgent(env, store, view, { pause: 0, fetcher: async (url, init) => {
         if (url.includes('/routes/index.json')) return Response.json(index);
         const body = JSON.parse(String(init?.body ?? '{}'));
         if (url.includes('anthropic')) {
@@ -50,7 +50,7 @@ export function chatContract() {
       await h.agent.messaging.notify({ channel: 'whatsapp', phone }, { kind: 'flight', text: 'Poarta 4', requested: true });
       expect((await (await h.request(session))!.json() as any).history).toContainEqual(expect.objectContaining({ text: 'Poarta 4', channel: 'whatsapp' }));
     });
-    it('exposes staff task tools only to staff, rejects forged tool calls and web role promotion', async () => {
+    it('exposes no task tools to either role and rejects forged calls and web role promotion', async () => {
       const h = setup(), passenger = await h.login(), staff = await h.login('+40711111111', 'staff');
       const task = h.sim.sent({ type: 'staff', zone: 'security', delta: 1 });
       h.choose('staffTasks', { id: task.id, action: 'confirm' });
@@ -61,8 +61,8 @@ export function chatContract() {
       await h.request(passenger, { text: 'STAFF CRAIOVA2026' });
       expect((await h.agent.profile('+40712345678'))?.role).toBe('passenger');
       await h.request(staff, { text: 'Sarcini?' });
-      expect(h.calls.at(-2).tools.some((t: any) => t.name === 'staffTasks')).toBe(true);
-      expect(h.sim.snapshot(false, {}).ops[0]!.staffState).toBe('confirmed');
+      expect(h.calls.at(-2).tools.some((t: any) => t.name === 'staffTasks')).toBe(false);
+      expect(h.sim.snapshot(false, {}).ops[0]!.staffState).toBeUndefined();
     });
     it('returns chips and route PNGs, persists intermediate turns and avoids WhatsApp sends', async () => {
       const h = setup(), session = await h.login();

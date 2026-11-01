@@ -1,4 +1,5 @@
 export type PassengerData = {
+  gateCrowd?: string
   stage?: 'public' | 'airside' | 'gate' | null
   routeImage?: string
   assembly?: string
@@ -15,7 +16,7 @@ export type PassengerData = {
     status: 'scheduled' | 'boarding' | 'delayed' | 'cancelled' | 'departed'
     delayMin: number
   }
-  queues?: { zone: string; label: string; nowMin: number | null; forecastMin: number | null; forecastAt: string; source: string }[]
+  queues?: { staffCrowd?: string; zone: string; label: string; nowMin: number | null; forecastMin: number | null; forecastAt: string; source: string }[]
   entranceToGateMin?: number | null
   arriveBy: string
   steps: { zone: string; label: string; waitMin: number | null }[]

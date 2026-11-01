@@ -1,4 +1,6 @@
 // Shared D11/D34 reports: WhatsApp and web write the same lifecycle and journal records.
+import { mapNodeId } from '../../../backend/src/mapIds.js';
+import { nodeName, type Lang } from './texts.js';
 import type { Flight } from './flights.js';
 import type { WaStore } from './index.js';
 
@@ -31,8 +33,8 @@ export function classifyIssue(text: string): IssueKind {
   if (/unattended.*bag|abandoned.*bag|suspicious.*bag|bag.*(?:unattended|abandoned|suspicious)/.test(t)) return 'bagaj_abandonat';
   if (/(bagaj|valiz|geant|rucsac|colet|pachet)\w*.*(abandon|lasat|singur|nesupravegh|suspect)|(abandon|nesupravegh|suspect)\w*.*(bagaj|valiz|geant|rucsac|colet|pachet)/.test(t)) return 'bagaj_abandonat';
   if (/(faint|injur|bleed|not breathing|heart attack|lesin|lesinat|medic|ranit|sange|infarct|nu respira|cazut|a cazut|ambulant|rau\b|criza)/.test(t)) return 'medical';
-  if (/(fight|weapon|knife|threat|theft|bataie|scandal|agresiv|arma|cutit|amenint|furt|fura|violent|intrus|securitate)/.test(t)) return 'securitate';
-  if (/(crowded|overcrowd|crush|aglomer|coada|multime|inghesu|imbulzeal|prea multa lume|blocat)/.test(t)) return 'aglomerare';
+  if (/(fight|weapon|knife|threat|theft|bataie|scandal|agresiv|arma|cutit|amenint|furt|fura|violent|intrus)/.test(t)) return 'securitate';
+  if (/(crowded|overcrowd|crush|aglomer|coada|multime|inghesu|imbulzeal|prea multa lume|too many people|blocat)/.test(t)) return 'aglomerare';
   return 'altele';
 }
 export function classifyReportType(text: string): ReportType | undefined {
@@ -69,7 +71,7 @@ export function matchNode(text: string, flights: readonly Flight[] = []): string
   };
   if (/(bag(aj)?\s*drop|predare\w* bagaj)/.test(t)) return group('bag_drop', /(?:bag\s*drop|predare\w* bagaj\w*)\s*(?:grup\w*|ghiseu\w*)?\s*(\d{1,2})/);
   if (/check[\s-]?in|ghiseu/.test(t)) return group('check_in', /(?:check[\s-]?in|ghiseu\w*)\s*(?:grup\w*)?\s*(\d{1,2})/);
-  if (/(securitate|control|scanner|filtru)/.test(t)) return 'security';
+  if (/(securitate|security|screening|control|scanner|filtru)/.test(t)) return 'security';
   if (/(intrare|usa principala|hol)/.test(t)) return 'entrance';
   if (/(iesire|exit)/.test(t)) return 'exit_1';
   if (/(duty|zona de plecari|plecari|airside|imbarcare)/.test(t)) return 'airside';
@@ -139,4 +141,11 @@ export class Reports {
     }
     return r;
   }
+}
+
+/** Only open staff observations, at most 15 minutes old; report timestamps use the shared report lifecycle clock. */
+export function crowdNote(reports: readonly Report[], zone: string, lang?: Lang, now = Date.now()): string | undefined {
+  if (!reports.some(r => r.source === 'staff' && r.type === 'crowd' && r.status === 'open' && r.state !== 'resolved' && r.node && mapNodeId(r.node) === mapNodeId(zone) && now - Date.parse(r.at) >= 0 && now - Date.parse(r.at) <= 15 * 60_000)) return;
+  const place = nodeName(zone, lang).replace(/^Control de securitate$/, 'Securitate');
+  return lang === 'en' ? `Staff report crowding at ${place.toLowerCase()}.` : `Personalul semnalează aglomerație la ${place.toLocaleLowerCase('ro')}.`;
 }

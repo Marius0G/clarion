@@ -51,7 +51,8 @@ export default function Me() {
   const { flight, evacuation } = data
   const securityQueue = data.queues?.find(q => /security/i.test(q.zone))
   const security = securityQueue?.nowMin ?? null
-  const checkin = data.queues?.find(q => /check_in|CHECKIN/.test(q.zone))?.nowMin ?? null
+  const checkinQueue = data.queues?.find(q => /check_in|CHECKIN/.test(q.zone))
+  const checkin = checkinQueue?.nowMin ?? null
   const walk = data.steps.find(s => s.zone === 'walk')?.waitMin ?? null
   const reports = data.reports ?? []
 
@@ -71,10 +72,11 @@ export default function Me() {
         {error && <p role="alert">{lang === 'en' ? 'Data unavailable' : 'Date indisponibile'}</p>}
       </header>
       <div className="dashboard-tiles">
-        <div><span>Check-in</span><strong>{checkin == null ? '—' : Math.ceil(checkin)} <small>min</small></strong><small>{lang === 'en' ? 'queue now' : 'coadă acum'}</small>{checkin != null && <small className="queue-band">{waitBand(checkin)} min</small>}</div>
+        <div><span>Check-in</span><strong>{checkin == null ? '—' : Math.ceil(checkin)} <small>min</small></strong><small>{lang === 'en' ? 'queue now' : 'coadă acum'}</small>{checkin != null && <small className="queue-band">{waitBand(checkin)} min</small>}{checkinQueue?.staffCrowd && <small>{checkinQueue.staffCrowd}</small>}</div>
         <div><span>{lang === 'en' ? 'Security' : 'Securitate'}</span><strong>{security == null ? '—' : Math.ceil(security)} <small>min</small></strong><small>{lang === 'en' ? 'queue now' : 'coadă acum'}</small>{security != null && <small className="queue-band">{waitBand(security)} min</small>}
+          {securityQueue?.staffCrowd && <small>{securityQueue.staffCrowd}</small>}
           {securityQueue?.forecastMin != null && security != null && securityQueue.forecastMin !== security && <small className="queue-forecast">~{Math.ceil(securityQueue.forecastMin)} {t('min la')} {securityQueue.forecastAt}</small>}</div>
-        <div><span>{lang === 'en' ? 'Until gate' : 'Până la poartă'}</span><strong>{walk == null ? '—' : Math.ceil(walk)} <small>min</small></strong><small>{lang === 'en' ? 'walk' : 'de mers'}</small></div>
+        <div><span>{lang === 'en' ? 'Until gate' : 'Până la poartă'}</span><strong>{walk == null ? '—' : Math.ceil(walk)} <small>min</small></strong><small>{lang === 'en' ? 'walk' : 'de mers'}</small>{data.gateCrowd && <small>{data.gateCrowd}</small>}</div>
         <details><summary><span>{lang === 'en' ? 'Reports' : 'Rapoarte'}</span><strong>{reports.filter(r => r.state !== 'resolved').length}</strong><small>active</small></summary><ReportList en={lang === 'en'} reports={reports} /></details>
       </div>
       <section className="me-map" aria-label={lang === 'en' ? 'Your route' : 'Drumul tău'}>

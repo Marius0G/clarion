@@ -1,4 +1,4 @@
-import { personalRoute, staffTaskTool } from './personal-routes.js';
+import { personalRoute } from './personal-routes.js';
 import { Auth, bearer } from './auth.js';
 import { authRoute } from './auth-routes.js';
 import { FileAuthStore } from './auth-store.js';
@@ -84,7 +84,7 @@ export function createControlTower() {
   const authStore = new FileAuthStore(`${stateFile}.auth.json`);
   const auth = new Auth(authStore);
   const view = airportView(engine.sim, () => [...clients.values()].includes('twin'));
-  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, staffTasks: (phone, input) => staffTaskTool(authStore, engine.sim, process.env, phone, input), reportsChanged: rows => engine.updateStaffReports(rows) });
+  const waAgent = new WhatsAppAgent(process.env, authStore, view, { pause: 0, reportsChanged: rows => engine.updateStaffReports(rows) });
   const reportsReady = waAgent.reports.list().then(rows => engine.updateStaffReports(rows));
   const webhookWork = new Set<Promise<void>>();
   // One ordered mutation queue prevents reset/actions interleaving with slow external sends.

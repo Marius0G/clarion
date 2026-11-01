@@ -40,6 +40,7 @@ export function normalizePassenger(value: unknown): PassengerViewData {
   const statuses = ['scheduled', 'boarding', 'delayed', 'cancelled', 'departed']
   const kinds = ['arrive', 'flight', 'route', 'evacuate', 'admin']
   return {
+    gateCrowd: typeof data.gateCrowd === 'string' ? data.gateCrowd : undefined,
     routeImage: typeof data.routeImage === 'string' && /^(https?:\/\/|\/routes\/)/.test(data.routeImage) ? data.routeImage : undefined,
     assembly: typeof data.assembly === 'string' ? data.assembly : undefined,
     stage: ['public', 'airside', 'gate'].includes(String(data.stage)) ? data.stage as 'public' | 'airside' | 'gate' : null,
@@ -51,7 +52,7 @@ export function normalizePassenger(value: unknown): PassengerViewData {
     entranceToGateMin: nonnegative(data.entranceToGateMin),
     queues: (Array.isArray(data.queues) ? data.queues : []).map(value => {
       const queue = record(value)
-      return { zone: localText(queue.zone), label: localText(queue.label), nowMin: nonnegative(queue.nowMin),
+      return { staffCrowd: typeof queue.staffCrowd === 'string' ? queue.staffCrowd : undefined, zone: localText(queue.zone), label: localText(queue.label), nowMin: nonnegative(queue.nowMin),
         forecastMin: nonnegative(queue.forecastMin), forecastAt: localText(queue.forecastAt), source: localText(queue.source) }
     }),
     flight: {
