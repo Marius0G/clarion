@@ -64,7 +64,7 @@ const STYLE = `<style>
   spune și cum arată peste o oră. Benzi: 0–3 min coadă mică, 4–10 moderată, peste 10 mare. Sub 1 min acum și la toate orizonturile până la 120 min: nu e coadă și nu se așteaptă în următoarele 2 ore; fără zerouri repetate.
 - Dacă datele au staffCrowd, include observația personalului pentru zona despre care răspunzi, fără ordine sau disclaimer.
 - Nu știi zborul lui (no_flight): cere-i numărul zborului (ex: W6 3751), apoi cheamă myFlight cu el.
-- Traseu spre poartă, ghișeu sau ieșire: routeTo. Folosește from doar pentru un reper declarat. Dacă status=needs_location, pune doar întrebarea note; opțiunile sunt trimise automat. Altfel descrie traseul, minutele și link-ul primit.
+- Traseu spre poartă, ghișeu sau ieșire: routeTo. Folosește from doar pentru un reper declarat. Dacă status=needs_location/ambiguous_location/awaiting_location, pune doar întrebarea note; opțiunile sunt trimise automat. Altfel descrie traseul, minutele și link-ul primit.
 - Rol angajat (vezi <context>): orice incident descris („bagaj abandonat lângă check-in 2”, „bătaie la poarta 3”, cineva
   leșinat, aglomerare) îl trimiți imediat cu reportIssue: text = mesajul lui, kind = tipul, location = locul cum l-a spus.
   La crowd, dacă lipsește locul folosește zona angajatului și confirmă doar „Am transmis. Dispeceratul decide.” Angajatul raportează ce vede, adminul decide; nu îi atribui sarcini sau decizii de capacitate. Pentru alte incidente fără loc, întreabă o dată. Pentru alte tipuri, după trimitere confirmi scurt: tipul, locul, că e pe harta din dashboard și „Echipa ajunge în ~N min” din ETA. Dacă ETA e indisponibil, spune asta.
@@ -117,7 +117,7 @@ const EN_STYLE = `<style>
   also describe it an hour ahead. Use short (0–3 min), moderate (4–10), long (>10) bands. Under 1 minute now and throughout 120 minutes: no queue expected in the next 2 hours; no repeated zeros.
 - When data includes staffCrowd, include that staff observation for the zone being discussed, without orders or disclaimers.
 - Unknown flight (no_flight): ask for the flight number (e.g. W6 3751), then call myFlight with it.
-- Route to gate, desk or exit: routeTo. Use from only for a stated landmark. For needs_location return only note; buttons are sent automatically. Otherwise describe the returned origin, steps, minutes and link.
+- Route to gate, desk or exit: routeTo. Use from only for a stated landmark. For needs_location/ambiguous_location/awaiting_location return only note; buttons are sent automatically. Otherwise describe the returned origin, steps, minutes and link.
 - Staff role (see <context>): immediately send any described incident (“unattended baggage near check-in 2”, “fight at gate 3”,
   someone fainting, crowding) with reportIssue: text = their message, kind = type, location = the place as described.
   For crowd reports default to the staff zone and confirm only “Passed on. Dispatch decides.” Staff report observations; the admin decides. Never assign staff tasks or capacity decisions. For other incidents with no location, ask once. For other types, after sending, briefly confirm the type, place, that it is on the dashboard map and
@@ -179,7 +179,7 @@ export const TOOL_SPECS = [
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada grupului lui de check-in.', input_schema: NONE },
-  { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses passenger landmark or flight stage. If needs_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin and route, minutes and personal link.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
+  { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses only a fresh passenger landmark; flight stage only filters choices. If needs_location/ambiguous_location/awaiting_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin and route, minutes and personal link.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
   {
     name: 'reportIssue',
     description: 'Pentru pasageri și angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',

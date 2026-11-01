@@ -19,10 +19,29 @@ export function placeQuestion(text: string) {
   if (!l) return null;
   return /^(?:unde (?:e|este|sunt)|where (?:is|are)) /.test(q) || l.aliases.some(a => normalizeLandmark(a) === q) ? l : null;
 }
-export function resolveOrigin(text: string) {
+/** Return every equally specific alias match; generic ATM names describe both machines. */
+export function originCandidates(text: string) {
   const phrase = originPhrase(text);
-  // Standalone landmark replies are valid, full questions are not origins.
-  return resolvePlace(phrase ?? (/\b(unde|where|cum|how|ajung|nearest|closest)\b/.test(normalizeLandmark(text)) ? '' : text));
+  const raw = phrase ?? (/\b(unde|where|cum|how|ajung|nearest|closest)\b/.test(normalizeLandmark(text)) ? '' : text);
+  const exact = landmarkById(raw);
+  if (exact) return [exact];
+  const q = normalizeLandmark(raw);
+  let best = 0;
+  let matches: Landmark[] = [];
+  for (const l of landmarks) {
+    const aliases = l.id.startsWith('atm_') ? [...l.aliases, 'atm', 'bancomat', 'cash machine', 'cash'] : l.aliases;
+    const score = Math.max(0, ...aliases.map(normalizeLandmark).filter(a => a && (` ${q} `).includes(` ${a} `)).map(a => a.length));
+    if (score > best) { best = score; matches = [l]; }
+    else if (score && score === best) matches.push(l);
+  }
+  return matches;
+}
+export function resolveOrigin(text: string) {
+  const matches = originCandidates(text);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+export function ambiguityChoices(candidates: Landmark[], lang?: Lang) {
+  return candidates.slice(0, 10).map(l => ({ id: `loc:${l.id}`, title: l.name[lang === 'en' ? 'en' : 'ro'].slice(0, 24), description: positionDescription(l, lang).slice(0, 72) }));
 }
 export function positionDescription(l: Landmark, lang?: Lang) {
   if (lang !== 'en') return `${l.name.ro}: ${l.position}.`;

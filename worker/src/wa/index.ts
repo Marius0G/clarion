@@ -1,4 +1,4 @@
-import { resolveOrigin, locationCandidate, landmarkById } from './location.js';
+import { originPhrase, originCandidates, resolveOrigin, locationCandidate, landmarkById } from './location.js';
 import { staffAssignment } from './staff.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import { zoneDensities, route } from '../../../backend/src/routing.js';
@@ -389,7 +389,7 @@ export class WhatsAppAgent {
     const landmark = m.replyId === 'loc:yes' ? profile.locationCandidate
       : m.replyId?.startsWith('loc:') ? landmarkById(m.replyId.slice(4))?.id ?? resolveLandmark(m.replyId.slice(4))
       : resolveOrigin(text)?.id;
-    if (!landmark && profile.pendingRoute) {
+    if (!landmark && profile.pendingRoute && originCandidates(text).length <= 1) {
       const candidate = /\b(unde|where|cum|how|nearest|closest)\b|\?/.test(text.toLowerCase()) ? undefined : locationCandidate(text);
       if (candidate) {
         await save({ locationCandidate: candidate.id });
@@ -402,7 +402,7 @@ export class WhatsAppAgent {
     }
     const statedLandmark = landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt|ma aflu|from |i am|i'm/i.test(text) || m.replyId?.startsWith('loc:')) ? landmark : undefined;
     if (statedLandmark) await save({ position: { node: statedLandmark, at: this.view.clock().now * 1000 }, locationCandidate: undefined });
-    const pending = statedLandmark ? profile.pendingRoute : undefined;
+    const pending = statedLandmark || originCandidates(text).length > 1 ? profile.pendingRoute : undefined;
     await save(extractFacts(redact(text)));
     const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';
     if (/bagaj de cală|checked baggage/i.test(lastQuestion) && /^(da|nu|yes|no)[.! ]*$/i.test(text.trim())) {
@@ -426,7 +426,7 @@ export class WhatsAppAgent {
     let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
       this.traces.get(m.phone.replace(/^\+/, ''))?.tools.push(name);
-      const result = await fn(name === 'routeTo' && statedLandmark ? { ...input, from: statedLandmark } : input);
+      const result = await fn(name === 'routeTo' ? { ...input, from: statedLandmark ?? (originPhrase(text) || pending ? text : undefined) } : input);
       if (name === 'routeTo') routeResult = result;
       if (name === 'whenToArrive' && typeof (result as any)?.totalMin === 'number') waitEstimate = { at: clockText(this.view.clock().now), totalMin: (result as any).totalMin };
       const note = lookupNote(name, result);
@@ -439,10 +439,10 @@ export class WhatsAppAgent {
       return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = ((['needs_location', 'awaiting_location'].includes(routeResult?.status) || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = ((['needs_location', 'awaiting_location', 'ambiguous_location'].includes(routeResult?.status) || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
-    const delivered = routeResult?.status === 'needs_location'
+    const delivered = ['needs_location', 'ambiguous_location'].includes(routeResult?.status)
       ? (await transport.sendList(m.phone, routeResult.note, routeResult.buttons, profile.lang === 'en' ? 'Landmarks' : 'Repere')).ok
       : bagChoice ? await (async () => {
         const short = bubbles.flatMap(b => passengerBubbles(b));
