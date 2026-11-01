@@ -76,7 +76,7 @@ export function personalContract() {
       for (const state of ['taken', 'en_route', 'resolved']) expect((await h.call(`/api/reports/${r.id}/state`, undefined, { state }, true))?.status).toBe(200);
       const data = await (await h.call('/api/me', session))!.json() as any;
       expect(data.reports[0].state).toBe('resolved');
-      expect(data.timeline.map((a: any) => a.text).join(' ')).toMatch(/Raportul tău de pe site a fost trimis:.*Preluat.*Echipa pe drum.*Rezolvat/);
+      expect(data.timeline.map((a: any) => a.text).join(' ')).toMatch(/Raportul tău de pe site a fost trimis:.*Confirmat.*Echipa vine.*Rezolvat/);
       expect(h.sends.filter(m => m.type === 'text')).toHaveLength(4);
     });
     it.each(['open', 'expired', 'missing'] as const)('sends exactly one short web form confirmation only inside the WhatsApp window (%s)', async window => {

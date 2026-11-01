@@ -4,7 +4,7 @@ import { authHeaders, sessionToken } from '../backend/auth'
 import type { PersonalReport } from './types'
 
 export const reportTypes = ['security', 'medical', 'cleaning', 'lost item', 'crowd', 'other'] as const
-export const stateLabel = (state: string, en = false) => (en ? { sent: 'Sent', taken: 'Taken', en_route: 'Team en route', resolved: 'Resolved' } : { sent: 'Trimis', taken: 'Preluat', en_route: 'Echipa vine', resolved: 'Rezolvat' })[state] ?? state
+export const stateLabel = (state: string, en = false) => (en ? { sent: 'Unconfirmed', taken: 'Confirmed', en_route: 'Team en route', resolved: 'Resolved' } : { sent: 'Neconfirmat', taken: 'Confirmat', en_route: 'Echipa vine', resolved: 'Rezolvat' })[state] ?? state
 export async function personalRequest<T>(path: string, body?: unknown, timeout = 6000): Promise<T> {
   const response = await fetch(`${backend.http}${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),

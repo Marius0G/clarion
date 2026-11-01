@@ -19,7 +19,8 @@ describe('personal pages', () => {
     const ro = renderToStaticMarkup(ReportList({ reports }))
     expect(ro).toContain('Echipa vine'); expect(ro).toContain('Poarta 2'); expect(ro).toContain('· ~3 min')
     expect(renderToStaticMarkup(ReportList({ reports, en: true }))).toContain('Team en route')
-    expect(stateLabel('resolved')).toBe('Rezolvat')
+    expect(['sent', 'taken', 'en_route', 'resolved'].map(s => stateLabel(s))).toEqual(['Neconfirmat', 'Confirmat', 'Echipa vine', 'Rezolvat'])
+    expect(['sent', 'taken', 'en_route', 'resolved'].map(s => stateLabel(s, true))).toEqual(['Unconfirmed', 'Confirmed', 'Team en route', 'Resolved'])
     expect(renderToStaticMarkup(ReportList({ reports: [] }))).toContain('Niciun raport')
   })
   it('requires a session on staff page', () => {

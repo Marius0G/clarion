@@ -97,7 +97,7 @@ export default function Staff() {
     const fade = r.state === 'resolved' ? 1 - (tick - resolvedAt) / RESOLVED_FADE_MS : undefined
     if (fade !== undefined && !(fade > 0.05)) return []
     const kind = TYPE[r.type]?.[en ? 1 : 0] ?? r.type
-    return [{ id: r.id, at, state: r.state, priority: r.priority, fade: fade !== undefined ? Math.max(0.3, Math.min(1, fade)) : undefined, label: `${kind} · ${stateLabel(r.state, en)}` }]
+    return [{ id: r.id, at, state: r.state, priority: r.priority, fade: fade !== undefined ? Math.max(0.3, Math.min(1, fade)) : undefined, label: `${kind} · ${stateLabel(r.state, en)}${r.state === 'en_route' && r.etaMin != null ? ` · ~${teamProgress(r.timestamps?.en_route, r.etaMin, tick)?.leftMin ?? r.etaMin} min` : ''}` }]
   })
   const moving = reports.filter(r => r.state === 'en_route').map(r => {
     const end = placeOf(r)

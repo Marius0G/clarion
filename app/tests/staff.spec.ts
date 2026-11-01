@@ -24,8 +24,8 @@ test('staff map: own zone, live numbers, forecast, report pins and the moving te
   await expect(page.getByTestId('lm-point-U_SECURITY_QUEUE')).toHaveAttribute('aria-label', /62 → · 14 min · \d+ s/)
   // Pins: state by shape and word.
   await expect(page.getByTestId('lm-pin-R1')).toHaveAttribute('data-state', 'sent')
-  await expect(page.getByTestId('lm-pin-R1')).toHaveAttribute('aria-label', 'Aglomerație · Trimis')
-  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Echipa vine')
+  await expect(page.getByTestId('lm-pin-R1')).toHaveAttribute('aria-label', 'Aglomerație · Neconfirmat')
+  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Echipa vine · ~3 min')
   await expect(page.getByTestId('lm-pin-R3')).toHaveAttribute('data-state', 'resolved')
   expect(Number(await page.getByTestId('lm-pin-R3').evaluate(e => getComputedStyle(e).opacity))).toBeLessThan(1)
   const team = page.getByTestId('lm-team')
@@ -184,7 +184,7 @@ test('English staff page', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Security queue · supervisor' })).toBeVisible()
   await expect(page.getByTestId('queue-wait')).toContainText('Busy')
   await expect(page.getByRole('button', { name: 'Too many people here' })).toBeEnabled()
-  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Team en route')
+  await expect(page.getByTestId('lm-pin-R2')).toHaveAttribute('aria-label', 'Medical · Team en route · ~3 min')
 })
 
 test.describe('desktop', () => {

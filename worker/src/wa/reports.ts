@@ -21,8 +21,8 @@ export const reportPriority = (type: ReportType) => type === 'security' || type 
 export const typeForKind = (kind: IssueKind): ReportType => ({ bagaj_abandonat: 'security', securitate: 'security', medical: 'medical', aglomerare: 'crowd', altele: 'other' } as const)[kind];
 export const kindForType = (type: ReportType): IssueKind => type === 'security' ? 'securitate' : type === 'medical' ? 'medical' : type === 'crowd' ? 'aglomerare' : 'altele';
 export const reportStateLabel = (state: ReportState, en = false) => (en
-  ? { sent: 'Sent', taken: 'Taken', en_route: 'Team en route', resolved: 'Resolved' }
-  : { sent: 'Trimis', taken: 'Preluat', en_route: 'Echipa pe drum', resolved: 'Rezolvat' })[state];
+  ? { sent: 'Unconfirmed', taken: 'Confirmed', en_route: 'Team en route', resolved: 'Resolved' }
+  : { sent: 'Neconfirmat', taken: 'Confirmat', en_route: 'Echipa vine', resolved: 'Rezolvat' })[state];
 const locks = new WeakMap<WaStore, Promise<unknown>>();
 
 const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ş/g, 's').replace(/ţ/g, 't');
