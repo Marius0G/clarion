@@ -71,7 +71,7 @@ describe('whenToArrive (D5)', () => {
     expect(p.gateCloseAt).toBe('09:10');
     expect(p.minutesFromNow).toBe(85);
     expect(p.steps.map(s => s.step)).toEqual(['Predare bagaje, grupul 1', 'Control de securitate', 'Drum până la poarta 2', 'Marjă']);
-    expect(p.clock).toBe('ora simulării');
+    expect(p.clock).toBe('');
     // Hand luggage only: no bag drop. 18 + 2 + 10 = 30 -> 08:40 -> 08:40.
     expect(arrivalPlan(W6, flow, sim7, false).beAtEntranceAt).toBe('08:40');
   });

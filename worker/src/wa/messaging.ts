@@ -380,7 +380,7 @@ export class Messaging {
       const future = peak(q), before = old && peak(old);
       const changedBand = !old || queueBand(old.nowMin) !== queueBand(q.nowMin) || queueBand(before?.waitMin ?? null) !== queueBand(future?.waitMin ?? null);
       if (bandsOnly ? !changedBand : old && old.nowMin === q.nowMin && before?.waitMin === future?.waitMin && before?.inMin === future?.inMin) return [];
-      if (bandsOnly || q.nowMin === null) return [queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)];
+      if (bandsOnly || q.nowMin === null || queueBand(q.nowMin) === 'none') return [queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)];
       const direction = !old || old.nowMin === null || q.nowMin === old.nowMin ? '' : q.nowMin > old.nowMin ? (lang === 'en' ? ' has grown' : ' a crescut') : (lang === 'en' ? ' has shrunk' : ' a scăzut');
       const name = q.zone === 'security' ? (lang === 'en' ? 'The security queue' : 'Coada la securitate') : nodeName(q.zone, lang);
       const forecast = future && future.waitMin !== q.nowMin ? (lang === 'en' ? `, ~${Math.round(future.waitMin)} min around ` : `, ~${Math.round(future.waitMin)} min în jur de `) + clockText(this.deps.view.clock().now + future.inMin * 60) : '';

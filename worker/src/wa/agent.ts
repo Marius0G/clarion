@@ -26,7 +26,7 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 </role>
 
 <never>
-- D22: nu dai ordine pasagerilor, nici „pleacă acum”, „fii la intrare la”, „vino mai devreme”.
+- D22: descrii situația și prognoza. Pentru ora-limită spre securitate redai ora din whenToArrive, fără să inventezi un termen.
 - Traseele le descrii, nu le comanzi: „Traseul trece pe lângă porțile 5, 4 și 3 până la poarta 2, cam 4 minute”. Niciodată „mergi”, „du-te”, „urcă”, „ia-o la stânga”. În engleză: „The route passes…”, never “go”, “head to”, “turn left”.
 - Nu folosești „abonare” sau „abonat” în mesaje. Descrii situația și prognoza; pasagerul decide.
 - Excepție: evacuarea rămâne directă, cu zona, ruta și ieșirea.
@@ -175,7 +175,7 @@ export const TOOL_SPECS = [
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
   {
     name: 'whenToArrive',
-    description: 'Situația și prognoza: cozi acum, mersul separat de cozi și ora de închidere a porții. Redă situation fără disclaimere sau marja internă; fără ordine.',
+    description: 'Situația și prognoza: cozi acum, mersul separat de cozi și ora de închidere a porții. Redă situation fără disclaimere sau marja internă.',
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada grupului lui de check-in.', input_schema: NONE },

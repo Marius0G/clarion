@@ -8,7 +8,7 @@ export type Lang = 'ro' | 'en';
 export const language = (value: unknown): Lang => value === 'en' ? 'en' : 'ro';
 const texts = {
   margin: ['Marjă', 'Margin'],
-  provisional: ['Orar provizoriu de test, nu orarul real al aeroportului.', 'Provisional test schedule, not the real airport schedule.'],
+  provisional: ['', ''],
   flightHint: ['Cere-i numărul zborului (ex: W6 3751).', 'Ask for the flight number (for example W6 3751).'],
   unknownFlightHint: ['Zborul nu e în orarul de azi. Roagă-l să verifice numărul.', 'The flight is not in today’s schedule. Ask them to check the number.'],
   "cancelledNote": ["Zborul e anulat. Informațiile despre alternative sunt disponibile la compania aeriană.", "The flight is cancelled. Alternative options are available from the airline."],
@@ -40,7 +40,6 @@ const texts = {
   "askFlight": ["Care este numărul zborului (ex: W6 3751)?", "What is your flight number (for example W6 3751)?"],
   "refusal": ["Aici nu te pot ajuta, dar pentru zbor și aeroport sunt aici oricând 🙂", "I can help with your flight and the airport 🙂"],
   "tangled": ["Hmm, m-am încurcat puțin 😅 Poți să o spui altfel?", "I lost track a little 😅 Could you rephrase that?"],
-  "situation": ["{0} {5} Poarta {1} se închide la {2}. Cu situația de acum, de la intrare la poartă ~{3} min, inclusiv 10 min marjă.", "{0} {5} Gate {1} closes at {2}. With current conditions, entrance to gate takes ~{3} min, including a 10 min margin."],
   "estimated": ["~{0} min", "~{0} min"],
   "forecast": ["~{0} min la {1}", "~{0} min at {1}"],
   "now": ["{0} min acum", "{0} min now"],
@@ -74,12 +73,12 @@ const texts = {
     "I have hand baggage only. When are the queues expected to change?"
   ],
   "simClock": [
-    "ora simulării",
-    "simulation time"
+    "",
+    ""
   ],
   "realClock": [
-    "ora locală",
-    "local time"
+    "",
+    ""
   ],
   "deleted": [
     "Gata, am șters tot ce știam despre tine și zborul tău. Dacă vrei să reîncepi, scrie-mi oricând.",
@@ -143,8 +142,8 @@ export const copy = {
     const walk = plan.steps.find(s => s.zone === 'walk')?.min ?? 0;
     const wait = plan.steps.filter(s => !['walk', 'margin'].includes(s.zone)).reduce((n, s) => n + s.min, 0);
     return lang === 'en'
-      ? `${queues} From security to gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}.`
-      : `${queues} De la securitate până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min de stat la coadă`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
+      ? `${queues} From security to gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}. Leave for security by ${plan.beAtEntranceAt}.`
+      : `${queues} De la securitate până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min de stat la coadă`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}. Pleacă spre securitate până la ${plan.beAtEntranceAt}.`;
   },
 };
 export function localSource(source: string, lang?: Lang) {
@@ -195,7 +194,9 @@ export function waitBand(min: number | null, lang?: Lang): string {
 export function queueText(name: string, now: number | null, forecast: { inMin: number; waitMin: number }[] = [], lang?: Lang) {
   const future = forecast.filter(p => p.inMin > 0 && p.inMin <= 120 && queueBand(p.waitMin) !== queueBand(now));
   const peak = future.reduce<typeof future[number] | undefined>((a, b) => !a || b.waitMin > a.waitMin ? b : a, undefined);
+  const place = name.replace(/^Control de securitate$/i, 'securitate').replace(/^Security$/i, 'security');
   const current = waitBand(now, lang);
+  if (queueBand(now) === 'none') return `${lang === 'en' ? `There is no queue at ${place} now.` : `Nu e coadă la ${place} acum.`}${peak ? ` ${waitBand(peak.waitMin, lang)} ${lang === 'en' ? 'in' : 'peste'} ${peak.inMin} min.` : ''}`;
   return `${name.replace('Check-in, grupul', 'Check-in grupul')}: ${current}${peak ? ` ${lang === 'en' ? 'now' : 'acum'}; ${waitBand(peak.waitMin, lang)} ${lang === 'en' ? 'in' : 'peste'} ${peak.inMin} min` : ''}.`;
 }
 /** Last-line guard for generated copy; the clock itself remains the airport clock. */
@@ -205,8 +206,9 @@ export function passengerText(text: string) {
     if (!url.includes('/m/')) return text.includes('/m/') || url.includes('/join?login=') ? '' : url;
     if (personal) return '';
     personal = true; return url;
-  }).replace(/\s*\([^)]*(?:simul|simulation|estimare|estimate|ora locală|local time|ora din chat|demo)[^)]*\)/gi, '')
-    .replace(/[^.!?\n]*(?:simulăr|simulation|estimare|demo)[^.!?\n]*[.!?]?/gi, '').trim();
+  }).replace(/\s*\([^)]*(?:simul|simulation|estimare|estimate|ora locală|ora României|Romanian time|local time|ora din chat|demo)[^)]*\)/gi, '')
+    .replace(/[^.!?\n]*(?:simulăr|simulation|estimare|The estimate includes (?:the )?queues|demo)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/,?\s*(?:inclusiv 10 min marjă|including (?:a )?10 min margin)/gi, '').trim();
 }
 
 function assemblyText(r: EvacRoute, lang?: Lang) {

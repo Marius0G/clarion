@@ -93,4 +93,4 @@ export function clockText(sec: number) {
   const day = ((Math.floor(sec / 60) % 1440) + 1440) % 1440;
   return `${String(Math.floor(day / 60)).padStart(2, '0')}:${String(day % 60).padStart(2, '0')}`;
 }
-export const clockLabel = (c: Clock) => (c.sim ? 'ora simulării' : 'ora României');
+export const clockLabel = (_c: Clock) => '';
