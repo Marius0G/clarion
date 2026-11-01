@@ -1,0 +1,17 @@
+/* "Camere" rail section (contract camera.frame), in the D29 console style: flat, 1 px rules, 2 px corners. */
+.ops-cam-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+.ops button.ops-cam { display:flex; flex-direction:column; gap:2px; padding:0 0 4px; text-align:left; background:#e4e4e4; min-width:0 }
+.ops-cam img { display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; background:#9a9a9a }
+.ops-cam b,.ops-cam small { padding:0 6px }
+.ops-cam b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ops-cam small { color:#4a4a4a }
+.ops-cam.stale img { opacity:.35 }
+.ops-cam.stale small { color:var(--ink) }
+/* Enlarged frame over the map (the rail stays visible). */
+.ops-cam-big { position:fixed; z-index:20; left:0; top:104px; right:400px; bottom:0; display:grid; place-items:center; padding:16px; background:#D4D4D4; cursor:zoom-out }
+.ops-cam-big figure { margin:0; max-width:100%; max-height:100% }
+.ops-cam-big img { display:block; max-width:100%; max-height:calc(100dvh - 104px - 72px); border:1px solid var(--rule) }
+.ops-cam-big figcaption { margin-top:8px }
+.ops-cam-big .ops-ghost { position:absolute; top:8px; right:8px; font-size:20px; line-height:1; background:#e4e4e4 }
+@media(max-width:1000px) { .ops-cam-big { right:360px } }
+@media(max-width:700px) { .ops-cam-big { inset:0 } }

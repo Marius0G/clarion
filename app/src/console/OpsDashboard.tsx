@@ -10,6 +10,7 @@ import { TerminalMap, type ZoneView } from '../map/t2/TerminalMap'
 import { points as mapPoints, worldToPx, zoneById as mapZones, type Level, type Pt } from '../map/t2/data'
 import { breach, bulletScale, executor, flightTime, noActionWait, orderZones, taskState, topMetrics, waitTarget, type TaskEvidence, type ZoneOrder } from './screen'
 import { AlertList } from './AlertList'
+import { CameraStrip } from './CameraStrip'
 import { alertMapZone, alertNumbers, alertPresentation, alertSymbols, sendAlertCommand, topZoneAlerts, type Alert, type AlertCommand } from './alerts'
 import './ops.css'
 
@@ -177,6 +178,7 @@ export function OpsDashboard() {
           </> : <p>Fără recomandări</p>}
         </section>
         <AlertList alerts={alerts} simTime={sim?.simTime ?? null} onZone={id => openZone(byId.has(id) ? id : alertMapZone(id))} onCommand={commandAlert} />
+        <CameraStrip zoneName={id => byId.get(id)?.name ?? byId.get(mapNodeId(id))?.name ?? id} onHover={setHovered} />
         <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
           {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
             const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
