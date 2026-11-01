@@ -139,19 +139,43 @@ test('legacy URL works and polling highlights gate changes', async ({ page }) =>
   await expect(page.locator('.me-flight .flight-change').first()).toContainText('Schimbare')
 })
 
-test('evacuation shows only the way out and the assembly point', async ({ page }) => {
-  await mockLive(page)
-  await page.route('**/api/me?token=evac', route => route.fulfill({ json: { ...fixture,
-    routeImage: '/routes/evac/U_SECURITY_QUEUE.png', assembly: 'ASSEMBLY_LANDSIDE_EAST', evacuation: { active: true, zones: ['security'], route: { exit: 'Est', steps: ['Securitate', 'Ieșire est'] } } } }))
-  await page.goto('/m/evac')
-  await expect(page.getByRole('alert')).toContainText('Evacuare')
-  await expect(page.getByRole('alert')).toContainText('Punct adunare est')
-  await expect(page.getByTestId('lm-route')).toHaveClass(/evac/)
-  await expect(page.locator('.lm-points .lm-pt')).toHaveCount(0)
-  await expect(page.getByPlaceholder('Unde vrei să mergi?')).toHaveCount(0)
-  await expect(page.locator('.me-flight')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Raportează o problemă' })).toHaveCount(0)
-})
+for (const width of [390, 1440]) {
+  test(`evacuation draws the graph route, here, exit and assembly at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
+    await mockLive(page)
+    // Reuse the passenger fixture and the evacuation setup; this URL has no static index entry.
+    await page.route('**/api/me', route => route.fulfill({ json: { ...fixture,
+      here: { node: 'U_SECURITY_QUEUE', ageSec: 10 },
+      routeImage: '/routes/evac/current.png', assembly: 'ASSEMBLY_LANDSIDE_EAST',
+      evacuation: { active: true, zones: ['security', 'G_WEST'],
+        route: { exit: 'Ieșire de urgență (est)', steps: ['Coadă securitate', 'Ieșire de urgență (est)'] } } } }))
+    await page.goto('/m')
+    await expect(page.getByRole('alert')).toContainText('Evacuare')
+    const map = page.getByTestId('live-map')
+    await expect(map.getByTestId('lm-route')).toHaveClass(/evac/)
+    await expect(map.locator('.lm-route path.line').first()).toBeVisible()
+    await expect(map.getByTestId('lm-here')).toHaveAttribute('aria-label', 'Ești aici')
+    await expect(map.getByTestId('lm-here')).toBeVisible()
+    await expect(map.locator('.lm-exit')).toContainText('Ieșire urgență est')
+    await expect(map.locator('.lm-exit text')).toBeVisible()
+    await expect.poll(async () => {
+      const label = (await map.locator('.lm-exit text').boundingBox())!
+      const bounds = (await map.boundingBox())!
+      return label.x >= bounds.x && label.x + label.width <= bounds.x + bounds.width
+    }).toBe(true)
+    await expect(map.locator('.lm-assembly')).toContainText('Punct adunare est')
+    await expect(map.locator('.lm-assembly')).toBeVisible()
+    await expect(map.locator('.lm-route')).toContainText('Cobori la parter')
+    await expect(map.locator('.lm-points .lm-pt')).toHaveCount(0)
+    await expect(page.locator('.route-image')).toHaveCount(0)
+    await page.screenshot({ path: test.info().outputPath(`evacuation-${width}.png`) })
+    if (width >= 1024) await expect(page.locator('.lm-panel img')).toHaveCount(0)
+    await expect(page.getByPlaceholder('Unde vrei să mergi?')).toHaveCount(0)
+    await expect(page.locator('.me-flight')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Raportează o problemă' })).toHaveCount(0)
+  })
+}
 
 test('English: profile language and the EN / RO toggle', async ({ page }) => {
   await open(page, { ...passengerData, lang: 'en', flight: { ...fixture.flight, status: 'delayed', delayMin: 15 } })

@@ -9,12 +9,13 @@ import { Chat, ChatView } from '../chat/Chat'
 import { useChatChannel } from '../chat/channel'
 import { pageText } from './texts'
 import { LiveMap, type Focus, type RouteDraw } from '../map/live/LiveMap'
-import { CHIPS, categoryOf, evacFor, floorChanges, landmarkFor, pathOf, routeBetween, search, shortName, type Lang } from '../map/live/catalogue'
+import { CHIPS, categoryOf, floorChanges, landmarkFor, routeBetween, search, shortName, type Lang } from '../map/live/catalogue'
 import { useFlow, useIndex, useViewportHeight, useWide } from '../map/live/useLive'
 import { Sheet, sheetHeight, type Snap } from '../map/live/Sheet'
 import { PointCard, QueueList, ReportPanel, ResultList, RouteNote, SearchBar } from '../map/live/Panels'
 import { readPicked, resolveHere, savePicked, stagePlace } from '../map/live/here'
 import { sendReport, useReportFlow } from '../map/live/useReport'
+import { evacuationDraw } from '../map/live/evacuation'
 import { langOverride, LangToggle } from '../map/live/lang'
 
 export default function Me() {
@@ -94,18 +95,14 @@ export default function Me() {
   const route: RouteDraw | null = useMemo(() => {
     if (!index) return null
     if (evacuation.active) {
-      const e = evacFor(index, data.routeImage)
-      if (!e) return null
-      const path = pathOf(points, e.steps)
-      const a = landmarkFor(points, e.assembly)
-      return { path, changes: floorChanges(path, lang), assembly: a ? { id: a.id, level: a.level, x: a.x, z: a.z, name: shortName(a, lang) } : null }
+      return evacuationDraw(index, data, hereId, live.blocked, lang)
     }
     if (!hereId || !target) return null
     const r = routeBetween(index, hereId, target, lang)
     if (!r.ok) return null
     const end = points.find(p => p.id === target)
     return { path: r.path, changes: floorChanges(r.path, lang), endLabel: end ? shortName(end, lang) : undefined }
-  }, [index, evacuation.active, data.routeImage, points, hereId, target, lang])
+  }, [index, evacuation.active, data, live.blocked, points, hereId, target, lang])
 
   const sel = points.find(p => p.id === selected)
   const focus: Focus | null = useMemo(() => {
@@ -144,16 +141,15 @@ export default function Me() {
 
   /* ---------- Evacuation: only the way out and the assembly point ---------- */
   if (evacuation.active) {
-    const assembly = landmarkFor(points, data.assembly)
+    const assembly = landmarkFor(points, route?.assembly?.id ?? data.assembly)
     const map = <LiveMap lang={lang} mode="passenger" points={points} flow={{}} now={live.now} route={route} evac
-      here={route?.path[0] ? { ...route.path[0], fresh: true, label: en ? 'You are here' : 'Ești aici' } : null}
+      here={hereL ? { ...hereL, fresh: hereInfo!.fresh, label: en ? 'You are here' : 'Ești aici' } : route?.path[0] ? { ...route.path[0], fresh: true, label: en ? 'You are here' : 'Ești aici' } : null}
       focus={route ? { key: 'evac', pts: [...route.path, ...(route.assembly ? [route.assembly] : [])] } : null} insetBottom={wide ? 0 : sheetHeight('half', vh)} />
     const body = <div className="lv-evac" role="alert">
       <h1>{t('Evacuare')}</h1>
       {evacuation.route && <p className="steps">{evacuation.route.steps.join(' → ')}</p>}
       <h2>{en ? 'Assembly point' : 'Punct de adunare'}</h2><p className="assembly">{assembly ? shortName(assembly, lang) : data.assembly ?? t('necunoscut')}</p>
-      {!route && data.routeImage && <img className="route-image" src={data.routeImage} alt={t('Evacuare')} />}
-      {!route && !data.routeImage && <p>{t('Urmează indicatoarele spre cea mai apropiată ieșire')}</p>}
+      {!route && <p>{t('Urmează indicatoarele spre cea mai apropiată ieșire')}</p>}
     </div>
     return <main className={`lv me-shell evac ${wide ? 'wide' : 'narrow'}`}>
       {wide ? <div className="lv-grid"><div className="lv-mapcol">{map}</div><aside className="lm-panel">{body}</aside></div>

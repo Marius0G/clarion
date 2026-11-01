@@ -21,7 +21,7 @@ import './live.css'
 export type WorldPt = { level: Level; x: number; z: number }
 export interface ReportPin { id: string; at: WorldPt; state: 'sent' | 'taken' | 'en_route' | 'resolved'; label: string; priority?: string; fade?: number }
 export interface TeamMark { at: WorldPt; heading: number; label: string; badge: string | null; pin: string; remaining: RouteDraw }
-export interface RouteDraw { path: PathNode[]; changes: { at: PathNode; to: PathNode; up: boolean; text: string }[]; endLabel?: string; assembly?: (PathNode & { name: string }) | null }
+export interface RouteDraw { path: PathNode[]; changes: { at: PathNode; to: PathNode; up: boolean; text: string }[]; endLabel?: string; exit?: (PathNode & { name: string }) | null; assembly?: (PathNode & { name: string }) | null }
 export interface Focus { key: string; pts: WorldPt[]; minW?: number }
 
 interface Props {
@@ -461,10 +461,18 @@ export function LiveMap(p: Props) {
       <path d={d} className="flow" strokeWidth={fmt(3 * u)} strokeDasharray={`${fmt(3 * u)} ${fmt(15 * u)}`} style={{ ['--dash' as string]: `${fmt(18 * u)}` }} />
     </g>)}
     {renderChanges(changes)}
+    {route?.exit && (() => {
+      const e = at(route.exit)
+      return <g className="lm-exit" data-testid="lm-exit">
+        <circle cx={fmt(e[0])} cy={fmt(e[1])} r={fmt(8 * u)} />
+        {flip(e, route.exit.name) ? <Tag x={e[0] - 22 * u} y={e[1] - 24 * u} u={u} text={route.exit.name} dark end />
+          : <Tag x={e[0] + 22 * u} y={e[1] - 24 * u} u={u} text={route.exit.name} dark />}
+      </g>
+    })()}
     {route?.assembly && (() => {
       const e = routeEls.end, a = at(route.assembly)
       return <g className="lm-assembly">
-        <path d={`M${fmt(e[0])},${fmt(e[1])}L${fmt(a[0])},${fmt(a[1])}`} className="out" strokeWidth={fmt(5 * u)} strokeDasharray={`${fmt(9 * u)} ${fmt(6 * u)}`} />
+        {!route.exit && <path d={`M${fmt(e[0])},${fmt(e[1])}L${fmt(a[0])},${fmt(a[1])}`} className="out" strokeWidth={fmt(5 * u)} strokeDasharray={`${fmt(9 * u)} ${fmt(6 * u)}`} />}
         <circle cx={fmt(a[0])} cy={fmt(a[1])} r={fmt(12 * u)} className="spot" strokeWidth={fmt(3 * u)} />
         <Tag x={a[0]} y={a[1] - 20 * u} u={u} text={route.assembly.name} dark center />
       </g>
