@@ -136,12 +136,14 @@ export const copy = {
   blockedAreas: (lang: Lang | undefined, p: EvacPlan) => lang === 'en' ? `${p.blocked.map(z => nodeName(z, lang)).join(', ')} closed. ` : `${p.blocked.map(n => `Zona ${nodeName(n)} este închisă`).join('. ')}. `,
   evacuationRoute: (lang: Lang | undefined, blocked: string, r: EvacRoute) => lang === 'en' ? `Evacuation: ${blocked}Exit via ${nodeName(r.exit, lang)}: ${r.nodes.map(z => nodeName(z, lang)).join(' → ')}. ${assemblyText(r, lang)}Follow signs and staff instructions.` : `Evacuare: ${blocked}Ieși pe ${nodeName(r.exit)}: ${r.nodes.map(n => nodeName(n)).join(' → ')}. ${assemblyText(r, lang)}Urmează indicatoarele și personalul.`,
   situation: (lang: Lang | undefined, plan: ReturnType<typeof arrivalPlan>) => {
-    const queues = plan.queues.map(q => queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)).join(' ');
+    const queues = plan.queues.map(q => q.source === 'istoric'
+      ? `${nodeName(q.zone, lang)}: ${say(lang, 'history', q.forecastMin, q.forecastAt)}.`
+      : queueText(nodeName(q.zone, lang), q.nowMin, q.forecast, lang)).join(' ');
     const walk = plan.steps.find(s => s.zone === 'walk')?.min ?? 0;
     const wait = plan.steps.filter(s => !['walk', 'margin'].includes(s.zone)).reduce((n, s) => n + s.min, 0);
     return lang === 'en'
-      ? `${queues} To gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}.`
-      : `${queues} Până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min la cozi`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
+      ? `${queues} From security to gate ${plan.gate}: ~${walk} min walking, ${wait < 1 ? 'no queue' : `~${wait} min in queues`}. Gate ${plan.gate} closes at ${plan.gateCloseAt}.`
+      : `${queues} De la securitate până la poarta ${plan.gate} ~${walk} min de mers, ${wait < 1 ? 'fără coadă' : `~${wait} min la cozi`}. Poarta ${plan.gate} se închide la ${plan.gateCloseAt}.`;
   },
 };
 export function localSource(source: string, lang?: Lang) {

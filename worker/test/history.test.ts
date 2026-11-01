@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WaitHistory } from '../src/wa/history.js';
-import { arrivalPlan, toolsFor, waitAt, type AirportView, type Profile } from '../src/wa/tools.js';
+import { arrivalPlan, situationText, toolsFor, waitAt, type AirportView, type Profile } from '../src/wa/tools.js';
 import { fromSim, type SimFlightRow } from '../src/wa/flights.js';
 
 const hm = (h: number, m: number) => h * 3600 + m * 60;
@@ -27,6 +27,9 @@ describe('D5b same-hour history fallback', () => {
     const f = fromSim([row])[0]!;
     const plan = arrivalPlan(f, {}, { now: hm(7, 0), sim: true }, false, [], () => ({ U_SECURITY_QUEUE: { waiting: 0, waitMin: 7 } }));
     expect(plan.queues.find(q => q.zone === 'security')).toMatchObject({ forecastMin: 7, source: 'istoric' });
+    expect(situationText(plan)).toContain('~7 min');
+    expect(situationText(plan)).toContain('media din istoric');
+    expect(situationText(plan, 'en')).toContain('same-hour history');
   });
 });
 
@@ -39,6 +42,6 @@ describe('pitch: the gate and the walk from security', () => {
     expect(r.minutes).toBeGreaterThan(0);
     expect(r.note).toContain(`Poarta 2: ~${r.minutes} min de mers.`);
     const w = await tools.whenToArrive!({}) as any;
-    expect(w.situation).toMatch(/Până la poarta 2 ~\d+ min de mers/);
+    expect(w.situation).toMatch(/De la securitate până la poarta 2 ~\d+ min de mers/);
   });
 });
