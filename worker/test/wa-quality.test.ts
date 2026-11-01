@@ -193,10 +193,10 @@ describe('WhatsApp passenger quality regressions', () => {
     expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
     await h.receive('English');
     await h.receive('Unde este poarta mea?');
-    expect((await h.agent.profile('+40712345678'))?.lang).toBe('en');
+    expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
     await h.receive('Română');
     await h.receive('Where is my gate?');
-    expect((await h.agent.profile('+40712345678'))?.lang).toBe('ro');
+    expect((await h.agent.profile('+40712345678'))?.lang).toBe('en');
   });
   it('10: model context, tool inputs and reply use 05:12 despite wall time 09:44', async () => {
     const real = Date.UTC(2026, 10, 1, 7, 44);

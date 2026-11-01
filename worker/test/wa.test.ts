@@ -379,7 +379,7 @@ describe('passenger language (D23)', () => {
     await agent.inbound(inbound('English'));
     await agent.inbound(inbound('gate?'));
     const request = calls.filter(c => String(c.url).includes('anthropic')).at(-1).body;
-    expect(JSON.stringify(request.system)).toContain('Passenger language: English. You MUST answer entirely in this language');
+    expect(JSON.stringify(request.system)).toContain('Passenger language: English. Answer in the language of the current question');
   });
   it('localizes automatic flight changes, admin decisions, staff and evacuation', async () => {
     const { agent, store, texts, airport } = languageHarness();

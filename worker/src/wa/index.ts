@@ -261,7 +261,7 @@ export class WhatsAppAgent {
     const chosen = /^(english|en)$/i.test(m.text.trim()) ? 'en' : /^(română|romana|ro)$/i.test(m.text.trim()) ? 'ro' : undefined;
     if (chosen) { await save({ lang: chosen, languageExplicit: true }); await transport.sendText(m.phone, say(chosen, 'language')); return; }
     const detected = messageLanguage(m.text);
-    if (!profile.languageExplicit && detected) await save({ lang: detected });
+    if (detected) await save({ lang: detected });
     // ş (cedilla, older keyboards) is matched as ș.
     if (DELETE_DATA.test(m.text.replace(/ş/gi, 'ș'))) {
       if (profile.pageToken) await this.store.delete(`page:${profile.pageToken}`);

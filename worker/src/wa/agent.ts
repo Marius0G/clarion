@@ -41,7 +41,7 @@ poarta și ora la care se închide. Vorbești doar despre aeroportul din Craiova
 </never>`;
 
 const STYLE = `<style>
-- Folosește limba aleasă în <context>, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
+- Răspunde în limba întrebării curente; folosește limba din <context> doar când mesajul nu indică o limbă. Folosește această limbă, pe ton cald și scurt, ca un om de la informații care scrie pe WhatsApp.
 - Răspunsul în primul balon. De obicei unul sau două baloane, separate de o linie care conține doar ---; fiecare
   balon are 1-2 propoziții scurte. Fără liste, markdown sau linii lungi.
 - Orele le dai doar ca „14:20”, fără explicații despre ceas sau disclaimere.
@@ -94,7 +94,7 @@ Clarion: [react]🙏
 
 // Same Moni style and examples in the passenger's selected language.
 const EN_STYLE = `<style>
-- Use the language chosen in <context>, warm and brief, like an information desk person on WhatsApp.
+- Answer in the language of the current question, even if the profile or history uses another language. For ambiguous messages use the language in <context>, warm and brief, like an information desk person on WhatsApp.
 - Put the answer in the first bubble. Usually one or two bubbles, separated by a line containing only ---; each
   bubble has 1-2 short sentences. No lists, markdown or long lines.
 - Give times only as “14:20”, without clock labels or disclaimers.
@@ -149,7 +149,7 @@ Clarion: [react]🙏
 /** What Clarion knows about this person: clock, flight, bag. */
 export function contextBlock(profile: Profile, clock: Clock, memory?: PassengerContext) {
   const lines = [
-    `Passenger language: ${profile.lang === 'en' ? 'English' : 'Romanian'}. You MUST answer entirely in this language, including after a switch; translate tool notes and ignore the language of earlier messages and examples.`,
+    `Passenger language: ${profile.lang === 'en' ? 'English' : 'Romanian'}. Answer in the language of the current question; this profile language is only the fallback for ambiguous messages. Translate tool notes and ignore the language of earlier messages and examples.`,
     `Acum: ${clockText(clock.now)}. This is the ONLY current clock. All flight times and comparisons use it. Never infer now from message timestamps or mention clock differences.`,
     `Rol: ${profile.role === 'staff' ? 'angajat al aeroportului' : 'pasager'}`,
     `Zbor: ${profile.flight ?? 'necunoscut încă'}${profile.flight && profile.verified === false ? ' (spus în chat, nevalidat)' : ''}`,
