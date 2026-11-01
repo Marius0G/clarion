@@ -189,6 +189,6 @@ def test_smoothing_eases_the_panel_but_a_lane_change_shows_at_once():
     fc = lambda v: [{"inMin": h, "waitMin": v} for h in (30, 60, 90, 120)]
     assert Smoothing.apply(track, 0.0, 2, 10.0, fc(10.0)) == (10.0, fc(10.0))
     wait, forecast = Smoothing.apply(track, 10.0, 2, 20.0, fc(30.0))
-    assert 10.0 < wait < 12.0 and 10.0 < forecast[0]["waitMin"] < 12.0          # a jump of one report moves the panel a little
+    assert 10.0 < wait < 12.0 and 10.0 < forecast[0]["waitMin"] < 14.0          # a jump of one report moves the panel a little
     assert Smoothing.apply(track, 10.0, 2, 50.0, fc(50.0))[0] == wait             # same sim time: same numbers
     assert Smoothing.apply(track, 15.0, 3, 6.0, fc(4.0)) == (6.0, fc(4.0))       # a new lane: at once

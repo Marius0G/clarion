@@ -1,0 +1,16 @@
+{
+ "recall_max": 0.8933892847598272,
+ "h0": 25.012187531528788,
+ "hs": 6.117162606113961,
+ "vis0": 0.6078621041273203,
+ "viss": 0.15000688080661714,
+ "boxes": 44946,
+ "detected_share": 0.412139011257954,
+ "jitter_xy": 0.04534577950835228,
+ "jitter_wh": 0.119959257543087,
+ "fp_per_frame": 0.02,
+ "id_switch_per_s": 0.11864406779661302,
+ "width_ratio": 0.42,
+ "about": "Calibrated by vision/tools/calibrate_detector.py on vision_calib_1101_v2/q1505_cctv_checkin_overview, vision_calib_1101_v2/q1505_cctv_hall_east, vision_calib_1101_v2/q1505_cctv_security_queue, vision_calib_1101_v2/q1505_cctv_upper_4, vision_calib_1101_v1/r1530_cctv_security_queue, vision_calib_1101_v1/r1530_cctv_upper_2, vision_calib_1101_v1/r1530_cctv_upper_3, vision_calib_1101_v1/r1530_cctv_upper_4; YOLO11s COCO at 960 px, cpu. Box height = projected body. fp_per_frame kept at 0.02: the export labels only the people in range, and YOLO's boxes on the far, unlabelled people (1.09 per frame) are not false positives. Not installed in Unity: the training runs use the first guesses.",
+ "fp_per_frame_yolo_raw": 1.09375
+}

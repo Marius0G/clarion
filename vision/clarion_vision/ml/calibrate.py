@@ -74,12 +74,26 @@ def lane_rate(run_dir: Path) -> dict[str, tuple[float, float]]:
     return {q: (v[0], v[1]) for q, v in out.items()}
 
 
+CURVE_WINDOW_MIN = 150.0
+
+
+def _window_min(run_dir: Path) -> float:
+    path = Path(run_dir) / "run.json"
+    if not path.exists():
+        return float("inf")
+    info = json.loads(path.read_text(encoding="utf-8"))
+    if "sim_end" not in info or "sim_start" not in info:
+        return float("inf")
+    return (float(info["sim_end"]) - float(info["sim_start"])) / 60.0
+
+
 def calibrate(run_dirs: list[Path], evac_records: list[dict] | None = None) -> dict:
     minutes: dict[str, list[float]] = {kind: [] for kind in QUEUE_STAGES}
     rates: dict[str, list[float]] = {}
     for run_dir in run_dirs:
-        for kind, values in minutes_before(run_dir).items():
-            minutes[kind].extend(values)
+        if _window_min(run_dir) >= CURVE_WINDOW_MIN:      # a short window sees only the arrivals inside it: its curve is cut
+            for kind, values in minutes_before(run_dir).items():
+                minutes[kind].extend(values)
         for queue, (exits, lane_min) in lane_rate(run_dir).items():
             slot = rates.setdefault(queue, [0.0, 0.0])
             slot[0] += exits

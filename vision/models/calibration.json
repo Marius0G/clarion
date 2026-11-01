@@ -1,0 +1,31 @@
+{
+ "seeds_used": 39,
+ "curves": {
+  "security": {
+   "median_min": 144.80833117530835,
+   "sigma": 0.42454173000633405,
+   "cutoff_min": 25.0,
+   "share": 1.0
+  },
+  "check_in": {
+   "median_min": 147.99166643204381,
+   "sigma": 0.3700956661348754,
+   "cutoff_min": 40.0,
+   "share": 0.877845220030349
+  }
+ },
+ "mu0": {
+  "security": 2.3594789356984567,
+  "check_in": 1.6317009562445668
+ },
+ "samples": {
+  "security": 5272,
+  "check_in": 4628
+ },
+ "evac": {
+  "runs": 25,
+  "last_out_over_flow_median": 1.0,
+  "min": 0.45384615384615384,
+  "max": 1.8066666666666666
+ }
+}

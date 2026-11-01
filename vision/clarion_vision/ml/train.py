@@ -26,6 +26,7 @@ PARAMS = {"objective": "l1", "learning_rate": 0.05, "num_leaves": 15, "min_data_
 ROUNDS = 300
 MIN_ROWS = 200
 OVERFLOW_ROWS = 12
+SIZE_BINS = ((1, 20), (20, 60), (60, 200))
 
 
 def fit(x: np.ndarray, y: np.ndarray, names: list[str]):
@@ -97,6 +98,14 @@ def evaluate(raw_rows: list[dict], corrected_rows: list[dict]) -> dict:
         within = [r for r in raw if countable(r)], [r for r in fixed if countable(r)]
         if len(within[0]) < len(raw) and within[0]:
             report[zone]["countable"] = {"up_to_people": raw[0]["capacity"] + OVERFLOW_ROWS, **_errors(*within)}
+        sizes = {}
+        for lo, hi in SIZE_BINS:            # the demo's queue is 40-90 people: the error at that size, not one mean over empty hours
+            pick = lambda rows: [r for r in rows if countable(r) and lo <= r["true_n"] < hi]
+            a, b = pick(raw), pick(fixed)
+            if len(a) >= 30:
+                sizes[f"{lo}-{hi - 1}"] = _errors(a, b)
+        if sizes:
+            report[zone]["by_true_size"] = sizes
     return report
 
 
@@ -168,13 +177,20 @@ def main() -> None:
     ap.add_argument("--test-share", type=float, default=0.25)
     ap.add_argument("--workers", type=int, default=4, help="each replay holds under 1 GB; keep the total under 8 GB")
     ap.add_argument("--out", default=str(MODEL_DIR))
+    ap.add_argument("--test-seeds", default="", help="comma list: hold out exactly these seeds (else the last --test-share of them)")
     ap.add_argument("--final", action="store_true", help="train on every run, for the demo's models: no seed held out, so no accuracy figures come from this")
     a = ap.parse_args()
     runs = sorted(p for p in Path(a.runs).iterdir() if not p.name.endswith(".tmp") and all((p / f).exists() for f in ("run.json", "detlog.jsonl", "truth.jsonl")))
     if not runs or (len(runs) < 2 and not a.final):
         raise SystemExit(f"{a.runs}: {len(runs)} complete run(s). Held-out figures need at least two seeds.")
     seed_of = {r: int(json.loads((r / "run.json").read_text(encoding="utf-8"))["seed"]) for r in runs}
-    train_seeds, test_seeds = (sorted(set(seed_of.values())), []) if a.final else split_seeds(list(seed_of.values()), a.test_share)
+    if a.final:
+        train_seeds, test_seeds = sorted(set(seed_of.values())), []
+    elif a.test_seeds:
+        test_seeds = sorted(int(x) for x in a.test_seeds.split(","))
+        train_seeds = sorted(set(seed_of.values()) - set(test_seeds))
+    else:
+        train_seeds, test_seeds = split_seeds(list(seed_of.values()), a.test_share)
     train_runs = [r for r in runs if seed_of[r] in train_seeds]
     test_runs = [r for r in runs if seed_of[r] in test_seeds]
     print(f"{len(train_runs)} training runs, seeds {train_seeds}; {len(test_runs)} held out, seeds {test_seeds}", flush=True)
@@ -211,6 +227,11 @@ def main() -> None:
         return
     accuracy = {"test_seeds": test_seeds, "train_seeds": train_seeds, "note": "held-out seeds only; 'physics' = before calibration and ML, 'with_ml' = both",
                 "detector": meta["detector"], "queues": evaluate(test_raw, test_fixed), "evacuation": evac_report(test_evac), "calibration": calibration, "meta": meta}
+    scenario_of = {seed_of[r]: json.loads((r / "run.json").read_text(encoding="utf-8")).get("scenario") or "?" for r in test_runs}
+    if len(set(scenario_of.values())) > 1:          # day windows and rush windows apart: the demo is rush
+        accuracy["queues_by_scenario"] = {sc: {"seeds": sorted(s for s, v in scenario_of.items() if v == sc),
+                                               **evaluate([r for r in test_raw if scenario_of.get(r["seed"]) == sc], [r for r in test_fixed if scenario_of.get(r["seed"]) == sc])}
+                                          for sc in sorted(set(scenario_of.values()))}
     (out / "accuracy.json").write_text(json.dumps(accuracy, indent=1), encoding="utf-8")
     print(json.dumps({k: accuracy[k] for k in ("queues", "evacuation")}, indent=1))
 

@@ -133,7 +133,7 @@ class Smoothing:
     move by a few minutes from one report to the next (mu over 5 min, the trend, the arrival scale), and the forecast's fluid queue
     turns that into +60 jumping between 7 and 17 min every 10 sim-s on the live screen. A lane change resets it: a new lane shows at once."""
     WAIT_TAU_S = 60.0
-    FORECAST_TAU_S = 180.0
+    FORECAST_TAU_S = 60.0         # 180 s cost the held-out forecast a minute of lag
 
     @staticmethod
     def apply(track: "QueueTrack", t: float, lanes: int, wait: float, forecast: list[dict] | None) -> tuple[float, list[dict] | None]:
