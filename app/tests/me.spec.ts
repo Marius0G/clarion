@@ -43,7 +43,7 @@ test('passenger map: flight, queue list, own route to the gate and live crowding
 
 test('crowding updates in place every poll, without reloading the map', async ({ page }) => {
   let density = 0.4
-  await open(page, passengerData, { flow: () => { const f = flowFixture(); (f.flow.gate_3 as { density: number }).density = density; return f } })
+  await open(page, passengerData, { flow: () => { const f = flowFixture(); (f.flow.gate_3 as unknown as { density: number }).density = density; return f } })
   const zone = page.getByTestId('lm-zone-U_GATE_3')
   await expect(zone).toHaveAttribute('data-crowd', 'free')
   await page.evaluate(() => { (document.querySelector('[data-zone="U_GATE_3"]') as HTMLElement & { __mark?: number }).__mark = 1 })
