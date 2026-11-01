@@ -29,7 +29,9 @@ from .sources.live_files import read_json
 log = logging.getLogger("clarion.frames")
 DEFAULT_CAMERAS = ("cctv_security_queue", "cctv_checkin_overview", "cctv_hall_east", "cctv_upper_4")
 MAX_CAMERAS, WIDTH, HEIGHT, JPEG_MAX_BYTES = 4, 960, 540, 120_000
-GPU_PERIOD_S, CPU_PERIOD_S = 1.0, 2.0          # real seconds between two frames of one camera
+GPU_PERIOD_S, CPU_PERIOD_S = 1.0, 2.0          # real seconds between two frames of one camera (slowest on the GPU)
+GPU_BUDGET = 0.2                                # YOLO may take at most this share of each second on the GPU it shares with Unity
+MIN_PERIOD_S = 0.5                              # at most 2 frames/s per camera: Unity renders at most that (-cctv-live-fps 2)
 QUEUE_ZONE = {"security": "U_SECURITY_QUEUE", "checkin_group_1": "check_in:1", "checkin_group_2": "check_in:2", "checkin_group_3": "check_in:3"}
 
 
@@ -100,6 +102,7 @@ class CameraFeed:
         self.zones: dict[str, str | None] = {}
         self.sent = 0
         self.infer_ms = 0.0
+        self.infer_avg_ms = 0.0
 
     def _ensure(self) -> None:
         if self.detector is None:
@@ -114,7 +117,13 @@ class CameraFeed:
 
     @property
     def period(self) -> float:
-        return CPU_PERIOD_S if self.device == "cpu" else GPU_PERIOD_S
+        """Per camera. On the GPU, as fast as the budget allows: n cameras x measured YOLO time <= GPU_BUDGET of a second,
+        between MIN_PERIOD_S and GPU_PERIOD_S (28 ms at 960 px with Unity running -> 0.56 s, about 1.8 frames/s each)."""
+        if self.device == "cpu":
+            return CPU_PERIOD_S
+        if self.infer_avg_ms <= 0:
+            return GPU_PERIOD_S
+        return min(GPU_PERIOD_S, max(MIN_PERIOD_S, len(self.cameras) * self.infer_avg_ms / 1000.0 / GPU_BUDGET))
 
     def next_frames(self) -> list[str]:
         """Blocking (run it in a thread): one camera.frame per camera with a new picture that is due. [] when nothing is new."""
@@ -136,6 +145,7 @@ class CameraFeed:
             started = time.perf_counter()
             boxes = self.detector(image)
             self.infer_ms = (time.perf_counter() - started) * 1000
+            self.infer_avg_ms = self.infer_ms if self.infer_avg_ms <= 0 else 0.8 * self.infer_avg_ms + 0.2 * self.infer_ms
             label = f"{camera.removeprefix('cctv_')}  |  {len(boxes)} persoane  |  YOLO11s"
             out.append(frame_message(camera, self.zones.get(camera), float(meta.get("t_s") or 0.0), encode(draw(image, boxes, camera, label)), len(boxes)))
         return out
@@ -175,7 +185,7 @@ def main() -> None:
             sys.stdout.flush()
         except (BrokenPipeError, OSError):
             return
-        time.sleep(0.2 if messages else 0.5)
+        time.sleep(0.05 if messages else 0.1)        # cheap (four small JSON reads); a new frame goes out within 0.1 s
 
 
 if __name__ == "__main__":

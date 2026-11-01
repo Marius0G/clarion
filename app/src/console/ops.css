@@ -146,3 +146,26 @@
 @media(max-width:1000px) { .ops-stage { grid-template-columns:minmax(0,1fr) 360px }.ops-panel,.ops-evac { width:calc(100% - 392px); max-width:none }.ops-metrics>div { padding:8px }.ops-metrics strong { font-size:24px }.ops-spark { display:none } }
 @media(max-width:700px) { .ops { position:relative; min-height:100dvh; overflow-x:hidden }.ops-bar { gap:10px }.ops-bar-flights { display:none }.ops-metrics { grid-template-columns:repeat(2,minmax(0,1fr)) }.ops-metrics>div { border-bottom:1px solid var(--rule) }.ops-stage { display:flex; flex-direction:column; height:auto }.ops-canvas { height:55dvh; flex:none }.ops-rail { overflow:visible; border-left:0 }.ops-panel { position:relative; width:auto; left:auto; bottom:auto; margin:8px; max-height:none; order:1 }.ops-rail { order:2 }.ops-evac { position:relative; width:auto; max-width:none; left:auto; bottom:auto }.ops-metrics strong { font-size:24px } }
 @media(prefers-reduced-motion:reduce) { .ops .ops-tick,.ops .ops-live-dot { animation:none } .ops-progress i { transition:none } }
+/* Sim speed toggle in the top bar. */
+.ops-speed { display:inline-flex; align-items:center; gap:0 }
+.ops .ops-speed button { min-height:24px; padding:2px 9px; border:1px solid var(--night-rule); background:none; color:var(--night-ink-2); font:500 12px/1.3 var(--mono) }
+.ops .ops-speed button + button { border-left:0 }
+.ops .ops-speed button[aria-pressed="true"] { background:var(--night-ink); color:var(--night); border-color:var(--night-ink) }
+.ops .ops-speed button:hover:not(:disabled) { background:var(--night-2); color:var(--night-ink) }
+.ops .ops-speed button[aria-pressed="true"]:hover:not(:disabled) { background:var(--night-ink); color:var(--night) }
+.ops .ops-speed button:disabled { opacity:.45 }
+/* Last command's progress: sending, sent, confirmed, seen by the cameras. */
+.ops-cmd-status { display:flex; align-items:flex-start; gap:8px; margin-top:12px!important; padding-top:10px; border-top:1px solid currentColor; font-size:13px }
+.ops-recommendation .ops-cmd-status { color:var(--paper)!important; border-color:var(--night-rule) }
+.ops-recommendation.is-idle .ops-cmd-status { color:var(--ink)!important; border-color:var(--rule) }
+.ops-cmd-status i { flex:none; width:8px; height:8px; margin-top:5px; border-radius:50%; border:1.5px solid currentColor }
+.ops-cmd-status.is-busy i,.ops-cmd-status.is-sent i { border-color:var(--near) }
+.ops .ops-cmd-status.is-busy i,.ops .ops-cmd-status.is-sent i { animation:ops-pending 1s ease-in-out infinite alternate }
+.ops-cmd-status.is-acked i,.ops-cmd-status.is-done i { background:var(--ok); border-color:var(--ok) }
+.ops-cmd-status.is-offline i,.ops-cmd-status.is-auth i,.ops-cmd-status.is-invalid i,.ops-cmd-status.is-network i { background:var(--full); border-color:var(--full) }
+@keyframes ops-pending { to { opacity:.25 } }
+.ops-panel .ops-cmd-status { border-color:var(--rule) }
+.ops-cmd-done { color:var(--ok) }
+/* Map dots: a new person fades in, one who left fades out; moves glide over the update interval (map CSS). */
+.ops .t2-dots circle,.ops .t2-dots-other circle { animation:t2-dot-in .45s ease-out }
+@media(prefers-reduced-motion:reduce) { .ops .ops-cmd-status i,.ops .t2-dots circle,.ops .t2-dots-other circle { animation:none } }

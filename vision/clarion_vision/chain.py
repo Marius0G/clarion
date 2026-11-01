@@ -106,6 +106,61 @@ class TrackLedger:
         return entries, exits
 
 
+class PeopleSmoother:
+    """crowd.positions for the map: a stable id per tracked person and a smoothed position, so dots glide instead of jumping.
+
+    Per camera track (`camera:track`), an exponential moving average of the floor point. A track must be seen on `min_seen`
+    ticks before it is drawn (drops one-tick ghosts), and a track missed for up to `hold` ticks keeps its last place, so a
+    missed detection does not blink. A new track next to one that just vanished takes over its id (the merge between
+    cameras can swap which camera's track stands for a person). Without valid track ids the points pass through unchanged.
+    """
+    JUMP_M = 3.0
+    ADOPT_M = 1.5
+
+    def __init__(self, alpha: float = 0.5, min_seen: int = 2, hold: int = 2):
+        self.alpha, self.min_seen, self.hold = alpha, min_seen, hold
+        self.tracks: dict[str, dict] = {}
+
+    def reset(self) -> None:
+        self.tracks.clear()
+
+    def update(self, people: list[FloorPoint], tracks_valid: bool) -> list[dict]:
+        if not tracks_valid:
+            self.tracks.clear()
+            return [{"x": round(p.x, 2), "z": round(p.z, 2), "level": p.level} for p in people]
+        seen: set[str] = set()
+        for p in people:
+            key = f"{p.camera}:{p.track}"
+            if key in seen:
+                continue
+            seen.add(key)
+            s = self.tracks.get(key)
+            if s is None:
+                lost = [(math.hypot(o["x"] - p.x, o["z"] - p.z), k) for k, o in self.tracks.items()
+                        if o["miss"] > 0 and o["level"] == p.level and k not in seen]
+                near = min(lost, default=None)
+                if near is not None and near[0] <= self.ADOPT_M:
+                    s = self.tracks.pop(near[1])
+                    s["miss"] = 0
+                else:
+                    s = {"x": p.x, "z": p.z, "level": p.level, "n": 0, "miss": 0, "id": key}
+                self.tracks[key] = s
+            elif s["level"] != p.level or math.hypot(p.x - s["x"], p.z - s["z"]) > self.JUMP_M:
+                s.update(x=p.x, z=p.z, level=p.level)
+            else:
+                s["x"] += self.alpha * (p.x - s["x"])
+                s["z"] += self.alpha * (p.z - s["z"])
+            s["n"] += 1
+            s["miss"] = 0
+        for key in list(self.tracks):
+            if key not in seen:
+                self.tracks[key]["miss"] += 1
+                if self.tracks[key]["miss"] > self.hold:
+                    del self.tracks[key]
+        return [{"x": round(s["x"], 2), "z": round(s["z"], 2), "level": s["level"], "id": s["id"]}
+                for s in self.tracks.values() if s["n"] >= self.min_seen]
+
+
 @dataclass
 class ZoneTrack:
     filter: CountFilter
@@ -194,6 +249,8 @@ class Chain:
         self.tracks = {q.queue: QueueTrack(q, CountFilter(flows=True), HeadRate(q.mu0), ArrivalScale()) for q in self.queues}
         self.last_t: float | None = None
         self.people: list[FloorPoint] = []
+        self.smoother = PeopleSmoother()
+        self.shown_people: list[dict] = []
         self.detector = ""
         self.active: frozenset[str] = frozenset()
 
@@ -237,6 +294,7 @@ class Chain:
                     zone_id = self.index.ids[i]
                     counts[zone_id] = counts.get(zone_id, 0) + 1
         self.people = on_floor
+        self.shown_people = self.smoother.update(on_floor, tick.tracks_valid)
 
         for zone_id, track in self.zones.items():
             track.filter.predict(dt)
@@ -389,7 +447,7 @@ class Chain:
                 for key in ("waitMin", "waitMinP90", "forecast"):
                     if key in rows[queue]:
                         rows[service][key] = rows[queue][key]
-        people = [{"x": round(p.x, 2), "z": round(p.z, 2), "level": p.level} for p in self.people]
+        people = list(self.shown_people)
         return Report(t, list(rows.values()), people)
 
     def _check_in_hall(self, rows: dict, waits: dict) -> None:

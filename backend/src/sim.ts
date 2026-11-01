@@ -71,7 +71,7 @@ export interface TerminalFlight {
   gateCloseAt: number | string | null; status: typeof flightStatuses[number]; delayMin: number; pax: number | null;
 }
 /** Feet point of a detected person, terminal metres. Vision sends only x, y; legacy Unity also sent kind. */
-export interface Person { x: number; y: number; z?: number; level?: 'G' | 'U' | 'X'; kind?: 'pax' | 'staff' }
+export interface Person { x: number; y: number; z?: number; level?: 'G' | 'U' | 'X'; kind?: 'pax' | 'staff'; /** Vision's track id, stable while it tracks the person; lets the map glide a dot. */ id?: string }
 export const opsTypes = ['staff', 'redirect', 'evacuate', 'close', 'open'] as const;
 export type OpsCommand =
   | { type: 'staff'; zone: string; delta: number }
@@ -290,7 +290,7 @@ export class SimStore {
       const p = withoutNulls(raw);
       const world = p?.z !== undefined;
       if (!object(p) || !finite(p.x, -1e5, 1e5) || !(world ? finite(p.z, -1e5, 1e5) && ['G', 'U', 'X'].includes(p.level) : finite(p.y, -1e5, 1e5)) || (p.kind !== undefined && !['pax', 'staff'].includes(p.kind))) throw new Error('Invalid person');
-      return { x: p.x, y: world ? p.z : p.y, ...(world && { z: p.z, level: p.level }), ...(p.kind !== undefined && { kind: p.kind }) };
+      return { x: p.x, y: world ? p.z : p.y, ...(world && { z: p.z, level: p.level }), ...(p.kind !== undefined && { kind: p.kind }), ...(typeof p.id === 'string' && /^[\w:.-]{1,64}$/.test(p.id) && { id: p.id }) };
     });
     // Same rule as flow: the cameras win over a legacy Unity build.
     if (source === 'vision') this.visionPeopleMs = now;

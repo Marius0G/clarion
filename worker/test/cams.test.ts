@@ -11,11 +11,11 @@ describe('camera.frame (contract)', () => {
     expect([...feeds.jpeg('cctv_security_queue')!]).toEqual([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
     expect(feeds.list(3500)).toEqual([{ camera: 'cctv_security_queue', zone: 'U_SECURITY_QUEUE', simTime: 54335, count: 37, detector: 'yolo', w: 960, h: 540, age: 2.5 }]);
   });
-  it('drops frames faster than ~1/s per camera, not across cameras', () => {
+  it('drops frames faster than ~2/s per camera, not across cameras', () => {
     const feeds = new CameraFeeds();
     feeds.accept(frame(), 1000);
-    expect(feeds.accept(frame({ simTime: 54336 }), 1500)).toBeNull();
-    expect(feeds.accept(frame({ camera: 'cctv_checkin_overview', zone: 'check_in:1' }), 1500)).not.toBeNull();
+    expect(feeds.accept(frame({ simTime: 54336 }), 1300)).toBeNull();
+    expect(feeds.accept(frame({ camera: 'cctv_checkin_overview', zone: 'check_in:1' }), 1300)).not.toBeNull();
     expect(feeds.accept(frame({ simTime: 54340 }), 1900)).not.toBeNull();
     expect(feeds.list(1900).map(c => [c.camera, c.simTime])).toEqual([['cctv_checkin_overview', 54335], ['cctv_security_queue', 54340]]);
   });

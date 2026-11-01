@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { backend } from './config'
 
 /**
@@ -20,11 +20,14 @@ export function cameraRows(body: unknown): CameraRow[] {
 const headers = (): Record<string, string> => backend.token ? { Authorization: `Bearer ${backend.token}` } : {}
 
 /** Polls GET /cams and fetches a camera's JPEG only when it has a newer frame. Empty without feeds or on any error. */
-export function useCams(intervalMs = 1000): CameraFeed[] {
+export function useCams(intervalMs = 1000, focus: string | null = null): CameraFeed[] {
   const [feeds, setFeeds] = useState<CameraFeed[]>([])
+  // The enlarged camera is polled twice as often (vision sends up to 2 frames/s); the others stay at one fetch a second.
+  const focused = useRef(focus)
+  useEffect(() => { focused.current = focus }, [focus])
   useEffect(() => {
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
-    const images = new Map<string, { simTime: number; age: number; url: string }>()
+    const images = new Map<string, { simTime: number; age: number; url: string; at: number }>()
     const drop = (camera: string) => { const img = images.get(camera); if (img) URL.revokeObjectURL(img.url); images.delete(camera) }
     const load = async () => {
       try {
@@ -34,18 +37,19 @@ export function useCams(intervalMs = 1000): CameraFeed[] {
           const seen = images.get(row.camera)
           // A newer frame: another sim time, or younger than the one we hold.
           if (seen && seen.simTime === row.simTime && row.age >= seen.age) { seen.age = row.age; return }
+          if (seen && row.camera !== focused.current && Date.now() - seen.at < intervalMs - 100) return
           const image = await fetch(`${backend.http}/cams/${row.camera}.jpg`, { headers: headers() })
           if (!image.ok) return
           const url = URL.createObjectURL(await image.blob())
           drop(row.camera)
-          images.set(row.camera, { simTime: row.simTime, age: row.age, url })
+          images.set(row.camera, { simTime: row.simTime, age: row.age, url, at: Date.now() })
         }))
         for (const camera of [...images.keys()]) if (!rows.some(r => r.camera === camera)) drop(camera)
         if (alive) setFeeds(rows.flatMap(row => { const img = images.get(row.camera); return img ? [{ ...row, url: img.url }] : [] }))
       } catch {
         if (alive) setFeeds([])
       }
-      if (alive) timer = setTimeout(load, intervalMs)
+      if (alive) timer = setTimeout(load, focused.current ? Math.min(intervalMs, 500) : intervalMs)
     }
     load()
     return () => { alive = false; clearTimeout(timer); for (const camera of [...images.keys()]) drop(camera) }

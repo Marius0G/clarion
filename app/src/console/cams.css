@@ -4,7 +4,10 @@
 .ops button.ops-cam { display:flex; flex-direction:column; gap:6px; padding:0; min-width:0; text-align:left; border:0; background:none; color:var(--night-ink); cursor:zoom-in }
 .ops button.ops-cam:hover:not(:disabled) { background:none; color:var(--night-ink) }
 .ops button.ops-cam:hover .ops-cam-frame { outline:1px solid var(--night-ink); outline-offset:2px }
-.ops-cam-frame { position:relative; display:block; background:#000; overflow:hidden }
+.ops-cam-frame { position:relative; display:grid; background:#000; overflow:hidden }
+.ops-cam-frame img { grid-area:1/1; opacity:0; transition:opacity .25s ease-out }
+.ops-cam-frame img.on { opacity:1 }
+@media(prefers-reduced-motion:reduce) { .ops-cam-frame img { transition:none } }
 .ops-cam .ops-cam-frame img { display:block; width:100%; height:clamp(120px,17vh,250px); object-fit:contain; background:#000 }
 .ops-cam-live { position:absolute; left:8px; top:8px; display:inline-flex; align-items:center; gap:6px; padding:3px 7px; background:rgba(0,0,0,.72); color:#fff; font:600 11px/1.2 var(--mono); letter-spacing:.06em; text-transform:uppercase }
 .ops-cam-live em { font-style:normal; font-weight:400; color:#c9c9c4; text-transform:none; letter-spacing:0 }

@@ -132,7 +132,9 @@
 .t2-route .halo { fill: none; stroke: rgba(14, 47, 87, .18); stroke-linecap: round; stroke-linejoin: round; }
 .t2-route .line { fill: none; stroke: var(--t2-live); stroke-linecap: round; stroke-linejoin: round; }
 .t2-route .end { fill: var(--t2-live); stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.t2-dots circle, .t2-dots-other circle { fill: var(--t2-live); stroke: #f2f2f2; stroke-width: .8; vector-effect: non-scaling-stroke; transition: transform 1s linear; }
+.t2-dots circle, .t2-dots-other circle { fill: var(--t2-live); stroke: #f2f2f2; stroke-width: .8; vector-effect: non-scaling-stroke; transition: transform 1s linear, opacity .45s ease-out; }
+.t2-dots circle.out, .t2-dots-other circle.out { opacity: 0; }
+@keyframes t2-dot-in { from { opacity: 0; } }
 .t2-dots circle.staff, .t2-dots-other circle.staff { fill: #fff; stroke: var(--t2-live); stroke-width: 1.6; }
 .t2-heat { pointer-events: none; mix-blend-mode: multiply; }
 .t2-heat circle { fill: #4a4a4a; fill-opacity: .14; }

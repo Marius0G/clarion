@@ -16,6 +16,18 @@ export const cameraLine = (f: Pick<CameraFeed, 'count' | 'detector' | 'age'>, sh
 const persons = (n: number) => `${n} ${n === 1 ? 'persoană' : 'persoane'}`
 const wait = (v: number | null | undefined) => v == null ? '—' : `${Math.round(v)} min`
 
+/**
+ * Crossfades to each new JPEG once it has decoded (~250 ms), so a 1 fps feed never blanks or jumps.
+ * Holds the last shown frame under the incoming one; the loaded <img> keeps its pixels after useCams revokes the old blob URL.
+ */
+function Frame({ url, w, h, alt = '' }: { url: string; w?: number; h?: number; alt?: string }) {
+  const [frames, setFrames] = useState<{ url: string; ready: boolean }[]>([{ url, ready: true }])
+  if (frames.at(-1)!.url !== url) setFrames(current => [...current.filter(f => f.ready).slice(-1), { url, ready: false }])
+  const ready = (u: string) => setFrames(current => current.map(f => f.url === u ? { ...f, ready: true } : f))
+  return <>{frames.map((f, i) => <img key={f.url} src={f.url} alt={i === frames.length - 1 ? alt : ''} width={w} height={h} className={f.ready ? 'on' : undefined}
+    onLoad={() => ready(f.url)} onError={() => ready(f.url)} />)}</>
+}
+
 /** Live / lost badge: a pulsing dot while frames arrive, the frame's age next to it. */
 function Live({ feed }: { feed: CameraFeed }) {
   const stale = feed.age > CAM_STALE_S
@@ -29,8 +41,8 @@ function Live({ feed }: { feed: CameraFeed }) {
  * Hover highlights the camera's zone on the map; click enlarges it. Renders nothing without feeds.
  */
 export function CameraStrip({ zoneName, zoneWait, onHover }: { zoneName: (id: string) => string; zoneWait?: (id: string) => number | null; onHover?: (zone: string | null) => void }) {
-  const feeds = useCams()
   const [open, setOpen] = useState<string | null>(null)
+  const feeds = useCams(1000, open)
   useEffect(() => {
     if (!open) return
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null) }
@@ -46,7 +58,7 @@ export function CameraStrip({ zoneName, zoneWait, onHover }: { zoneName: (id: st
         onClick={() => setOpen(f.camera)} onMouseEnter={() => onHover?.(f.zone)} onMouseLeave={() => onHover?.(null)}
         aria-label={`${cameraName(f.camera)}: mărește`}>
         <span className="ops-cam-frame">
-          <img src={f.url} alt="" width={f.w} height={f.h} />
+          <Frame url={f.url} w={f.w} h={f.h} />
           <Live feed={f} />
           <span className="ops-cam-id">CAM {String(i + 1).padStart(2, '0')} · {f.detector === 'yolo' ? 'YOLO' : 'simulat'}</span>
         </span>
@@ -60,7 +72,7 @@ export function CameraStrip({ zoneName, zoneWait, onHover }: { zoneName: (id: st
     {big && <div className="ops-cam-big" role="dialog" aria-label={cameraName(big.camera)} data-testid="camera-big" onClick={() => setOpen(null)}>
       <figure>
         <span className="ops-cam-frame">
-          <img src={big.url} alt={`Cadru ${cameraName(big.camera)}`} />
+          <Frame url={big.url} alt={`Cadru ${cameraName(big.camera)}`} />
           <Live feed={big} />
         </span>
         <figcaption><b>{cameraName(big.camera)}</b>{big.zone && <span>{zoneName(big.zone)}</span>}<span>{persons(big.count)}</span>{big.zone && zoneWait && <span>Așteptare {wait(zoneWait(big.zone))}</span>}<span>{cameraLine(big)}</span></figcaption>

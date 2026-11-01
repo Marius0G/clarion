@@ -79,7 +79,10 @@ export function liveDots(sim: SimSnapshot | null): Person[] {
  * Key the backend keeps this zone's open lanes under (D12). Real map ids reuse a legacy key when
  * the backend already has one for the same place (`U_SECURITY_QUEUE` -> `security`); desk groups stay distinct.
  */
-export function laneKey(sim: SimSnapshot | null, id: string): string {
+/** The checkpoint and its queue are one set of lanes: a lane opened from "Securitate" is a security lane (backend key `security`). */
+const LANE_ALIAS: Record<string, string> = { U_SECURITY: 'U_SECURITY_QUEUE' }
+export function laneKey(sim: SimSnapshot | null, zone: string): string {
+  const id = LANE_ALIAS[zone] ?? zone
   const lanes = sim?.lanes ?? {}
   if (Object.hasOwn(lanes, id)) return id
   const canonical = mapNodeId(id)

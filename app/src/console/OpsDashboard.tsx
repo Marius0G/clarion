@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSim, type OpsCommand } from '../backend/sim'
-import { sendOps } from '../backend/ops'
+import { sendOps, setSimSpeed } from '../backend/ops'
 import { useReports } from '../backend/reports'
 import { liveRow, zoneStateLabels, commandLabel, commandStatusLabels, commandTouchesZone, laneKey, redirectTargets, liveDots, simClock, zoneStats, type CommandStatus } from './opsZones'
 import { realPlan, type TerminalPlan, type ZoneKind } from './terminal'
@@ -76,6 +76,7 @@ export function OpsDashboard() {
   const [dismissed, setDismissed] = useState<string[]>([])
   const [rejections, setRejections] = useState<{ key: string; at: number; label: string }[]>([])
   const [busy, setBusy] = useState(false)
+  const [speedBusy, setSpeedBusy] = useState(false)
   const [floor, setFloor] = useState<Level>('U')
   const plan = dashboardPlan(sim)
   const stats = zoneStats(plan, sim)
@@ -110,7 +111,7 @@ export function OpsDashboard() {
   const adviceLanes = typeof securityRow?.advice === 'object' ? securityRow?.advice?.lanes ?? null : null
   const atRisk = new Set(alerts.filter(a => a.kind === 'flight-risk' && a.active).map(a => a.flight)).size
   const delayed = (sim?.flights ?? []).filter(f => f.status === 'delayed' || f.status === 'cancelled')
-  const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind }] : [])
+  const dots = people.flatMap(p => p.level && p.z != null ? [{ x: p.x, z: p.z, level: p.level, kind: p.kind, id: p.id }] : [])
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(z => z !== id) : [...current, id])
 
   async function send(command: OpsCommand) {
@@ -133,6 +134,15 @@ export function OpsDashboard() {
   const newlyCompleted = history.filter(c => !completed.has(c.key) && taskState(c.command, c.status, sim, c.evidence) === 'done')
   const done = newlyCompleted.length ? new Set([...completed, ...newlyCompleted.map(c => c.key)]) : completed
   if (newlyCompleted.length) setCompleted(done)
+  /** The last command's progress, so a click visibly does something: sending, sent, Unity confirmed, cameras saw it. */
+  const last = history[0]
+  const lastState = busy ? 'busy' : last ? taskState(last.command, last.status, sim, last.evidence, done.has(last.key) ? 'done' : undefined) : null
+  const now = Date.parse(sim?.lastSeen ?? '') || last?.at || 0
+  const lastLanes = last?.command.type === 'staff' ? sim?.lanes?.[laneKey(sim, last.command.zone)] ?? null : null
+  const feedback = lastState && (busy || (last && now - last.at < 180_000)) ? <p className={`ops-cmd-status is-${lastState}`} data-testid="cmd-status" aria-live="polite">
+    <i aria-hidden="true" />
+    <span>{busy ? 'Se trimite…' : <><b>{last!.label}</b> · {lastState === 'sent' ? 'trimis, aștept Unity' : lastState === 'acked' ? `confirmat de Unity${lastLanes != null ? ` · ${lastLanes} linii deschise` : ''}` : lastState === 'done' ? 'făcut, văzut de camere' : commandStatusLabels[lastState as CommandStatus] ?? lastState}</>}</span>
+  </p> : null
   const recommendation = ordered.find(z => z.line.action && !dismissed.includes(`${z.id}:${z.line.action.label}`) && !history.some(c => (c.status === 'sent' || c.status === 'acked') && !done.has(c.key) && commandTouchesZone(c.command, z.id)))
 
   const placeName = (node: string) => byId.get(node)?.name ?? byId.get(mapNodeId(node))?.name ?? mapZones.get(node)?.name_ro ?? mapZones.get(mapNodeId(node))?.name_ro ?? node
@@ -176,7 +186,11 @@ export function OpsDashboard() {
       <div className="ops-brand"><b>Clarion</b><span>Aeroportul Craiova · Terminal 2</span></div>
       <div className="ops-clock" data-testid="sim-clock" aria-label="Ceas simulare">
         <span className="ops-clock-time">{simClock(sim?.simTime)}</span>
-        {speed != null && <span className="ops-chip">×{speed}</span>}
+        <span className="ops-speed" role="group" aria-label="Viteză simulare">
+          {[1, 10].map(v => <button key={v} type="button" aria-pressed={speed === v} disabled={speedBusy || !sim?.connected} data-testid={`speed-${v}`}
+            onClick={async () => { setSpeedBusy(true); await setSimSpeed(v); setSpeedBusy(false) }}>×{v}</button>)}
+          {speed != null && speed !== 1 && speed !== 10 && <span className="ops-chip">×{speed}</span>}
+        </span>
         {sim?.run.scenario && <span className="ops-chip">{sim.run.scenario}</span>}
       </div>
       <div className="ops-bar-flights">
@@ -223,6 +237,7 @@ export function OpsDashboard() {
             <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, recommendation.id), delta: recommendation.line.action!.delta })}>Trimite</button>{' '}
             <button onClick={() => { setDismissed(d => [...d, `${recommendation.id}:${recommendation.line.action!.label}`]); setRejections(r => [...r, { key: `rejected-${Date.now()}`, at: Date.now(), label: `${recommendation.name} · ${recommendation.line.action!.label}` }]) }}>Respinge</button>
           </> : <p>Fără recomandări</p>}
+          {feedback}
         </section>
         {(openReports.length > 0 || evacuation) && <section className="ops-incident" aria-label="Incident" data-testid="incident">
           <h2>Incident</h2>
@@ -298,6 +313,7 @@ export function OpsDashboard() {
           <button disabled={busy || zone.lanes === 0} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: -1 })}>−1 linie</button>
           <button disabled={busy} onClick={() => send({ type: 'staff', zone: laneKey(sim, zone.id), delta: 1 })}>+1 linie</button>
         </div>}
+        {feedback && last && (commandTouchesZone(last.command, zone.id) || commandTouchesZone(last.command, laneKey(sim, zone.id))) && feedback}
         {targets.length > 0 && <div className="ops-panel-actions">
           <select aria-label="Destinație" value={destination} disabled={busy} onChange={e => setTarget(e.target.value)}>
             {targets.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
@@ -310,7 +326,7 @@ export function OpsDashboard() {
         </div>
         <label className="ops-check"><input type="checkbox" checked={selected.includes(zone.id)} onChange={() => toggle(zone.id)} />Adaugă la evacuare</label>
         <div className="ops-panel-status" aria-live="polite">
-          {history.filter(c => commandTouchesZone(c.command, zone.id)).slice(0, 5).map(c => <p key={c.key}><span>{c.label}</span> <b className={`ops-cmd ops-cmd-${c.status}`}>{commandStatusLabels[c.status]}</b></p>)}
+          {history.filter(c => commandTouchesZone(c.command, zone.id)).slice(0, 5).map(c => { const st = taskState(c.command, c.status, sim, c.evidence, done.has(c.key) ? 'done' : undefined); return <p key={c.key}><span>{c.label}</span> <b className={`ops-cmd ops-cmd-${st}`}>{st === 'done' ? 'Făcut' : commandStatusLabels[st as CommandStatus] ?? st}</b></p> })}
         </div>
       </section>}
 

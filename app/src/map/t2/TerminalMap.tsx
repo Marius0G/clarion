@@ -5,6 +5,7 @@ import { zoneDetail } from './details'
 import { placeName, zoneLabel } from './labels'
 import { alertOf, densityStep, placeLabels, SHAPE, textWidth, type LabelItem, type Priority } from './layout'
 import { boundsOf, dividerY, fitAspect, onPlate, pad, plateOffset, stackGap, type Box } from './stack'
+import { dotSig, trackDots, type TrackState } from './track'
 import './t2map.css'
 
 /**
@@ -18,7 +19,8 @@ export interface ZoneView {
   /** D32 priority from the backend; without it `full` is P2 and `near` is P3. */
   alert?: Priority | null
 }
-export interface MapDot { x: number; z: number; level: Level; kind?: 'pax' | 'staff' }
+/** `id`: the cameras' track id when they send one, so a dot glides instead of jumping to another person's place. */
+export interface MapDot { x: number; z: number; level: Level; kind?: 'pax' | 'staff'; id?: string | number }
 /** What the map draws on top of the floor. Missing = on, except `heat` (off). */
 export interface MapLayers { dots?: boolean; heat?: boolean; labels?: boolean; points?: boolean; pins?: boolean }
 
@@ -189,6 +191,10 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   }, [])
   const u = Math.max(view[2] / screen[0], screen[1] > 0 ? view[3] / screen[1] : 0)
 
+  // Dots keep their key across updates (track id, else nearest neighbour), so they glide and fade instead of jumping.
+  const sig = dotSig(dots)
+  const [trackedDots, setTrackedDots] = useState<TrackState<MapDot>>(() => trackDots(null, dots))
+  if (trackedDots.sig !== sig) setTrackedDots(trackDots(trackedDots, dots))
   const [hover, setHover] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null)
   const hoverAt = (id: string, e: { clientX: number; clientY: number }) => {
     const r = svgRef.current?.getBoundingClientRect()
@@ -359,12 +365,13 @@ export function TerminalMap({ level, views = {}, selected = null, highlight = []
   const iconEls = show.points ? POINTS.filter(p => ICONS.has(p.type) && !IN_APRON(p)).map(p => <PointIcon key={p.id} p={p} at={P(p.level, p.px)} s={16 * u} />) : []
 
   const dotR = fmt(3.2 * u)
-  const circle = (d: MapDot, k: number) => {
+  const circle = ({ key, dot: d, leaving }: { key: string; dot: MapDot; leaving: boolean }) => {
     const [x, y] = P(d.level, toPx(d.x, d.z))
-    return <circle key={k} className={d.kind === 'staff' ? 'staff' : undefined} r={dotR} style={{ transform: `translate(${fmt(x)}px, ${fmt(y)}px)` }} />
+    return <circle key={key} className={[d.kind === 'staff' && 'staff', leaving && 'out'].filter(Boolean).join(' ') || undefined} r={dotR} style={{ transform: `translate(${fmt(x)}px, ${fmt(y)}px)` }} />
   }
-  const own = dots.filter(d => d.level === level)
-  const other = dots.filter(d => d.level !== level)
+  const tracked = trackedDots.sig === sig ? trackedDots.items : dots.map((dot, i) => ({ key: `n:${i}`, dot, leaving: false }))
+  const own = tracked.filter(t => t.dot.level === level)
+  const other = tracked.filter(t => t.dot.level !== level)
 
   const routeD = route && route.length > 1 ? `M${route.map(p => P(level, fromLevel(p, level)).map(fmt).join(',')).join('L')}` : null
   const end = route && route.length ? P(level, fromLevel(route[route.length - 1]!, level)) : null

@@ -83,7 +83,7 @@ def check_positions(data: dict) -> None:
     if not isinstance(people, list) or len(people) > PEOPLE_MAX:
         raise ValueError("people[] required (max 2000)")
     for p in people:
-        if not _finite(p.get("x"), -1e5, 1e5) or not _finite(p.get("z"), -1e5, 1e5) or p.get("level") not in ("G", "U", "X"):
+        if not _finite(p.get("x"), -1e5, 1e5) or not _finite(p.get("z"), -1e5, 1e5) or p.get("level") not in ("G", "U", "X") or                 ("id" in p and not (isinstance(p["id"], str) and 0 < len(p["id"]) <= 64)):
             raise ValueError("bad person")
 
 
