@@ -3,7 +3,8 @@
 # flow.report with forecast, crowd.positions and evac.plan, as client=vision.
 #   DEMO_TOKEN=... ./run_live.sh                        local worker, http://127.0.0.1:8788
 #   CLARION_URL=https://... DEMO_TOKEN=... ./run_live.sh  another backend
-# Extra arguments go to the service (--no-ml, --live-dir DIR, --source yolo --hybrid). The token comes only from the env and
+# Extra arguments go to the service: --frames also sends camera.frame (Unity's CCTV pictures with YOLO's boxes; Unity needs
+# -cctv-live-cams security_queue,checkin_overview,hall_east,upper_4 -cctv-live-fps 1), --no-ml, --live-dir DIR. The token comes only from the env and
 # never reaches the log. The log is in runs/live_<time>.log. Ctrl+C stops it.
 set -uo pipefail
 cd "$(dirname "$0")"

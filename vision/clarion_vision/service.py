@@ -166,8 +166,53 @@ class Service:
         elif self.backend.sim_ok and not sim.blocked and now - self.last_command_wall > 5.0:
             self.evacuating, self.blocked = False, set()
 
+    async def frames_loop(self) -> None:
+        """--frames: Unity's CCTV pictures with YOLO's boxes drawn, for the dashboard (camera_feed.py). Display only. YOLO runs in
+        a child process with its own DLLs; it is restarted if it dies, and killed with the service."""
+        import sys
+        from .camera_feed import child_env
+        args = [sys.executable, "-m", "clarion_vision.camera_feed", "--live-dir", str(self.args.live_dir), "--device", self.args.device]
+        args += ["--cameras", self.args.frame_cams] if self.args.frame_cams else []
+        args += ["--weights", self.args.weights] if self.args.weights else []
+        last_log = 0.0
+        while not self.backend.stop:
+            child = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=child_env(), limit=8 << 20)
+            log.info("camera frames: YOLO process %d started", child.pid)
+            errors = asyncio.create_task(self._child_log(child))
+            try:
+                while not self.backend.stop:
+                    line = await child.stdout.readline()
+                    if not line:
+                        break
+                    if not line.strip():
+                        continue                 # the child's heartbeat
+                    await self.backend.send(line.decode("utf-8").strip(), "camera.frame")
+                    if time.monotonic() - last_log > 30.0:
+                        last_log = time.monotonic()
+                        log.info("camera frames: %d sent", self.backend.sent["camera.frame"])
+            finally:
+                if child.returncode is None:
+                    child.kill()
+                await child.wait()
+                errors.cancel()
+            if not self.backend.stop:
+                log.warning("camera frames: YOLO process ended (%s); restarting in 10 s", child.returncode)
+                await asyncio.sleep(10.0)
+
+    @staticmethod
+    async def _child_log(child) -> None:
+        while True:
+            line = await child.stderr.readline()
+            if not line:
+                return
+            text = line.decode("utf-8", "replace").rstrip()
+            if text:
+                log.info("frames| %s", text[-300:])
+
     async def run(self) -> None:
         tasks = [self.backend.run(), self.backend.poll(self.config.poll_period_s), self.ingest_loop(), self.report_loop()]
+        if self.args.frames:
+            tasks.append(self.frames_loop())
         await asyncio.gather(*tasks)
 
 
@@ -179,6 +224,8 @@ def main() -> None:
     ap.add_argument("--weights", default=None)
     ap.add_argument("--device", default="auto", help="yolo only: 0, cpu, or auto (the GPU only when Unity leaves room)")
     ap.add_argument("--hybrid", action="store_true", help="yolo only: the other cameras keep the simulated detector")
+    ap.add_argument("--frames", action="store_true", help="also send camera.frame: Unity's CCTV pictures with YOLO's boxes (needs -cctv-live-fps 1)")
+    ap.add_argument("--frame-cams", default=None, help="frames only: camera ids, default security_queue,checkin_overview,hall_east,upper_4")
     ap.add_argument("--no-ml", action="store_true", help="the physics alone, even when models/ has trained corrections")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--speed", type=float, default=10.0, help="synthetic only: sim seconds per real second")

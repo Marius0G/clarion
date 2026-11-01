@@ -12,7 +12,7 @@ DEMO_TOKEN=... ./run_live.sh                                  # worker-ul local,
 CLARION_URL=https://clarion-backend.bogdan-c-2206.workers.dev DEMO_TOKEN=... ./run_live.sh   # backend-ul de pe Cloudflare
 ```
 
-Pornește serviciul cu detectorul simulat din Unity (D0), ca `client=vision`, și trimite `flow.report` cu prognoză, `crowd.positions` și, la `evacuate`, `evac.plan`. Unity trebuie să scrie canalul camerelor: exe-ul cu `-cctv-live -cctv-live-fps 0`, iar în editor `Craiova.Life.CctvLive.Begin(null, null, null, 0f, 2f)` după intrarea în Play. Serviciul așteaptă `manifest.json` și poate fi pornit înaintea lui Unity. Nu rula în paralel alt `client=vision` (de exemplu `e2e.mjs fakevision`). Logul e în `runs/live_<ora>.log`, iar argumentele în plus merg la serviciu (`--no-ml`, `--live-dir`). Verificare fără Unity, pe fișierele unei rulări înregistrate: `SMOKE_SOURCE=replay SMOKE_RUN=<folder din clarion_runs> python tools/smoke_local.py`.
+Pornește serviciul cu detectorul simulat din Unity (D0), ca `client=vision`, și trimite `flow.report` cu prognoză, `crowd.positions` și, la `evacuate`, `evac.plan`. Unity trebuie să scrie canalul camerelor: exe-ul cu `-cctv-live -cctv-live-fps 0`, iar în editor `Craiova.Life.CctvLive.Begin(null, null, null, 0f, 2f)` după intrarea în Play. Serviciul așteaptă `manifest.json` și poate fi pornit înaintea lui Unity. Nu rula în paralel alt `client=vision` (de exemplu `e2e.mjs fakevision`). Logul e în `runs/live_<ora>.log`, iar argumentele în plus merg la serviciu (`--no-ml`, `--live-dir`). Cu `./run_live.sh --frames` serviciul trimite și `camera.frame`: imaginile a 4 camere din Unity cu cutiile YOLO desenate, pentru dashboard (`clarion_vision/camera_feed.py`; doar afișare, cifrele din `flow.report` nu vin din ele). Unity trebuie pornit și cu `-cctv-live-cams security_queue,checkin_overview,hall_east,upper_4 -cctv-live-fps 1`. YOLO rulează pe GPU dacă Unity lasă 1,5 GB liberi (1 cadru/s pe cameră), altfel pe CPU (un cadru la 2 s pe cameră, ~0,25 s fiecare). Verificare fără Unity, pe fișierele unei rulări înregistrate: `SMOKE_SOURCE=replay SMOKE_RUN=<folder din clarion_runs> python tools/smoke_local.py`.
 
 ## Cum se rulează
 
@@ -50,15 +50,15 @@ Unity scrie canalul camerelor local, în `data/interim/cctv_live/` din `craiova-
 | Pas | Algoritm | Fișier | Trimite | Stare |
 |---|---|---|---|---|
 | Detecție (A1) | YOLO11s COCO + ByteTrack, picior → podea prin lentilă și `H_image_to_floor` | `sources/yolo.py`, `geometry.py` | `crowd.positions` | merge pe cadre exportate (`tools/yolo_check.py`), neevaluat: exportul de până acum nu are etichete |
-| Detector simulat (D0) | boxe din Unity, aceeași schemă și același drum spre podea | `sources/live_files.py` | `crowd.positions` | testat pe fișiere scrise de `tools/fake_cctv_live.py`, încă nu pe fișiere din Unity |
-| Corecția numărătorii (A2) | LightGBM pe rezidual | `ml/runtime.py`, `ml/train.py` | | scris, încă neantrenat pe date din Unity |
+| Detector simulat (D0) | boxe din Unity, aceeași schemă și același drum spre podea | `sources/live_files.py` | `crowd.positions` | merge live cu Unity (canalul camerelor plus jurnalul detectorului) |
+| Corecția numărătorii (A2) | LightGBM pe rezidual | `ml/runtime.py`, `ml/train.py` | | antrenat pe rulările din Unity, vezi `RESULTS.md` |
 | Număr și flux (A3) | Kalman `[n, λ]`, urme care intră și ies la capul cozii | `kalman.py`, `chain.py` | `waiting`, `waitingSd`, `density`, `coverage` | merge |
-| Așteptarea acum (A4) | coadă ÷ (μ pe linie × linii), μ măsurat la cap pe 5 min, p90 din abateri, corecție ML | `wait.py`, `ml/` | `waitMin`, `waitMinP90` | merge; corecția ML neantrenată pe date din Unity |
-| Prognoza (A5) | curbe lognormale × orar, coadă fluidă, corecție ML pe orizont | `forecast.py`, `ml/` | `forecast` | merge; curbele vin dintr-o singură rulare |
+| Așteptarea acum (A4) | coadă ÷ (μ pe linie × linii), μ măsurat la cap pe 5 min, p90 din abateri, corecție ML | `wait.py`, `ml/` | `waitMin`, `waitMinP90` | merge; corecția ML antrenată pe rulările din Unity |
+| Prognoza (A5) | curbe lognormale × orar, coadă fluidă, corecție ML pe orizont | `forecast.py`, `ml/` | `forecast` | merge; curbele sunt potrivite pe zilele simulate de 3 ore |
 | Sfatul (A7) | cele mai puține linii sub țintă în ora următoare, și până când | `advice.py` | `advice` | merge |
-| Evacuarea (A9, A10) | flux maxim în timp, pas 5 s, 1,3 oameni/m/s la uși, apoi flux de sumă minimă pentru alocare | `evac.py` | `evac.plan` | merge; necomparată încă cu o evacuare din Unity |
-| Antrenare (A11) | zile simulate, seed-uri ținute deoparte; calibrarea fizicii, apoi LightGBM | `ml/dataset.py`, `ml/calibrate.py`, `ml/train.py` | | scris și rulat pe date sintetice; așteaptă `detlog.jsonl` din Unity |
-| Calibrarea detectorului simulat | YOLO față de etichetele exportului → parametrii `cctv_detector.json` | `tools/calibrate_detector.py` | | scris, așteaptă un export etichetat |
+| Evacuarea (A9, A10) | flux maxim în timp, pas 5 s, 1,3 oameni/m/s la uși, apoi flux de sumă minimă pentru alocare | `evac.py` | `evac.plan` | merge; comparată cu 16 evacuări din Unity (`RESULTS.md`) |
+| Antrenare (A11) | zile simulate, seed-uri ținute deoparte; calibrarea fizicii, apoi LightGBM | `ml/dataset.py`, `ml/calibrate.py`, `ml/train.py` | | rulat pe 39 de rulări din Unity |
+| Calibrarea detectorului simulat | YOLO față de etichetele exportului → parametrii `cctv_detector.json` | `tools/calibrate_detector.py` | | rulat pe exportul etichetat; parametrii în `data/cctv_detector.calibrated.json`, neinstalați |
 
 `chain.py` leagă pașii, fără I/O. `service.py` și `backend.py` sunt socketul, polling-ul și buclele. `state.py` ține liniile și zonele blocate. `contract.py` validează mesajele cu aceleași reguli ca backend-ul.
 
@@ -76,4 +76,7 @@ Unity scrie canalul camerelor local, în `data/interim/cctv_live/` din `craiova-
 
 ## Stare și ce lipsește
 
-Vezi tabelul. Niciun număr de acuratețe față de adevărul din Unity nu există încă: testele cu sursa sintetică verifică instalația pe oameni inventați și nu spun nimic despre aeroport. Cifrele pentru D19 vor fi în `models/accuracy.json`, măsurate doar pe seed-urile ținute deoparte.
+Cifrele de acuratețe față de adevărul din Unity sunt în [`RESULTS.md`](RESULTS.md): numărare, așteptare și prognoză pe coadă, pe seed-uri ținute deoparte, plus evacuarea (A9) pe 16 rulări și rularea YOLO pe exportul etichetat. Toate vin din date simulate, cu detectorul simulat. Ce lipsește:
+- detectorul simulat folosește încă parametrii inițiali, nu cei potriviți pe YOLO (`data/cctv_detector.calibrated.json`); pentru a-i folosi trebuie refăcute rulările de antrenare;
+- prognoza la securitate are erori de ~9-11 min;
+- planul de evacuare e prea pesimist la cozile mici de check-in.
