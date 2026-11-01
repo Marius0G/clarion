@@ -11,6 +11,7 @@ import { points as mapPoints, worldToPx, zoneById as mapZones, type Level, type 
 import { breach, bulletScale, executor, flightTime, noActionWait, orderZones, taskState, topMetrics, waitTarget, type TaskEvidence, type ZoneOrder } from './screen'
 import { AlertList } from './AlertList'
 import { CameraStrip } from './CameraStrip'
+import { AccuracyCard } from './AccuracyCard'
 import { alertMapZone, alertNumbers, alertPresentation, alertSymbols, sendAlertCommand, topZoneAlerts, type Alert, type AlertCommand } from './alerts'
 import './ops.css'
 
@@ -179,6 +180,7 @@ export function OpsDashboard() {
         </section>
         <AlertList alerts={alerts} simTime={sim?.simTime ?? null} onZone={id => openZone(byId.has(id) ? id : alertMapZone(id))} onCommand={commandAlert} />
         <CameraStrip zoneName={id => byId.get(id)?.name ?? byId.get(mapNodeId(id))?.name ?? id} onHover={setHovered} />
+        <AccuracyCard plan={plan} sim={sim} onZone={id => openZone(byId.has(id) ? id : mapNodeId(id))} />
         <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
           {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
             const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
