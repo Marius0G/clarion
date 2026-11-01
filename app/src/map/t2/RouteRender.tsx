@@ -134,7 +134,7 @@ export default function RouteRender() {
     <header>
       {evac ? <h1><i className="p1" aria-hidden="true" />Evacuare · {spec.from}</h1> : <h1>{spec.from} <span className="arrow">→</span> {spec.to}</h1>}
       <p>{evac
-        ? <>Ieși pe {spec.to}{spec.assembly ? <>, apoi la {spec.assembly.name}</> : null} · <b>≈ {minutes(spec.walkSec)} min</b></>
+        ? <>{spec.caption ?? spec.to} · <b>≈ {minutes(spec.walkSec)} min</b></>
         : <><b>≈ {minutes(spec.walkSec)} min pe jos</b>{floors ? <> · {up ? 'urci la etaj 1' : 'cobori la parter'}</> : null}</>}</p>
     </header>
     <TerminalMap level={spec.path[spec.path.length - 1]!.level === 'U' ? 'U' : 'G'} view={view} selected={lastZone} highlight={spec.fromZone ? [spec.fromZone] : []}

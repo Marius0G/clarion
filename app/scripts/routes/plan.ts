@@ -4,6 +4,7 @@
  */
 import { route, type Route } from '../../../backend/src/routing.ts'
 import { terminalGraph, zones } from '../../../backend/src/terminal.ts'
+import { evacuationRoute } from '../../../backend/src/evacuation.ts'
 import { landmarks, type Area, type Landmark } from './landmarks.ts'
 
 export type Level = 'G' | 'U' | 'X'
@@ -19,11 +20,12 @@ export const skipReasons: Record<SkipReason, string> = {
   arrivals_only: 'Baggage belts and arrivals passport control are reached only from a landed flight.',
   no_route: 'The backend graph has no normal route between the two.',
   crosses_restricted_area: 'The shortest graph path crosses an area this passenger may not enter.',
-  emergency_only: 'The only path uses a crossing the backend opens for evacuations only (route() treats a door as an exit).',
+  emergency_only: 'The only path uses a crossing the backend opens for evacuations only.',
 }
 
 const nodes = new Map(terminalGraph.nodes.map(n => [n.id, n]))
-const emergencyEdges = new Set(terminalGraph.edges.filter(e => e.evacuationOnly).flatMap(e => [`${e.from}>${e.to}`, `${e.to}>${e.from}`]))
+/** Hops a passenger may walk in normal operation (one-way edges only forwards). */
+const normalHops = new Set(terminalGraph.edges.filter(e => !e.evacuationOnly).flatMap(e => e.oneWay ? [`${e.from}>${e.to}`] : [`${e.from}>${e.to}`, `${e.to}>${e.from}`]))
 const zoneSide = new Map(zones.map(z => [z.id, z.side]))
 const ARRIVALS = new Set(['G_RECLAIM_1', 'G_RECLAIM_2', 'G_ARRIVALS_PASSPORT'])
 /** Area of any graph node: arrivals hall zones, other airside = departures, the rest landside. */
@@ -80,40 +82,37 @@ export function planRoutes(list: Landmark[] = landmarks) {
     const bad = areas.some((x, i) => i > 0 && allowed(areas[i - 1]!, x) !== null)
       || (a.area !== 'arrivals' && areas.includes('arrivals'))
     if (bad) { skipped.push({ from: a.id, to: b.id, reason: 'crosses_restricted_area' }); continue }
-    if (r.nodes.some((id, i) => i > 0 && emergencyEdges.has(`${r.nodes[i - 1]}>${id}`))) { skipped.push({ from: a.id, to: b.id, reason: 'emergency_only' }); continue }
+    if (r.nodes.some((id, i) => i > 0 && !normalHops.has(`${r.nodes[i - 1]}>${id}`))) { skipped.push({ from: a.id, to: b.id, reason: 'emergency_only' }); continue }
     routes.push({ from: a.id, to: b.id, walkSec: Math.round(r.totalSec), ...toPath(r) })
   }
   return { routes, skipped }
 }
 
-const ASSEMBLY = zones.filter(z => z.id.startsWith('ASSEMBLY_'))
-/** Doors the package marks as evacuation exits; the backend makes them `exit` nodes. */
-const EXITS = terminalGraph.nodes.filter(n => n.kind === 'exit' && !n.id.startsWith('ASSEMBLY_')).map(n => n.id)
 /** Zones a person can stand in on the two floors (the apron door boxes are part of the gate stairs). */
 export const evacZones = zones.filter(z => (z.level === 'G' || z.level === 'U') && !z.id.startsWith('G_GATE_DOOR_')).map(z => z.id)
 
-const exitSide = (exit: string) => /apron|arrivals_entry/.test(exit) ? 'airside' : 'landside'
-/** Assembly point for an exit door: the nearest one on the door's side (apron doors → apron). */
-export function assemblyFor(exit: string): string {
-  const n = nodes.get(exit)!
-  const side = exitSide(exit)
-  return ASSEMBLY.filter(a => a.side === side)
-    .sort((a, b) => Math.hypot(a.centre[0]! - n.x, a.centre[1]! - n.y) - Math.hypot(b.centre[0]! - n.x, b.centre[1]! - n.y))[0]!.id
-}
-
-/**
- * Evacuation: the backend's `route()` in evacuation mode (target is an exit node, so emergency-only
- * crossings are open) to every exit door; the quickest wins. Then the assembly point for that door.
- * People in the public (landside) area leave by the landside doors, never through the apron.
- */
+/** Evacuation: the backend's own fallback rule (backend/src/evacuation.ts), so the picture matches the text. */
 export function planEvacuations(ids: string[] = evacZones): Evacuation[] {
   const out: Evacuation[] = []
   for (const zone of ids) {
-    const doors = areaOf(zone) === 'landside' ? EXITS.filter(e => exitSide(e) === 'landside') : EXITS
-    const best = doors.map(e => route(terminalGraph, zone, e)).filter((r): r is Route => !!r).sort((a, b) => a.totalSec - b.totalSec)[0]
-    if (!best) continue
-    const exit = best.nodes[best.nodes.length - 1]!
-    out.push({ zone, exit, assembly: assemblyFor(exit), walkSec: Math.round(best.totalSec), ...toPath(best) })
+    const e = evacuationRoute(zone)
+    if (e) out.push({ zone, exit: e.exit, assembly: e.assembly, walkSec: Math.round(e.route.totalSec), ...toPath(e.route) })
   }
   return out
+}
+
+const EXIT_PHRASE: Record<string, string> = {
+  door_emergency_east: 'ieșirea de urgență est', door_emergency_west: 'ieșirea de urgență vest',
+  door_departures: 'intrarea de la plecări', door_exit_west: 'ușa de la sosiri', door_arrivals_east: 'ușa de sosiri est',
+  door_exit_mid: 'ieșirea spre parcare', door_arrivals_entry: 'ușa de sosiri dinspre peron',
+}
+const ASSEMBLY_PHRASE: Record<string, string> = {
+  ASSEMBLY_LANDSIDE_WEST: 'punctul de adunare vest', ASSEMBLY_LANDSIDE_EAST: 'punctul de adunare est', ASSEMBLY_AIRSIDE: 'punctul de adunare de pe peron',
+}
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+/** Caption for an evacuation picture: "Ieșirea de urgență est, apoi punctul de adunare est". */
+export function evacCaption(exit: string, assembly: string): string {
+  const gate = /^door_apron_gate_(\d+)$/.exec(exit)
+  const door = gate ? `ușa de peron de la poarta ${gate[1]}` : EXIT_PHRASE[exit] ?? nameOf(exit).ro.toLowerCase()
+  return `${cap(door)}, apoi ${ASSEMBLY_PHRASE[assembly] ?? nameOf(assembly).ro.toLowerCase()}`
 }

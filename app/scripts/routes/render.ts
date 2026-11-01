@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 import { terminalGraph } from '../../../backend/src/terminal.ts'
 import { landmarks } from './landmarks.ts'
-import { nameOf, planEvacuations, planRoutes, skipReasons } from './plan.ts'
+import { evacCaption, nameOf, planEvacuations, planRoutes, skipReasons } from './plan.ts'
 import { toIndexedPng } from './png.ts'
 import type { RouteSpec } from '../../src/map/t2/routeSpec.ts'
 
@@ -50,7 +50,7 @@ for (const e of evacs) {
   const a = assemblies.get(e.assembly)!
   jobs.push({ file: `evac/${fileKey(e.zone)}.png`, spec: {
     id: `evac:${e.zone}`, kind: 'evac', from: nameOf(e.zone).ro, to: nameOf(e.exit).ro, walkSec: e.walkSec,
-    path: e.path, fromZone: e.zone, toZone: null, assembly: { name: nameOf(e.assembly).ro, x: a.x, z: a.y },
+    path: e.path, fromZone: e.zone, toZone: null, assembly: { name: nameOf(e.assembly).ro, x: a.x, z: a.y }, caption: evacCaption(e.exit, e.assembly),
   } })
 }
 const todo = jobs.filter(j => !only || only.has(j.spec.id)).slice(0, limit)
@@ -88,11 +88,11 @@ try {
 if (!only && todo.length === jobs.length) {
   const fileOf = new Map(jobs.map(j => [j.spec.id, `/routes/${j.file}`]))
   const index = {
-    about: 'T2 route pictures. Routes come from backend route() on terminalGraph at free flow (no density, nothing blocked); a live route can differ when queues are dense.',
+    about: 'T2 route pictures. Routes come from backend route() on terminalGraph at free flow (no density, nothing blocked), evacuations from backend evacuationRoute(); a live route can differ when queues are dense.',
     graph: terminalGraph.version,
     points: landmarks.map(l => ({ id: l.id, name: l.name, aliases: l.aliases })),
     routes: Object.fromEntries(routes.map(r => [`${r.from}__${r.to}`, { file: fileOf.get(`${r.from}__${r.to}`)!, walkSec: r.walkSec, steps: r.steps }])),
-    evac: Object.fromEntries(evacs.map(e => [e.zone, { file: fileOf.get(`evac:${e.zone}`)!, exit: e.exit, assembly: e.assembly, walkSec: e.walkSec, steps: e.steps }])),
+    evac: Object.fromEntries(evacs.map(e => [e.zone, { file: fileOf.get(`evac:${e.zone}`)!, exit: e.exit, assembly: e.assembly, caption: evacCaption(e.exit, e.assembly), walkSec: e.walkSec, steps: e.steps }])),
     skipped: skipped.map(s => ({ ...s })),
     skipReasons,
   }

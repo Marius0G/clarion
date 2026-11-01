@@ -15,6 +15,8 @@ export interface RouteSpec {
   toZone?: string | null
   /** Evacuation: the assembly point outside, drawn as a direction from the exit door. */
   assembly?: { name: string; x: number; z: number } | null
+  /** Evacuation subtitle, a full sentence: "Ieșirea de urgență est, apoi punctul de adunare est". */
+  caption?: string
 }
 
 /**
