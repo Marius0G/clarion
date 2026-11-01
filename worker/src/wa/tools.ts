@@ -7,6 +7,7 @@ import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
 import { classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
+import type { EvacRoute } from './messaging.js';
 
 export interface ZoneRow {
   density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
@@ -132,10 +133,12 @@ export interface ToolDeps {
   /** Stores a staff report (D11); absent in read-only contexts. */
   report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null }) => Promise<Report>;
   pageLink?: () => Promise<string>;
+  /** During an evacuation: the latest evac.plan route for this passenger's estimated place (A10, D9); null otherwise. */
+  evacRoute?: (flight: Flight | undefined) => Promise<EvacRoute | null>;
 }
 
 /** The five D15 tools for one person, using the shared provisional terminal graph. */
-export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): Tools {
+export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -188,6 +191,10 @@ export function toolsFor({ view, profile, save, report, pageLink }: ToolDeps): T
     async routeTo(input: { to?: string; flight?: string }) {
       const to = input?.to ?? 'gate';
       if (!['gate', 'check_in', 'exit'].includes(to)) return { error: 'invalid_destination' };
+      // Evacuation: the exit vision assigned to his estimated place (evac.plan), not the nearest one on the plain graph.
+      const evac = to === 'exit' && evacRoute ? await evacRoute(profile().flight ? findFlight(view.flights(), profile().flight!) : undefined) : null;
+      if (evac) return { status: 'evacuation', from: evac.from, to: evac.exit, exit: nodeName(evac.exit, profile().lang), nodes: evac.nodes,
+        steps: evac.nodes.map(n => nodeName(n, profile().lang)), note: copy.evacuationRoute(profile().lang, '', evac), ...(pageLink && { link: await pageLink() }) };
       const density = zoneDensities(view.flow(), zoneAreas), blocked = view.blocked?.() ?? [];
       // No passenger position is available on WhatsApp: explicitly start at the entrance.
       let targets: string[];

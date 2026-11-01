@@ -402,11 +402,19 @@ export class Messaging {
     });
     return 'generic';
   }
+  /** routeTo('exit') during an evacuation: the latest plan's route for this flight's estimated stage; null once nothing is blocked. */
+  async evacRouteFor(f: Flight | undefined): Promise<EvacRoute | null> {
+    if (!(this.deps.view.blocked?.() ?? []).length) return null;
+    const p = await this.deps.store.get<EvacPlan>('msg:evacPlan');
+    return p?.routes.length ? routeFor(p, f, this.deps.view.clock().now) : null;
+  }
   /** evac.plan: each subscriber gets the route for the node it is estimated to be at; sim agents also walk it (agent.route). */
   plan(p: EvacPlan) {
     this.planned.add(p.id);
     return this.serial(async () => {
       await this.deps.store.put('msg:evacuation', { active: true, zones: p.blocked });
+      // Kept for routeTo('exit') while the zones stay blocked. A plan over the storage value limit is skipped: the tool then uses the graph.
+      try { await this.deps.store.put('msg:evacPlan', p); } catch { /* Too large. */ }
       const flights = this.deps.view.flights(), now = this.deps.view.clock().now;
       let sent = 0;
       for (const s of await this.subscribers()) {

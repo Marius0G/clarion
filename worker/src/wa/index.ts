@@ -225,7 +225,7 @@ export class WhatsAppAgent {
     const spokenFlight = code && findFlight(this.view.flights(), code);
     if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
-    const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r),
+    const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r), evacRoute: f => this.messaging.evacRouteFor(f),
       pageLink: async () => {
         const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
         const stored = await this.profile(m.phone);
