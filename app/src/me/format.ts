@@ -40,6 +40,11 @@ export function normalizePassenger(value: unknown): PassengerViewData {
   const statuses = ['scheduled', 'boarding', 'delayed', 'cancelled', 'departed']
   const kinds = ['arrive', 'flight', 'route', 'evacuate', 'admin']
   return {
+    routeImage: typeof data.routeImage === 'string' && /^(https?:\/\/|\/routes\/)/.test(data.routeImage) ? data.routeImage : undefined,
+    assembly: typeof data.assembly === 'string' ? data.assembly : undefined,
+    stage: ['public', 'airside', 'gate'].includes(String(data.stage)) ? data.stage as 'public' | 'airside' | 'gate' : null,
+    timeline: Array.isArray(data.timeline) ? data.timeline.filter(v => v && typeof v.text === 'string' && typeof v.at === 'string').slice(-50) : [],
+    reports: Array.isArray(data.reports) ? data.reports.filter(v => v && typeof v.id === 'string' && typeof v.state === 'string' && v.place) : [],
     lang: data.lang === 'en' ? 'en' : 'ro',
     simTime: nonnegative(data.simTime),
     arriveBy: localText(data.arriveBy),

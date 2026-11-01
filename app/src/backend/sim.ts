@@ -48,7 +48,7 @@ export type OpsCommand =
   | { type: 'redirect'; from: string; to: string }
   | { type: 'evacuate'; zones: string[] }
   | { type: 'close' | 'open'; zone: string }
-export type OpsRecord = OpsCommand & { id: string; status: 'sent' | 'acked'; sentAt: string; ackedAt: string | null }
+export type OpsRecord = OpsCommand & { id: string; staffState?: 'confirmed' | 'done'; staffConfirmedAt?: string; staffDoneAt?: string; status: 'sent' | 'acked'; sentAt: string; ackedAt: string | null }
 
 /** Unity telemetry from GET /api/sim (public, in-memory on the backend). Null until the first answer. */
 export function useSim(intervalMs = 2000): SimSnapshot | null {

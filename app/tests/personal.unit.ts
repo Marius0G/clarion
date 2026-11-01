@@ -1,0 +1,28 @@
+import { createElement } from 'react'
+import { describe, it, expect } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { waitBand } from '../src/me/Me'
+import { ReportList, stateLabel } from '../src/reports/Reports'
+import Staff from '../src/staff/Staff'
+import { normalizePassenger } from '../src/me/format'
+
+describe('personal pages', () => {
+  it.each([[0, '0–3'], [3, '0–3'], [3.1, '4–10'], [4, '4–10'], [10, '4–10'], [10.1, '>10'], [11, '>10'], [null, '—']] as const)('bands %s minutes as %s', (n, band) => expect(waitBand(n)).toBe(band))
+  it('normalizes timeline to 50 and discards unsafe route schemes', () => {
+    const data = normalizePassenger({ routeImage: 'javascript:alert(1)', timeline: [...Array.from({ length: 55 }, (_, i) => ({ at: `${i}`, text: `Message ${i}` })), null] })
+    expect(data.routeImage).toBeUndefined()
+    expect(data.timeline).toHaveLength(50)
+    expect(data.timeline![0].text).toBe('Message 5')
+  })
+  it('renders report state, landmark, priority and ETA in both languages', () => {
+    const reports = [{ id: 'R1', at: '14:00', type: 'medical', source: 'staff' as const, priority: 'P1' as const, state: 'en_route' as const, text: 'Incident', place: { node: 'gate_2', name: 'Poarta 2' }, etaMin: 3 }]
+    const ro = renderToStaticMarkup(ReportList({ reports }))
+    expect(ro).toContain('Echipa pe drum'); expect(ro).toContain('Poarta 2'); expect(ro).toContain('ETA ~3')
+    expect(renderToStaticMarkup(ReportList({ reports, en: true }))).toContain('Team en route')
+    expect(stateLabel('resolved')).toBe('Rezolvat')
+    expect(renderToStaticMarkup(ReportList({ reports: [] }))).toContain('Niciun raport')
+  })
+  it('requires a session on staff page', () => {
+    expect(renderToStaticMarkup(createElement(Staff))).toContain('Conectează-te cu WhatsApp')
+  })
+})

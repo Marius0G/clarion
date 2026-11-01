@@ -1,71 +1,75 @@
 import { expect, test } from '@playwright/test'
 import { fixture } from '../src/me/fixture'
-
-test.use({ viewport: { width: 360, height: 800 } })
-
-test('personal page falls back to demo, polls, and displays evacuation and latest alerts', async ({ page }) => {
-  await page.clock.install()
-  let live = false
-  await page.route('**/api/me?token=demo', route => {
-    if (!live) return route.fulfill({ status: 404, json: {} })
-    return route.fulfill({ json: {
-      ...fixture, simTime: 14 * 3600 + 25 * 60, arriveBy: '14:35', entranceToGateMin: 45,
-      queues: [{ zone: 'security', label: 'Securitate', nowMin: 22, forecastMin: 30, forecastAt: '14:45', source: 'prognoză' }],
-      flight: { ...fixture.flight, status: 'delayed', delayMin: 15 },
-      steps: [{ zone: 'security', label: 'Securitate', waitMin: null }],
-      evacuation: { active: true, zones: ['security', 'check_in:2'] },
-      alerts: Array.from({ length: 7 }, (_, i) => ({ at: `14:0${i}`, kind: 'admin', text: `Mesaj ${i}` })),
-    } })
+const screenshot = '/private/tmp/claude-502/-Users-bogdan-Developer-Hackathon-Craiova2026/f87d6fa9-77a5-40df-8e73-615c38ce0588/scratchpad/me.png'
+test.use({ viewport: { width: 390, height: 844 } })
+const session = 'a'.repeat(64)
+test('session page shows bands, route, timeline, reports and submits shared report', async ({ page }) => {
+  await page.addInitScript(s => localStorage.setItem('clarion.session', s), session)
+  let submitted = false
+  await page.route('**/api/me', async route => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${session}`)
+    return route.fulfill({ json: { ...fixture, stage: 'public', routeImage: '/routes/door_departures__U_GATE_3.png',
+      timeline: [{ at: '14:10', kind: 'flight', text: 'Poarta 3 · Îmbarcare' }],
+      reports: submitted ? [{ id: 'R1', text: 'O persoană a leșinat', state: 'sent', priority: 'P1', place: { node: 'U_GATE_3', name: 'Poarta 3' }, etaMin: 3 }] : [] } })
   })
-  await page.goto('/m/demo')
+  await page.route('**/api/reports', async route => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${session}`)
+    expect(route.request().postDataJSON()).toEqual({ type: 'medical', place: { node: 'U_GATE_3', name: 'Poarta 3' }, text: 'O persoană a leșinat' })
+    submitted = true; return route.fulfill({ status: 201, json: { id: 'R1' } })
+  })
+  await page.goto('/m')
   await expect(page.getByRole('heading', { name: 'Situația din terminal' })).toBeVisible()
-  await expect(page.locator('.me-arrival')).toContainText('Securitate: 12 min acum, ~20 min la 14:25')
-  await expect(page.locator('.me-arrival')).toContainText('~40 min, inclusiv 10 min marjă')
-  await expect(page.locator('.me-arrival')).toContainText('se închide la 15:05')
-  await expect(page.getByText('date demo', { exact: true })).toBeVisible()
-  await page.screenshot({ path: 'test-results/me-mobile.png', fullPage: true })
+  await expect(page.locator('.me-arrival')).toContainText('>10 / >10 min')
+  await expect(page.locator('.me-arrival')).toContainText('4–10 / 4–10 min')
+  await expect(page.locator('.route-image')).toBeVisible()
+  await expect.poll(() => page.locator('.route-image').evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  await expect(page.locator('.me-alerts')).toContainText('Poarta 3 · Îmbarcare')
+  await page.getByRole('button', { name: 'Raportează', exact: true }).click()
+  await page.getByRole('button', { name: 'Medical', exact: true }).click()
+  await page.getByLabel('Reper').selectOption('U_GATE_3')
+  await page.getByLabel('Descriere').fill('O persoană a leșinat')
+  await page.getByRole('button', { name: 'Trimite', exact: true }).click()
+  await expect(page.getByText('R1 · Trimis', { exact: false })).toBeVisible()
+  await expect(page.getByText('ETA ~3 min')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  expect(await page.locator('.me-page').evaluate(element => getComputedStyle(element).paddingLeft)).toBe('16px')
-  live = true
-  await page.clock.runFor(5000)
-  await expect(page.locator('.me-arrival')).toContainText('Securitate: 22 min acum, ~30 min la 14:45')
-  await expect(page.locator('.me-arrival')).toContainText('~45 min')
-  await expect(page.locator('body')).not.toContainText('Fii la intrare')
-  await expect(page.getByText('date demo', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('alert')).toContainText('Urmează indicatoarele spre cea mai apropiată ieșire')
-  await expect(page.getByRole('alert')).toContainText('check_in:2')
-  await expect(page.getByText('Întârziat +15 min', { exact: true })).toBeVisible()
-  await expect(page.getByText('14:25', { exact: true })).toBeVisible()
-  await expect(page.locator('.me-steps')).toContainText('necunoscut')
-  await expect(page.locator('.me-alerts li')).toHaveCount(5)
-  await expect(page.locator('.me-alerts li').first()).toContainText('Mesaj 6')
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+  await page.screenshot({ path: screenshot, fullPage: false })
 })
-
-test('network failure and incomplete live data render safely', async ({ page }) => {
-  await page.route('**/api/me?token=demo', route => route.abort())
-  await page.goto('/m/demo')
-  await expect(page.getByText('date demo', { exact: true })).toBeVisible()
-  await page.unroute('**/api/me?token=demo')
-  await page.route('**/api/me?token=demo', route => route.fulfill({ json: { steps: [null], flight: null } }))
-  await page.reload()
-  await expect(page.locator('.me-arrival')).toContainText('durată necunoscută')
-  await expect(page.getByText('date demo', { exact: true })).toHaveCount(0)
+test('missing session requests WhatsApp login, failed legacy token shows no invented data', async ({ page }) => {
+  await page.route('**/api/me*', route => route.fulfill({ status: 401, json: {} }))
+  await page.goto('/m')
+  await expect(page.getByRole('link', { name: 'Conectează-te cu WhatsApp' })).toHaveAttribute('href', '/join')
+  await page.route('**/api/me?token=old', route => route.fulfill({ status: 404, json: {} }))
+  await page.goto('/m/old')
+  await expect(page.getByRole('alert')).toHaveText('Date indisponibile')
+  await expect(page.locator('body')).not.toContainText('Roma')
+  await expect(page.locator('body')).not.toContainText('demo')
 })
-
-test('English passenger page translates conditions, labels, status and evacuation', async ({ page }) => {
-  await page.route('**/api/me?token=english', route => route.fulfill({ json: {
-    ...fixture, lang: 'en', flight: { ...fixture.flight, status: 'delayed', delayMin: 30 },
-    queues: [{ zone: 'security', label: 'Control de securitate', nowMin: 12, forecastMin: 20, forecastAt: '14:30', source: 'prognoză' }],
-    evacuation: { active: true, zones: ['security'] }, alerts: [],
-  } }));
-  await page.goto('/m/english');
-  await expect(page.getByRole('heading', { name: 'Terminal conditions' })).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page.locator('.me-arrival')).toContainText('Security: 12 min now, ~20 min at 14:30 (forecast)');
-  await expect(page.getByText('Delayed +30 min')).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText('Follow signs to the nearest exit');
-  await expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible();
-  await expect(page.getByText('No alerts.')).toBeVisible();
-  await expect(page.locator('body')).not.toContainText('Poartă');
-});
+test('legacy URL works and polling highlights gate changes', async ({ page }) => {
+  await page.clock.install()
+  let gate = '3'
+  await page.route('**/api/me?token=old', route => route.fulfill({ json: { ...fixture, flight: { ...fixture.flight, gate } } }))
+  await page.goto('/m/old')
+  await expect(page.locator('.me-flight')).toContainText('3')
+  gate = '4'; await page.clock.runFor(5000)
+  await expect(page.locator('.me-flight .flight-change')).toContainText('4')
+  await expect(page.locator('.me-flight .flight-change')).toContainText('Schimbare')
+})
+test('evacuation shows only exit image and assembly, with no ordinary sections', async ({ page }) => {
+  await page.route('**/api/me?token=evac', route => route.fulfill({ json: { ...fixture,
+    routeImage: '/routes/evac/U_SECURITY_QUEUE.png', assembly: 'ASSEMBLY_LANDSIDE_EAST', evacuation: { active: true, zones: ['security'], route: { exit: 'Est', steps: ['Securitate', 'Ieșire est'] } } } }))
+  await page.goto('/m/evac')
+  await expect(page.getByRole('alert')).toContainText('ASSEMBLY_LANDSIDE_EAST')
+  await expect(page.locator('.route-image')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Zbor', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Raportează' })).toHaveCount(0)
+  await expect(page.locator('.me-flight')).toHaveCount(0)
+})
+test('English page preserves the passenger language', async ({ page }) => {
+  await page.route('**/api/me?token=english', route => route.fulfill({ json: { ...fixture, lang: 'en', flight: { ...fixture.flight, status: 'delayed', delayMin: 15 } } }))
+  await page.goto('/m/english')
+  await expect(page.getByRole('heading', { name: 'Terminal conditions' })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(page.getByText('Delayed +15 min')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'My reports' })).toBeVisible()
+})

@@ -16,7 +16,8 @@ const Page =
     : path === "/" || path === "/acasa" ? lazy(() => import("./landing/Landing"))
     : path === "/harta" ? lazy(() => import("./map/t2/MapPreview"))
     : path === "/harta/ruta" ? lazy(() => import("./map/t2/RouteRender"))
-    : path.startsWith("/m/") ? lazy(() => import("./me/Me"))
+    : path === "/s" || path.startsWith("/s/") ? lazy(() => import("./staff/Staff"))
+    : path === "/m" || path.startsWith("/m/") ? lazy(() => import("./me/Me"))
     : lazy(() => import("./App"));
 
 if (!legacyConsole) createRoot(document.getElementById("root")!).render(

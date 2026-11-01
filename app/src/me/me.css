@@ -43,3 +43,25 @@
 .me-evacuation > div { max-width: 448px; margin: auto; }
 .me-evacuation h2 { font-size: 26px; }
 .me-evacuation p { margin: 8px 0 0; }
+/* D29: one flat, light visual system on phones and the operator console. */
+.me-shell { --cx-bg: #D4D4D4; --cx-border: #a6a6a6; --cx-radius: 2px; --cx-text: #222; --cx-muted: #444; }
+.me-shell small, .me-shell dt, .me-shell time { font-size: 14px; }
+.me-shell button, .me-shell input, .me-shell select, .me-shell textarea { font: inherit; color: inherit; border: 1px solid #888; border-radius: 2px; background: #eee; min-height: 44px; max-width: 100%; }
+.me-shell button { padding: 8px 16px; cursor: pointer; }
+.me-shell button[aria-pressed=true] { background: #B9C6D3; border-color: #0E2F57; }
+.me-shell button:disabled { opacity: .5; cursor: default; }
+.me-shell a { color: #0E2F57; }
+.me-shell .route-image { display: block; width: 100%; height: auto; margin-top: 16px; }
+.me-shell .me-map { padding: 8px; }
+.me-shell .me-steps strong, .me-shell .me-number { color: #0E2F57; }
+.me-shell .report-form { margin-top: 16px; display: grid; gap: 16px; }
+.me-shell .report-form label { display: grid; gap: 8px; min-width: 0; }
+.me-shell .report-form select { width: 100%; }
+.me-shell .report-form textarea { min-height: 88px; resize: vertical; }
+.me-shell fieldset { border: 1px solid #999; padding: 8px; min-width: 0; }
+.me-shell .type-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.me-shell .staff-task { border-top: 1px solid #999; padding: 16px 0; }
+.me-shell .priority-P1 { color: #D40000; }
+.me-shell .priority-P2, .me-shell .flight-change { color: #E07800; }
+.me-shell .priority-P3 { color: #E6B800; }
+.me-shell [data-band] { padding-bottom: 8px; }
