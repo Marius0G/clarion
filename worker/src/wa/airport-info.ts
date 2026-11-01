@@ -1,3 +1,4 @@
+import { landmarks, resolveOrigin, placeQuestion, positionDescription } from './location.js';
 import { terminalGraph } from '../../../backend/src/terminal.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import guide from './airport-guide.json' with { type: 'json' };
@@ -46,6 +47,8 @@ const topicNames: Record<string, Topic> = {
 const words = (text: string) => normalize(text).match(/[a-z0-9]+/g) ?? [];
 
 export function airportInfo(input: { topic?: string; query?: string } = {}, lang?: Lang) {
+  const place = placeQuestion(input.query ?? '');
+  if (place && !amenityKind(input.query ?? input.topic ?? '')) return { found: true, facts: [{ text: positionDescription(place, lang), source: 'Plan T2', official: true, label: '', status: 'map' }], asOf: guide.accessed };
   const amenity = amenityKind(input.query ?? input.topic ?? '');
   if (amenity) return { found: true, asOf: guide.accessed, amenities: amenities.filter(a => a.kind === amenity), facts: amenities.filter(a => a.kind === amenity).map(a => ({
     text: amenityDescription(a, lang), source: 'Plan T2', official: true, label: '', status: 'map',
@@ -88,7 +91,9 @@ export function isAirportQuestion(text: string) {
   return Boolean(topic);
 }
 
-export const amenities = guide.amenities;
+export const amenities = landmarks.filter(l => ['G_WC','U_WC','G_CAFE','U_CAFE','kiosk_west','vending_1','atm_bcr','atm_euronet','G_INFO','U_DUTY_FREE'].includes(l.id)).map(l => ({
+  ...l, kind: /WC/.test(l.id) ? 'toilet' : /atm/.test(l.id) ? 'atm' : l.id === 'G_INFO' ? 'info' : l.id === 'U_DUTY_FREE' ? 'shop' : 'food',
+}));
 export function amenityKind(text: string): string | undefined {
   const t = normalize(text);
   if (/\b(wc|toalet\w*|toilet\w*|restroom|bathroom)\b/.test(t)) return 'toilet';
@@ -98,8 +103,8 @@ export function amenityKind(text: string): string | undefined {
   if (/duty[ -]?free/.test(t)) return 'shop';
 }
 export function amenityDescription(a: typeof amenities[number], lang?: Lang) {
-  return lang === 'en' ? `${a.name.en}: ${a.level === 'G' ? 'ground floor' : 'first floor'}, ${a.side === 'landside' ? 'before security' : 'after security'}.`
-    : `${a.name.ro}: ${a.level === 'G' ? 'parter' : 'etajul 1'}, ${a.side === 'landside' ? 'înainte de securitate' : 'după securitate'}.`;
+  return positionDescription(a, lang) + ' ' + ( lang === 'en' ? `${a.name.en}: ${a.level === 'G' ? 'ground floor' : 'first floor'}, ${a.side === 'landside' ? 'before security' : 'after security'}.`
+    : `${a.name.ro}: ${a.level === 'G' ? 'parter' : 'etajul 1'}, ${a.side === 'landside' ? 'înainte de securitate' : 'după securitate'}.`);
 }
 export interface RouteIndex {
   points: { id: string; name: { ro: string; en: string }; aliases: string[] }[];
@@ -159,21 +164,8 @@ export class RouteImages {
     return { link: url.href, walkSec: entry.walkSec };
   }
 }
-export const LANDMARK_TTL_MS = 10 * 60 * 1000;
-const landmarks = [
-  { id: 'entrance', aliases: ['intrare plecari', 'intrarea plecari', 'departures entrance'] },
-  { id: 'G_CHECKIN_QUEUE', aliases: ['check-in', 'check in'] },
-  { id: 'G_CENTER', aliases: ['hol central', 'central hall'] },
-  { id: 'U_SECURITY_QUEUE', aliases: ['securitate', 'security'] },
-  ...amenities,
-];
-/** Only origin phrases are searched in full sentences; a destination must not become the origin. */
-export function resolveLandmark(text: string, index: RouteIndex | null = null): string | undefined {
-  let t = normalize(text).trim().replace(/[.!?]+$/, '');
-  const origin = /(?:sunt la|sunt in|ma aflu la|de la|din|i am at|i'm at|from|at)\s+(.+)/.exec(t);
-  if (origin) t = origin[1]!.split(/[.!?,;]|\b(?:spre|pana la|to|cum ajung|how)\b/)[0]!.trim();
-  const gate = /^(?:poarta|gate)\s+(\d+)$/.exec(t);
-  if (gate) return `gate_${gate[1]}`;
-  const candidates = [...(index?.points ?? []).map(p => ({ id: p.id, aliases: [p.id, p.name.ro, p.name.en, ...p.aliases] })), ...landmarks];
-  return candidates.find(p => p.id === t || p.aliases.some(a => normalize(a) === t))?.id;
+export { LANDMARK_TTL_MS } from './location.js';
+/** Compatibility signature; the route manifest never supplies place vocabulary. */
+export function resolveLandmark(text: string, _index: RouteIndex | null = null): string | undefined {
+  return resolveOrigin(text)?.id;
 }

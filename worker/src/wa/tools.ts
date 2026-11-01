@@ -1,9 +1,10 @@
+import { placeQuestion, landmarks, landmarkById, resolvePlace, locationChoices, landmarkRoute, positionDescription } from './location.js';
 import { airportInfo, amenities, amenityKind, amenityDescription, resolveLandmark, LANDMARK_TTL_MS, type RouteIndex } from './airport-info.js';
 import { factPatch, lostItemClaim } from './context.js';
 import { flowRow, mapNodeId } from '../../../backend/src/mapIds.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
-import { route, zoneDensities } from '../../../backend/src/routing.js';
-import { terminalGraph, zoneAreas, points, zones } from '../../../backend/src/terminal.js';
+import { route, zoneDensities, FREE_SPEED } from '../../../backend/src/routing.js';
+import { terminalGraph, zoneAreas, zones } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
 import { crowdNote, classifyIssue, classifyReportType, typeForKind, REPORT_TYPES, isIssueKind, matchNode, type Report, type ReportInput } from './reports.js';
@@ -31,6 +32,7 @@ export interface Profile {
   groupSize?: number; needs?: { kids?: boolean; reducedMobility?: boolean; other?: string };
   gate?: string; lastWaitEstimate?: { at: string; totalMin: number };
   position?: { node: string; at: number }; pendingRoute?: { to: string; flight?: string };
+  locationAskedAt?: number; locationCandidate?: string;
   hasCheckedBag?: boolean; lastInboundAt?: number; name?: string;
 }
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
@@ -164,7 +166,12 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
     return { flight: f };
   };
   return {
-    async airportInfo(input: { topic?: string; query?: string }) { return airportInfo(input, profile().lang); },
+    async airportInfo(input: { topic?: string; query?: string }) {
+      const l = placeQuestion(input.query ?? '');
+      if (l) { const nearest = Object.entries(l.nearest).flatMap(([kind, n]) => n ? [{ kind, ...n, name: landmarkById(n.id)?.name[profile().lang === 'en' ? 'en' : 'ro'] }] : []);
+        return { found: true, facts: [{ text: positionDescription(l, profile().lang), official: true, source: 'Plan T2' }], nearest }; }
+      return airportInfo(input, profile().lang);
+    },
     async rememberFact(input: { key?: unknown; value?: unknown }) {
       if (input?.key === 'flight' && typeof input.value === 'string') {
         const r = await resolve(input.value);
@@ -220,8 +227,8 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
         f = r.flight;
       }
       const index = await routeIndex?.() ?? null;
-      if (!['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to)) to = resolveLandmark(to, index) ?? to;
-      if (!['gate', 'check_in', 'exit', ...new Set(amenities.map(a => a.kind))].includes(to) && !amenityKind(to) && !amenities.some(a => a.id === to) && !terminalGraph.nodes.some(n => n.id === mapNodeId(to))) return { error: 'invalid_destination' };
+      if (!['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to)) to = resolvePlace(to)?.id ?? to;
+      if (!['gate', 'check_in', 'exit', ...new Set(amenities.map(a => a.kind))].includes(to) && !amenityKind(to) && !landmarkById(to) && !amenities.some(a => a.id === to) && !terminalGraph.nodes.some(n => n.id === mapNodeId(to))) return { error: 'invalid_destination' };
       const stated = input?.from && (resolveLandmark(input.from, index) ?? (terminalGraph.nodes.some(n => n.id === mapNodeId(input.from!)) ? input.from : undefined));
       if (stated) await save({ position: { node: stated, at: now() } });
       const position = stated ? { node: stated, at: now() } : profile().position;
@@ -230,12 +237,12 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
       const from = stated || stored || (stage === 'gate' ? f?.gate : stage === 'airside' ? 'airside' : undefined);
       if (!from) {
         await save({ pendingRoute: { to, ...(input.flight && { flight: input.flight }) } });
-        return { status: 'needs_location', note: lang === 'en' ? 'Where are you now?' : 'Unde ești acum?',
-          buttons: [
-            { id: 'loc:entrance', title: lang === 'en' ? 'Departures entrance' : 'Intrare plecări' },
-            { id: 'loc:G_CHECKIN_QUEUE', title: 'Check-in' },
-            { id: 'loc:U_DUTY_FREE', title: 'Duty free' },
-          ] };
+        const asked = profile().locationAskedAt;
+        const repeat = asked !== undefined && now() - asked >= 0 && now() - asked < LANDMARK_TTL_MS;
+        if (!repeat) await save({ locationAskedAt: now() });
+        return { status: repeat ? 'awaiting_location' : 'needs_location', note: repeat
+          ? (lang === 'en' ? 'A nearby landmark is enough.' : 'E suficient un reper din apropiere.')
+          : (lang === 'en' ? 'Where are you now?' : 'Unde ești acum?'), buttons: locationChoices(stage ?? 'public', f?.gate, lang) };
       }
       const density = zoneDensities(view.flow(), zoneAreas), blocked = view.blocked?.() ?? [];
       const kind = amenityKind(to);
@@ -244,29 +251,36 @@ export function toolsFor({ view, profile, save, report, reports, pageLink, evacR
       let targets = to === 'gate' ? [f!.gate] : to === 'check_in' ? (f!.checkIn ? [f!.checkIn] : f!.checkInDesks)
         : to === 'exit' ? terminalGraph.nodes.filter(n => n.kind === 'exit').map(n => n.id)
         : amenities.filter(a => (a.kind === kind || a.id === to) && (!originSide || a.side === originSide)).map(a => a.id);
+      const fromLandmark = landmarkById(from);
+      const nearestKey = kind === 'toilet' ? 'wc' : kind === 'food' ? 'food' : kind === 'info' ? 'info' : undefined;
+      const nearest = nearestKey && fromLandmark?.nearest[nearestKey];
+      if (nearest) targets = [nearest.id];
+      if (kind === 'atm' && fromLandmark) targets = landmarks.filter(l => l.id.startsWith('atm_') && landmarkRoute(fromLandmark, l)).map(l => l.id);
+      if (landmarkById(to) && !kind) targets = [landmarkById(to)!.id];
       if (!targets.length && terminalGraph.nodes.some(n => n.id === mapNodeId(to))) targets = [to];
-      // ATM points are not navigation nodes in the shared graph: connect them to the nearest mapped landside area.
-      const extra = amenities.filter(a => !terminalGraph.nodes.some(n => n.id === a.id)).flatMap(a => {
-        const point = points.find(p => p.id === a.id);
-        if (!point) return [];
-        const anchor = terminalGraph.nodes.filter(n => zones.some(z => z.id === n.id && z.side === a.side && z.level === a.level))
-          .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.z) - Math.hypot(b.x - point.x, b.y - point.z))[0];
-        return anchor ? [{ id: a.id, x: point.x, y: point.z, level: a.level, zone: anchor.id, anchor: anchor.id }] : [];
-      });
-      const graph = { ...terminalGraph, nodes: [...terminalGraph.nodes, ...extra], edges: [...terminalGraph.edges, ...extra.map(n => ({ from: n.id, to: n.anchor, walkSec: Math.hypot(n.x - terminalGraph.nodes.find(a => a.id === n.anchor)!.x, n.y - terminalGraph.nodes.find(a => a.id === n.anchor)!.y) / 1.34 }))] };
-      const best = targets.map(id => route(graph, from, id, density, blocked)).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
+      const graph = terminalGraph;
+      const endpointSec = (id: string) => {
+        const l = landmarkById(id), n = l && graph.nodes.find(n => n.id === l.graphNode);
+        return l && n && l.id !== l.graphNode ? Math.hypot(l.x - n.x, l.z - n.y) / FREE_SPEED : 0;
+      };
+      const best = [...new Set(targets.map(id => landmarkById(id)?.id ?? id))].filter(id => !fromLandmark || !landmarkById(id) || landmarkRoute(fromLandmark, landmarkById(id)!)).map(id => {
+        const r = route(graph, fromLandmark?.graphNode ?? from, landmarkById(id)?.graphNode ?? id, density, blocked);
+        return r && { ...r, destinationId: id, totalSec: r.totalSec + endpointSec(from) + endpointSec(id) };
+      }).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
       if (!best) return { status: 'unavailable', note: say(lang, 'noRoute') };
       await save({ pendingRoute: undefined });
-      const minutes = Math.ceil(best.totalSec / 60), destination = best.nodes.at(-1)!;
-      const normal = route(graph, from, destination);
+      const minutes = Math.ceil(best.totalSec / 60), destination = best.destinationId;
+      const normal = route(graph, landmarkById(from)?.graphNode ?? from, landmarkById(destination)?.graphNode ?? destination);
       const rerouted = !normal || normal.nodes.length !== best.nodes.length || normal.nodes.some((n, i) => mapNodeId(n) !== mapNodeId(best.nodes[i]!));
+      if (fromLandmark && fromLandmark.id !== best.nodes[0]) best.nodes.unshift(fromLandmark.id);
+      if (landmarkById(destination) && destination !== best.nodes.at(-1)) best.nodes.push(destination);
       const amenity = amenities.find(a => a.id === destination);
-      const name = (id: string) => amenities.find(a => a.id === id)?.name[lang === 'en' ? 'en' : 'ro'] ?? nodeName(id, lang);
+      const name = (id: string) => landmarkById(id)?.name[lang === 'en' ? 'en' : 'ro'] ?? nodeName(id, lang);
       const walk = lang === 'en' ? `~${minutes} min walking` : `~${minutes} min de mers`;
       const observations = await reports?.() ?? [];
       const staffCrowd = [...new Set(best.nodes.map(zone => crowdNote(observations, zone, lang)).filter(Boolean))];
       const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
-      return { status: 'ready', ...best, rerouted, minutes, from, to: destination, destination: name(destination),
+      return { status: 'ready', ...best, rerouted, minutes, from, to: to === 'gate' ? f!.gate : destination, destination: name(destination),
         steps: best.nodes.map(name), staffCrowd, note: [note, ...staffCrowd].join(' '), ...(pageLink && profile().flight && { link: await pageLink() }) };
     },
     async reportLostItem(input: { text?: string }) {

@@ -77,7 +77,7 @@ export function parseWebhook(payload: any, phoneNumberId?: string): InboundMessa
         const phone = normalizePhone(`+${m?.from}`);
         if (!phone || typeof m.id !== 'string' || m.type === 'reaction') continue;
         const name = v.contacts?.find((c: any) => c.wa_id === m.from)?.profile?.name || '';
-        out.push({ id: m.id, phone, name, type: m.type ?? 'text', text: textOf(m), ...(m.type === 'image' && typeof m.image?.id === 'string' && { photo: `wa:${m.image.id}` }), replyId: m.interactive?.button_reply?.id ?? null, at: Number(m.timestamp) * 1000 || Date.now() });
+        out.push({ id: m.id, phone, name, type: m.type ?? 'text', text: textOf(m), ...(m.type === 'image' && typeof m.image?.id === 'string' && { photo: `wa:${m.image.id}` }), replyId: m.interactive?.button_reply?.id ?? m.interactive?.list_reply?.id ?? null, at: Number(m.timestamp) * 1000 || Date.now() });
       }
     }
   }
@@ -193,6 +193,10 @@ export class WhatsAppClient {
       messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'interactive',
       interactive: { type: 'button', body: { text: body }, action: { buttons: buttons.map(({ id, title }) => ({ type: 'reply', reply: { id, title } })) } },
     });
+  }
+  sendList(phone: string, body: string, rows: { id: string; title: string }[], label = 'Repere') {
+    return this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'interactive',
+      interactive: { type: 'list', body: { text: body }, action: { button: label, sections: [{ rows: rows.slice(0, 10) }] } } });
   }
   sendReaction(phone: string, messageId: string, emoji: string) {
     return this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'reaction', reaction: { message_id: messageId, emoji } });

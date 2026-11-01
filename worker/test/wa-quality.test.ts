@@ -98,7 +98,7 @@ describe('WhatsApp passenger quality regressions', () => {
     h.sends.length = 0;
     await h.receive('Intrare plecări', 'loc:entrance');
     expect(h.sends.some(s => s.text?.body?.includes('min de mers'))).toBe(true);
-    expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('entrance');
+    expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('door_departures');
   });
   it('8: missing index, missing route and present route attach/skip without disrupting text', async () => {
     const live = await tools().tools.routeTo!({ to: 'toilet', from: 'Hol central' }) as any;
@@ -109,7 +109,7 @@ describe('WhatsApp passenger quality regressions', () => {
       expect(h.sends.some(s => s.text?.body?.includes('Toalete'))).toBe(true);
       if (images.length) {
         expect(h.sends.at(-1)).toBe(images[0]);
-        expect(images[0].image).toEqual({ link: 'https://site.test/routes/toilet.png', caption: 'Toalete · ~1 min' });
+        expect(images[0].image).toEqual({ link: 'https://site.test/routes/toilet.png', caption: 'Toalete parter · ~1 min' });
       }
     }
   });
@@ -149,10 +149,10 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/evac.png']);
     expect(h.sends.findIndex(s => s.type === 'text')).toBeLessThan(h.sends.findIndex(s => s.type === 'image'));
   });
-  it('8: caches indexes, accepts aliases, and handles network and malformed indexes', async () => {
+  it('8: caches indexes, uses catalogue aliases, and handles network and malformed indexes', async () => {
     const fetcher = vi.fn(async () => Response.json({ points: [{ id: 'G_CENTER', name: { ro: 'Hol central', en: 'Central hall' }, aliases: ['lobby'] }], routes: {} }));
     const images = new RouteImages('https://site.test', fetcher);
-    expect(resolveLandmark('I am at lobby', await images.index())).toBe('G_CENTER');
+    expect(resolveLandmark('I am at main hall', await images.index())).toBe('G_CENTER');
     await images.image('a', 'b'); expect(fetcher).toHaveBeenCalledTimes(1);
     expect(await new RouteImages('https://site.test', async () => { throw Error('offline'); }).image('a', 'b')).toBeNull();
     expect(await new RouteImages('https://site.test', async () => Response.json({ points: [null], routes: {} })).index()).toBeNull();
@@ -203,8 +203,8 @@ describe('WhatsApp passenger quality regressions', () => {
     expect((await h.agent.profile('+40712345678'))?.position?.node).toBe('G_CENTER');
     expect(h.sends.some(s => s.text?.body?.startsWith('Hol central →'))).toBe(true);
     h.sends.length = 0;
-    await h.receive('I am at lobby, how do I get to my gate?');
-    expect(h.sends.some(s => s.text?.body?.startsWith('Central hall →'))).toBe(true);
+    await h.receive('I am at main hall, how do I get to my gate?');
+    expect(h.sends.some(s => s.text?.body?.startsWith('Main hall →'))).toBe(true);
     expect(h.sends.some(s => /from the entrance|de la intrare/i.test(s.text?.body ?? ''))).toBe(false);
   });
   it('11: a model cannot replace the stated origin with entrance in the tool or route text', async () => {

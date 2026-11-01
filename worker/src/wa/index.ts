@@ -1,3 +1,4 @@
+import { resolveOrigin, locationCandidate, landmarkById } from './location.js';
 import { staffAssignment } from './staff.js';
 import { mapNodeId } from '../../../backend/src/mapIds.js';
 import { zoneDensities, route } from '../../../backend/src/routing.js';
@@ -197,12 +198,12 @@ export class WhatsAppAgent {
     const graph = async (body: Record<string, unknown>) => {
       const result = channel === 'web' ? { ok: true } : await this.wa.graph(body);
       if (result.ok) {
-        const interactive = body.interactive as { body?: { text: string }; action?: { buttons: { reply: { id: string; title: string } }[] } } | undefined;
+        const interactive = body.interactive as { body?: { text: string }; action?: { buttons?: { reply: { id: string; title: string } }[]; sections?: { rows: { id: string; title: string }[] }[] } } | undefined;
         const image = body.image as { link: string; caption: string } | undefined;
         const reaction = body.reaction as { emoji?: string } | undefined;
         const text = (body.text as { body?: string } | undefined)?.body ?? interactive?.body?.text ?? image?.caption ?? (reaction?.emoji ? `[react]${reaction.emoji}` : undefined);
         if (text) output.push({ id: crypto.randomUUID(), role: 'clarion', text: redact(text), at: clockText(this.view.clock().now), timestamp: Date.now(), channel,
-          ...(interactive && { buttons: interactive.action?.buttons.map(b => b.reply) }), ...(image && { image: image.link }) } as ChatEntry);
+          ...(interactive && { buttons: interactive.action?.buttons?.map(b => b.reply) ?? interactive.action?.sections?.flatMap(s => s.rows) }), ...(image && { image: image.link }) } as ChatEntry);
       }
       return result;
     };
@@ -336,7 +337,11 @@ export class WhatsAppAgent {
         draft.node ??= mentioned ?? resolveLandmark(m.text, index) ?? matchNode(m.text, this.view.flights()) ?? undefined;
         if (!draft.text && !/^(raportează|raporteaza|raport|report)[.! ]*$/i.test(m.text)) draft.text = m.text;
       }
-      if (profile.role === 'staff' && draft.type === 'crowd') draft.node ??= profile.zone;
+      if (profile.role === 'staff' && draft.type === 'crowd') {
+        draft.node ??= profile.zone;
+        // A general security crowd report concerns its queue, rather than the control lanes.
+        if (draft.node === 'U_SECURITY' && !/benzi|lanes|scanner/i.test(m.text)) draft.node = 'U_SECURITY_QUEUE';
+      }
       await this.store.put(reportKey, draft);
       if (!draft.type) {
         const names = en ? ['Security', 'Medical', 'Cleaning', 'Lost item', 'Crowd', 'Other'] : ['Securitate', 'Medical', 'Curățenie', 'Obiect pierdut', 'Aglomerare', 'Altele'];
@@ -372,10 +377,32 @@ export class WhatsAppAgent {
       text = say(profile.lang, m.replyId === 'bag:yes' ? 'bagQueryYes' : 'bagQueryNo');
     }
 
-    const landmark = m.replyId?.startsWith('loc:') ? m.replyId.slice(4) : resolveLandmark(text, /sunt|aflu|from|at |check|duty|hol|poart|gate|intrare|entrance/i.test(text) ? await this.images.index() : null);
-    const statedLandmark = landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text)) ? landmark : undefined;
-    if (statedLandmark) await save({ position: { node: statedLandmark, at: this.view.clock().now * 1000 } });
-    const pending = landmark ? profile.pendingRoute : undefined;
+    if (m.replyId === 'loc:other') {
+      await transport.sendText(m.phone, profile.lang === 'en' ? 'Which nearby landmark?' : 'Ce reper ai în apropiere?');
+      return;
+    }
+    if (m.replyId === 'loc:no') {
+      await save({ locationCandidate: undefined });
+      await transport.sendText(m.phone, profile.lang === 'en' ? 'Which nearby landmark?' : 'Ce reper ai în apropiere?');
+      return;
+    }
+    const landmark = m.replyId === 'loc:yes' ? profile.locationCandidate
+      : m.replyId?.startsWith('loc:') ? landmarkById(m.replyId.slice(4))?.id ?? resolveLandmark(m.replyId.slice(4))
+      : resolveOrigin(text)?.id;
+    if (!landmark && profile.pendingRoute) {
+      const candidate = /\b(unde|where|cum|how|nearest|closest)\b|\?/.test(text.toLowerCase()) ? undefined : locationCandidate(text);
+      if (candidate) {
+        await save({ locationCandidate: candidate.id });
+        await transport.sendButtons(m.phone, profile.lang === 'en'
+          ? `Near ${candidate.name.en}, ${candidate.level === 'G' ? 'ground floor' : 'first floor'}?`
+          : `Lângă ${candidate.name.ro}, ${candidate.level === 'G' ? 'la parter' : 'la etaj'}?`,
+          [{ id: 'loc:yes', title: profile.lang === 'en' ? 'Yes' : 'Da' }, { id: 'loc:no', title: profile.lang === 'en' ? 'No' : 'Nu' }]);
+        return;
+      }
+    }
+    const statedLandmark = landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt|ma aflu|from |i am|i'm/i.test(text) || m.replyId?.startsWith('loc:')) ? landmark : undefined;
+    if (statedLandmark) await save({ position: { node: statedLandmark, at: this.view.clock().now * 1000 }, locationCandidate: undefined });
+    const pending = statedLandmark ? profile.pendingRoute : undefined;
     await save(extractFacts(redact(text)));
     const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';
     if (/bagaj de cală|checked baggage/i.test(lastQuestion) && /^(da|nu|yes|no)[.! ]*$/i.test(text.trim())) {
@@ -412,11 +439,11 @@ export class WhatsAppAgent {
       return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
     })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
     const { used } = answer;
-    const bubbles = ((routeResult?.status === 'needs_location' || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
+    const bubbles = ((['needs_location', 'awaiting_location'].includes(routeResult?.status) || (!urgent && routeResult?.status === 'ready')) ? [routeResult.note, ...(routeResult.link ? [routeResult.link] : [])] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await transport.sendReaction(m.phone, m.id, '');
     const bagChoice = profile.hasCheckedBag === undefined && bubbles.some(b => b.includes(say(profile.lang, 'bagQuestion')));
     const delivered = routeResult?.status === 'needs_location'
-      ? (await transport.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
+      ? (await transport.sendList(m.phone, routeResult.note, routeResult.buttons, profile.lang === 'en' ? 'Landmarks' : 'Repere')).ok
       : bagChoice ? await (async () => {
         const short = bubbles.flatMap(b => passengerBubbles(b));
         const prompt = short.find(b => b.includes(say(profile.lang, 'bagQuestion')))!;
@@ -440,7 +467,7 @@ export class WhatsAppAgent {
         } else {
           const blocked = [...(this.view.blocked?.() ?? []), ...Object.entries(zoneDensities(this.view.flow(), zoneAreas)).filter(([, density]) => density >= 5.4).map(([zone]) => zone)];
           const image = await this.images.image(routeResult.from, routeResult.to, routeResult, blocked);
-          if (image) await transport.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
+          if (image) await transport.sendImage(m.phone, image.link, `${routeResult.destination} · ~${routeResult.minutes} min`);
         }
       } catch { /* Text delivery must never depend on a preview. */ }
     }

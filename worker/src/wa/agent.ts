@@ -1,4 +1,5 @@
-import { isAirportQuestion, amenityKind, resolveLandmark } from './airport-info.js';
+import { resolvePlace, originPhrase } from './location.js';
+import { isAirportQuestion, amenityKind } from './airport-info.js';
 import { lostItemClaim, HISTORY_CAP, HISTORY_KEEP, SUMMARY_MAX, plainSummary, type PassengerContext } from './context.js';
 import { urgentText, staffIncident, urgentBubbles, urgentResult } from './urgency.js';
 import { say, passengerText, queueText, type Lang } from './texts.js';
@@ -332,6 +333,8 @@ export async function reply({ env, fetcher, profile, clock, history, memory, tex
     const result = await trackedTools.reportLostItem!({ text }) as any;
     return finish([result.note ?? say(profile.lang, 'fallback')]);
   }
+  // Location/route requests use the same deterministic catalogue on every channel.
+  if (profile.role === 'passenger' && /unde|where|cum ajung|how.*get|nearest|closest/i.test(text) && (resolvePlace(text) || amenityKind(text))) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   if (!hasLlm(env)) return finish(await fallbackReply(text, trackedTools, used, profile.role, profile.lang));
   try {
     const context = contextBlock(profile, clock, memory);
@@ -360,8 +363,14 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     if (r.type === 'crowd') return [r.note];
     return [say(lang, 'staffReport', r.id, r.kind, r.place, r.note)];
   }
-  if (amenityKind(text) && !/price|cost|pret|program|hours|open|inchid|deschid/.test(t)) {
-    const r = await call('routeTo', { to: amenityKind(text), ...(/sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text) && { from: text }) });
+  const destinationText = originPhrase(text) ? text.split(/cum ajung|cum merg|how (?:do i |can i )?get/i).at(-1)! : text;
+  const named = resolvePlace(destinationText);
+  if (named && /unde (?:e|este)|where is/.test(t) && (!amenityKind(destinationText) || /gourmet|duty|bcr|euronet|etaj|parter|upstairs|downstairs/i.test(destinationText))) {
+    const r = await call('airportInfo', { query: destinationText });
+    return r.facts.map((f: any) => f.text).concat((r.nearest ?? []).map((n: any) => `${n.name}: ~${Math.ceil(n.walkSec / 60)} min`));
+  }
+  if (amenityKind(destinationText) && !/price|cost|pret|program|hours|open|inchid|deschid/.test(t)) {
+    const r = await call('routeTo', { to: amenityKind(destinationText), ...(originPhrase(text) && { from: text }) });
     return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
   }
   if (isAirportQuestion(text)) {
@@ -379,7 +388,7 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
   };
   if (/(route|exit|trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire|how.*get|way to)/.test(t)) {
     const destination = /(?:ajung|merg|route|traseu|get|way)[^?]*?(?:la|to)\s+([^?.]+)/i.exec(text)?.[1];
-    const r = await call('routeTo', { from: text, to: (destination && resolveLandmark(destination)) || (/exit|ieșire|iesire/.test(destination ?? t) ? 'exit' : /check|ghișeu|ghiseu/.test(destination ?? t) ? 'check_in' : 'gate'), ...(code && { flight: code }) });
+    const r = await call('routeTo', { from: text, to: (destination && resolvePlace(destination)?.id) || (/exit|ieșire|iesire/.test(destination ?? t) ? 'exit' : /check|ghișeu|ghiseu/.test(destination ?? t) ? 'check_in' : 'gate'), ...(code && { flight: code }) });
     if (noFlight(r)) return [askFlight];
     return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
   }
