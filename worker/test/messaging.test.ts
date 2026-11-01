@@ -78,6 +78,7 @@ describe('passenger page profiles', () => {
     expect(await offline.notify(sub, { kind: 'admin', text: 'Unsent' })).toBe('rate_limited');
     expect((await offline.passenger(token))?.alerts).toHaveLength(1);
     await h.m.plan({ id: 'page-evac', blocked: ['security'], clearSec: 10, exits: [], routes: [{ from: 'entrance', exit: 'exit_1', nodes: ['entrance', 'exit_1'] }] });
+    view.blocked = () => ['security'];
     // D33: the page shows the exit route for his estimated place.
     expect((await offline.passenger(token))?.evacuation).toEqual({ active: true, zones: ['security'],
       route: { exit: 'Ieșirea 1', steps: ['Intrarea', 'Ieșirea 1'] } });

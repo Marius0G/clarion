@@ -448,10 +448,9 @@ export class WhatsAppAgent {
       })() : await transport.sendReplies(m.phone, bubbles, m.id);
     if (delivered && ['ready', 'evacuation'].includes(routeResult?.status)) {
       try {
-        const evacuation = await this.store.get<{ active: boolean; zones: string[] }>('msg:evacuation');
-        const blockedZones = this.view.blocked?.() ?? [];
-        const evacuationZones = evacuation?.active ? evacuation.zones.filter(zone => blockedZones.some(blocked => mapNodeId(blocked) === mapNodeId(zone))) : [];
-        if (evacuationZones.length || routeResult.status === 'evacuation') {
+        const evacuation = await this.messaging.activeEvacuation();
+        const evacuationZones = evacuation?.zones ?? [];
+        if (evacuation) {
           const live = await this.messaging.evacRouteFor(profile.flight ? findFlight(this.view.flights(), profile.flight) : undefined);
           const candidates = [routeResult.from, ...evacuationZones];
           for (const zone of candidates) {

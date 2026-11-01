@@ -213,10 +213,22 @@ export class Messaging {
       evacuation,
     };
   }
+  /** Stored evacuations end when none of their zones remain blocked in the live sim. */
+  async activeEvacuation() {
+    const state = await this.deps.store.get<{ active: boolean; zones: string[]; reopenInMin?: number | null }>('msg:evacuation');
+    if (!state?.active) return null;
+    const blocked = this.deps.view.blocked?.() ?? [];
+    const zones = state.zones.filter(zone => blocked.some(b => mapNodeId(b) === mapNodeId(zone)));
+    if (!zones.length) {
+      await this.deps.store.put('msg:evacuation', { active: false, zones: [] });
+      return null;
+    }
+    return { ...state, zones };
+  }
   /** D33: during an evacuation the page shows the exit route for his estimated place, or that he should not come yet. */
   private async evacuationFor(s: { sub: Subscriber; hasCheckedBag?: boolean }, f: Flight, lang?: Lang): Promise<PassengerData['evacuation']> {
-    const state = await this.deps.store.get<{ active: boolean; zones: string[]; reopenInMin?: number | null }>('msg:evacuation');
-    if (!state?.active) return { active: false, zones: [] };
+    const state = await this.activeEvacuation();
+    if (!state) return { active: false, zones: [] };
     const now = this.deps.view.clock().now;
     const plan = await this.deps.store.get<EvacPlan>('msg:evacPlan');
     const r = plan?.routes.length ? routeFor(plan, f, now) : await this.fallbackRoute(s.sub, f);
@@ -615,7 +627,7 @@ export class Messaging {
   }
   /** routeTo('exit') during an evacuation: the latest plan's route for this flight's estimated stage; null once nothing is blocked. */
   async evacRouteFor(f: Flight | undefined): Promise<EvacRoute | null> {
-    if (!(this.deps.view.blocked?.() ?? []).length) return null;
+    if (!await this.activeEvacuation()) return null;
     const p = await this.deps.store.get<EvacPlan>('msg:evacPlan');
     return p?.routes.length ? routeFor(p, f, this.deps.view.clock().now) : null;
   }

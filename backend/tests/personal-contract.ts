@@ -188,8 +188,18 @@ export function personalContract() {
       const old = await h.login('+40712345679', { position: { node: 'U_CAFE', at: now - 2 * 3600_000 } })
       expect((await (await h.call('/api/me', old))!.json() as any).here).toBeUndefined()
     });
+    it.each([{ blocked: [] }, { blocked: ['G_CAFE'] }])('ends stale evacuation on /api/me with blocked zones $blocked', async ({ blocked }) => {
+      const h = setup(), session = await h.login();
+      if (blocked.length) h.sim.sent({ type: 'evacuate', zones: blocked });
+      await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+      const data = await (await h.call('/api/me', session))!.json() as any;
+      expect(data.evacuation).toEqual({ active: false, zones: [] });
+      expect(data.routeImage).toMatch(/\/routes\/door_departures__U_GATE_2.png$/);
+      expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
+    });
     it('uses only exit imagery and the assembly point during evacuation', async () => {
       const h = setup(), session = await h.login();
+      h.sim.sent({ type: 'evacuate', zones: ['security'] });
       await h.agent.messaging.plan({ id: 'E1', blocked: ['security'], clearSec: 30,
         exits: [{ exit: 'door_emergency_east', people: 1, clearSec: 30 }],
         routes: [{ from: 'G_CHECKIN_DESKS', exit: 'door_emergency_east', nodes: ['G_CHECKIN_DESKS', 'G_CAFE', 'door_emergency_east'], assembly: 'ASSEMBLY_LANDSIDE_EAST' }] });

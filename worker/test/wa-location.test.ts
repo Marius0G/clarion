@@ -121,12 +121,19 @@ describe('catalogue location conversation', () => {
     const images = channel === 'web' ? entries.filter(e => e.image).map(e => e.image) : h.sends.filter(s => s.type === 'image').map(s => s.image.link);
     expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
   });
-  it.each([{ blocked: [] }, { blocked: ['G_CAFE'] }])('ignores stale evacuation state when its zones are no longer blocked ($blocked)', async ({ blocked }) => {
-    const h = harness(manifest, blocked);
-    await h.store.put('msg:evacuation', { active: true, zones: ['G_INFO'] });
-    h.advance(3600);
-    await h.receive('Unde e toaleta? Sunt la Hol central.');
-    expect(h.sends.filter(s => s.type === 'image').map(s => s.image.link)).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
+  it.each(['whatsapp', 'web'] as const)('ends stale evacuation state and uses normal images on %s', async channel => {
+    for (const blocked of [[], ['G_CAFE']]) {
+      const h = harness(manifest, blocked);
+      await h.store.put('msg:evacuation', { active: true, zones: ['G_CENTER'] });
+      await h.store.put('msg:evacPlan', { id: 'stale', blocked: ['G_CENTER'], clearSec: 10, exits: [], routes: [{ from: 'G_CENTER', exit: 'door_exit_west', nodes: ['G_CENTER', 'door_exit_west'] }] });
+      h.advance(3600);
+      const text = 'Unde e toaleta? Sunt la Hol central.';
+      const entries = channel === 'web' ? await h.agent.chat(phone, text) : (await h.receive(text), []);
+      const images = channel === 'web' ? entries.filter(e => e.image).map(e => e.image) : h.sends.filter(s => s.type === 'image').map(s => s.image.link);
+      expect(images).toEqual(['https://site.test/routes/G_CENTER__G_WC.png']);
+      expect(await h.store.get('msg:evacuation')).toEqual({ active: false, zones: [] });
+      expect(await h.agent.messaging.evacRouteFor(undefined)).toBeNull();
+    }
   });
   it('shares list rows as web history chips, including Other and free text', async () => {
     const h = harness(), entries = await h.agent.chat(phone, 'unde e toaleta');

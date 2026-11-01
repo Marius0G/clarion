@@ -18,7 +18,8 @@ it.each([
 ] as const)('shares %s fallback routes, assembly and images between WhatsApp and /m', async (_name, simTime, position, from, side) => {
   const store = new Store(), sent: any[] = [];
   const f = { flight: 'W4 3625', airline: 'W4', destination: 'Birmingham', std: 60000, gateCloseAt: 59400, gate: 'gate_3', checkIn: 'check_in:1', checkInDesks: [], status: 'scheduled', delayMin: 0, pax: 193 };
-  const view = airportView({ snapshot: () => ({ simTime, flights: [f], flow: {}, blocked: [] }) }, () => true);
+  const blocked = [simTime === 59200 ? 'gate_3' : simTime === 58000 ? 'airside' : 'check_in:1'];
+  const view = airportView({ snapshot: () => ({ simTime, flights: [f], flow: {}, blocked }) }, () => true);
   const expected = evacuationRoute(from)!;
   expect(exitSide(expected.exit)).toBe(side);
   const agent = new WhatsAppAgent({ APP_URL: 'https://passenger.example', WA_TOKEN: 't', WA_PHONE_NUMBER_ID: 'PN' }, store, view,
@@ -30,7 +31,7 @@ it.each([
   await store.put(`wa:profile:${phone}`, { phone, role: 'passenger', flight: f.flight, lang: 'ro', ...(position && { position }) });
   await store.put(`wa:last:${phone}`, Date.now()); await agent.messaging.addPhone(phone);
   const token = (await agent.messaging.pageLink({ channel: 'whatsapp', phone })).split('/').at(-1)!;
-  await agent.messaging.evacuate([], 'fallback');
+  await agent.messaging.evacuate(blocked, 'fallback');
   const text = sent.filter(b => b.type === 'text').map(b => b.text.body).join(' ');
   expect(text).toContain(`Ieși pe ${nodeName(expected.exit)}`);
   expect(text).toContain(`Punct de adunare: ${nodeName(expected.assembly)}`);
