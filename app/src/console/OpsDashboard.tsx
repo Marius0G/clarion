@@ -163,7 +163,7 @@ export function OpsDashboard() {
       }} onMouseLeave={() => setHovered(null)}>
         <TerminalMap level={floor} views={views} selected={hovered ? (GROUP.test(hovered) ? groupZone(hovered) : hovered) : mapSelected} onZone={openZone} dots={dots} testIdPrefix="zone-"
           focus={mapSelected} wheelZoom keys describe={describe}
-          markers={pins.map(p => ({ id: p.id, at: p.at, level: p.level, label: p.etaMin != null ? `${p.text} · echipa în ~${p.etaMin} min` : p.text }))} />
+          markers={pins.map(p => ({ id: p.id, at: p.at, level: p.level, label: [p.text, p.etaMin != null && `echipa în ~${p.etaMin} min`, p.policeEtaMin != null && `poliția în ~${p.policeEtaMin} min`].filter(Boolean).join(' · ') }))} />
       </div>
 
       <aside className="ops-rail" aria-label="Operațiuni">
@@ -178,9 +178,10 @@ export function OpsDashboard() {
             <button onClick={() => { setDismissed(d => [...d, `${recommendation.id}:${recommendation.line.action!.label}`]); setRejections(r => [...r, { key: `rejected-${Date.now()}`, at: Date.now(), label: `${recommendation.name} · ${recommendation.line.action!.label}` }]) }}>Respinge</button>
           </> : <p>Fără recomandări</p>}
         </section>
+        {/* D18 beat 2: the accuracy card sits right under the advice so it stays on screen at 1536×960 even with alerts. */}
+        <AccuracyCard plan={plan} sim={sim} onZone={id => openZone(byId.has(id) ? id : mapNodeId(id))} />
         <AlertList alerts={alerts} simTime={sim?.simTime ?? null} onZone={id => openZone(byId.has(id) ? id : alertMapZone(id))} onCommand={commandAlert} />
         <CameraStrip zoneName={id => byId.get(id)?.name ?? byId.get(mapNodeId(id))?.name ?? id} onHover={setHovered} />
-        <AccuracyCard plan={plan} sim={sim} onZone={id => openZone(byId.has(id) ? id : mapNodeId(id))} />
         <section aria-label="Zone"><h2>Zone</h2><p>Bară: acum · | țintă · ○ +30 · ◉ +60</p>
           {ordered.filter(z => z.state !== 'normal' || z.id === active).map(z => {
             const row = liveRow(sim, z.id), target = waitTarget(z), scale = target == null ? null : bulletScale(z.waitMin, target, row)
@@ -204,7 +205,7 @@ export function OpsDashboard() {
           {(sim?.flights ?? []).map(f => <tr key={f.flight}><td>{flightTime(f.std)}</td><td>{f.flight}</td><td>{f.destination}</td><td>{f.gate ?? '—'}</td><td className={f.status === 'delayed' || f.status === 'cancelled' ? 'p2' : ''}>{f.status === 'delayed' || f.status === 'cancelled' ? '▲ P2 ' : ''}{{ scheduled: 'Programat', boarding: 'Îmbarcare', delayed: 'Întârziat', cancelled: 'Anulat', departed: 'Plecat' }[f.status]}</td></tr>)}
         </tbody></table></section>
         <section aria-label="Jurnal" data-testid="journal"><h2>Jurnal</h2>
-          {[...alerts.map(a => ({ key: `alert:${a.id}`, at: a.updatedAt, pending: alertPresentation(a, sim?.simTime ?? null).needsAck, content: <><b className={a.priority.toLowerCase()}>{alertSymbols[a.priority]} {a.priority} · {a.text}</b><p>{simClock(a.updatedAt)} · {alertPresentation(a, sim?.simTime ?? null).label}</p><p>{a.zoneId ?? a.flight} · {alertNumbers(a)}</p>{a.state === 'shelved' && <p>{a.shelveReason} · {simClock(a.shelvedUntil)}</p>}</> })), ...rejections.map(r => ({ ...r, content: <><b>{r.label}</b><p>Respins · Recomandare</p></>, pending: false })), ...reports.map(r => ({ key: r.id, at: Date.parse(r.at), content: <><b>{r.text}</b><p>{r.node} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}{r.etaMin != null && ` · echipa în ~${r.etaMin} min`}</p></>, pending: r.status !== 'acked' })), ...history.map(c => {
+          {[...alerts.map(a => ({ key: `alert:${a.id}`, at: a.updatedAt, pending: alertPresentation(a, sim?.simTime ?? null).needsAck, content: <><b className={a.priority.toLowerCase()}>{alertSymbols[a.priority]} {a.priority} · {a.text}</b><p>{simClock(a.updatedAt)} · {alertPresentation(a, sim?.simTime ?? null).label}</p><p>{a.zoneId ?? a.flight} · {alertNumbers(a)}</p>{a.state === 'shelved' && <p>{a.shelveReason} · {simClock(a.shelvedUntil)}</p>}</> })), ...rejections.map(r => ({ ...r, content: <><b>{r.label}</b><p>Respins · Recomandare</p></>, pending: false })), ...reports.map(r => ({ key: r.id, at: Date.parse(r.at), content: <><b>{r.text}</b><p>{r.node} · {r.status === 'acked' ? 'Confirmat' : 'Neconfirmat'}{r.etaMin != null && ` · echipa în ~${r.etaMin} min`}{r.policeEtaMin != null && ` · poliția în ~${r.policeEtaMin} min`}</p></>, pending: r.status !== 'acked' })), ...history.map(c => {
             const state = taskState(c.command, c.status, sim, c.evidence, done.has(c.key) ? 'done' : undefined)
             const id = c.command.type === 'evacuate' ? c.command.zones[0] : c.command.type === 'redirect' ? c.command.from : c.command.zone
             return { key: c.key, at: c.at, pending: state === 'sent', content: <><b>{c.label}</b><p>{state === 'done' ? 'Făcut' : commandStatusLabels[state as CommandStatus]} · {executor(c.command)}</p><p>Camere: {minutes(liveRow(sim, id)?.waitMin ?? null)} · Fără acțiune: {minutes(noActionWait(c.evidence, sim?.simTime))}</p>{c.command.type === 'evacuate' && <fieldset><legend>Pași operaționali</legend>{['Alarmă', 'Anunț', 'Verificare', 'Numărătoare la adunare'].map(step => <label key={step}><input type="checkbox" />{step}</label>)}</fieldset>}</> }
