@@ -8,6 +8,8 @@ Crowd control pentru Aeroportul Craiova. Clarion urmărește aglomerația din te
 
 Proiect pentru provocarea CONTROL TOWER, Craiova Hackathon 2026. Specul echipei: [`docs/SPEC-v2.md`](docs/SPEC-v2.md).
 
+**Materialele proiectului, pe Google Drive:** (the team's Google Drive, private)
+
 ## Cum funcționează
 
 ```
