@@ -6,7 +6,7 @@ import { type WaEvent } from './events.js';
 import { consumeJoin } from '../join.js';
 import { urgentText } from './urgency.js';
 
-interface Step { text: string; tool?: string; unknown?: boolean; evacuate?: boolean; urgent?: boolean }
+interface Step { text: string; replyId?: string; tool?: string; unknown?: boolean; evacuate?: boolean; urgent?: boolean }
 // Private fixture for built-in scripts only; never inserted into the Tower schedule.
 const LAB_FLIGHT: Flight = { flight: 'W6 3751', airline: 'W6', destination: 'Londra Luton',
   std: 10 * 3600, gateCloseAt: 9.5 * 3600, gate: 'gate_2', checkIn: 'check_in:1',
@@ -24,7 +24,8 @@ export const SCRIPTS: Record<string, Step[]> = {
   arrival: [start, { text: 'Când să plec spre aeroport?', tool: 'whenToArrive' }],
   gate: [start, { text: 'Care este poarta mea?', tool: 'myFlight' }],
   route: [start, { text: 'Cum ajung la poartă?', tool: 'routeTo' }],
-  toilet: [{ text: 'Unde e toaleta? Sunt la Hol central.', tool: 'routeTo' }],
+  toilet: [{ text: 'unde e toaleta', tool: 'routeTo' }, { text: 'Hol central', replyId: 'loc:G_CENTER', tool: 'routeTo' }],
+  atmGate: [{ text: 'sunt lângă bancomat, cum ajung la poarta 3', tool: 'routeTo' }],
   food: [{ text: 'English' }, { text: 'Where can I eat? I am at Duty free.', tool: 'routeTo' }],
   landmarkRoute: [start, { text: 'Sunt la Hol central. Cum ajung la poartă?', tool: 'routeTo' }],
   airportInfo: [{ text: 'Cât costă parcarea la aeroport?', tool: 'airportInfo' }],
@@ -36,7 +37,7 @@ export const SCRIPTS: Record<string, Step[]> = {
 };
 export const MAX_BUBBLES = 8;
 export const MAX_BUBBLE_CHARS = 180;
-export interface LabTurn { user: string; replies: string[]; tools: string[]; ms: number; lang: 'ro' | 'en'; urgent?: boolean; evacuate?: boolean; expectedTool?: string; unknown?: boolean; errors?: string[] }
+export interface LabTurn { images?: { link: string; caption: string }[]; user: string; replies: string[]; tools: string[]; ms: number; lang: 'ro' | 'en'; urgent?: boolean; evacuate?: boolean; expectedTool?: string; unknown?: boolean; errors?: string[] }
 export interface Violation { turn: number; rule: string; detail: string }
 const emoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3/u;
 const normalize = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -143,9 +144,9 @@ async function runScript(env: WaEnv, view: AirportView, steps: Step[], keep: boo
         inbound += ` ${token}`;
       }
       if (step.evacuate) await agent.messaging.evacuate(['security'], `lab-${crypto.randomUUID()}`);
-      else await agent.receive({ id: `lab-${crypto.randomUUID()}`, phone, name: '', type: 'text', text: inbound, replyId: null, at });
+      else await agent.receive({ id: `lab-${crypto.randomUUID()}`, phone, name: '', type: 'text', text: inbound, replyId: step.replyId ?? null, at });
       const replies = sends.flatMap(b => b.type === 'text' ? [b.text.body] : b.type === 'interactive' ? [b.interactive.body.text] : b.type === 'reaction' ? [`[react]${b.reaction.emoji}`] : []);
-      transcript.push({ user: step.text, replies, tools: events.flatMap(e => e.tools ?? []), ms: Date.now() - at,
+      transcript.push({ user: step.text, images: sends.filter(b => b.type === 'image').map(b => b.image), replies, tools: events.flatMap(e => e.tools ?? []), ms: Date.now() - at,
         lang: expectedLang, urgent: step.urgent, evacuate: step.evacuate, expectedTool: step.tool, unknown: step.unknown,
         errors: events.filter(e => e.kind === 'agent-error').map(e => e.text ?? 'Agent error') });
     }
