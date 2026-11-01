@@ -55,7 +55,7 @@ describe('airport questions in the agent', () => {
     const missing = await fallbackReply('Wi-Fi password?', tools(lang), [], 'passenger', lang);
     expect(missing[0]).toContain(lang === 'en' ? "I don't know" : 'Nu știu');
     const cafes = await fallbackReply(lang === 'en' ? 'coffee' : 'cafea', tools(lang), [], 'passenger', lang);
-    expect(cafes.join(' ')).toContain(lang === 'en' ? 'Unconfirmed' : 'Neconfirmat');
+    expect(cafes.join(' ')).toContain(lang === 'en' ? 'Where are you now?' : 'Unde ești acum?');
   });
   it('keeps live queue questions on the queue tool', async () => {
     const used: string[] = [];

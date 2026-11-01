@@ -35,10 +35,10 @@ describe('pitch: the gate and the walk from security', () => {
     const view: AirportView = { clock: () => ({ now: hm(7, 0), sim: true }), flow: () => ({}), flights: () => fromSim([row]), provisional: () => false, blocked: () => [] };
     let profile: Profile = { phone: '+40712345678', role: 'passenger', flight: 'W6 3751' };
     const tools = toolsFor({ view, profile: () => profile, save: async p => { profile = { ...profile, ...p }; } });
-    const r = await tools.routeTo!({ to: 'gate' }) as any;
-    expect(r.fromSecurityMin).toBeGreaterThan(0);
-    expect(r.note).toContain(`De la securitate la poarta 2 faci ~${r.fromSecurityMin} min.`);
+    const r = await tools.routeTo!({ to: 'gate', from: 'Securitate' }) as any;
+    expect(r.minutes).toBeGreaterThan(0);
+    expect(r.note).toContain(`Poarta 2: ~${r.minutes} min de mers.`);
     const w = await tools.whenToArrive!({}) as any;
-    expect(w.situation).toMatch(/De la securitate la poarta 2 faci ~\d+ min\./);
+    expect(w.situation).toMatch(/Până la poarta 2 ~\d+ min de mers/);
   });
 });

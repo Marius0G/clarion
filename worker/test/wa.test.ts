@@ -132,7 +132,7 @@ describe('agent tools', () => {
       { zone: 'Control de securitate', waiting: 40, waitMin: 14, peak30min: undefined, staff: 3 },
     ]);
     expect(await setup().tools.queues!({})).toMatchObject({ available: false });
-    expect(await tools.routeTo!({ to: 'gate' })).toMatchObject({ status: 'ready' });
+    expect(await tools.routeTo!({ to: 'gate', from: 'Intrare plecări' })).toMatchObject({ status: 'ready' });
     expect(await tools.reportIssue!({ text: 'bagaj abandonat' })).toMatchObject({ error: 'staff_only' });
     expect(await setup({ role: 'staff' }).tools.reportIssue!({ text: 'x' })).toMatchObject({ error: 'unavailable' });
   });
@@ -279,7 +279,7 @@ describe('WhatsAppAgent turn', () => {
       { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'urgent', name: tool, input: { text, to: 'exit' } }] },
       { stop_reason: 'end_turn', content: [{ type: 'text', text: '[react]⚠️\n---\nReceived ⚠️. Exit 1 → 2. 👩🏽‍🚒 🇷🇴 1️⃣\n---\n🙏' }] },
     ]);
-    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang });
+    await store.put('wa:profile:+40712345678', { phone: '+40712345678', role: role === 'staff' ? 'staff' : 'passenger', flight: 'W6 3751', lang, position: { node: 'entrance', at: Date.now() } });
     await agent.inbound(inbound(text));
     expect(meta().filter(b => b.type === 'reaction')).toEqual([]);
     expect(meta().filter(b => b.type === 'text').map(b => b.text.body)).toEqual(['Received . Exit 1 → 2.']);

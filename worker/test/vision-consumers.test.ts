@@ -52,9 +52,9 @@ describe('routeTo exit during an evacuation uses evac.plan (A10)', () => {
       evacRoute: f => agent.messaging.evacRouteFor(f) });
     // Nothing blocked any more (all clear): the ordinary nearest-exit route.
     expect(await agent.messaging.evacRouteFor(undefined)).toBeNull();
-    expect(((await tools().routeTo({ to: 'exit' })) as any).status).toBe('ready');
+    expect(((await tools().routeTo({ to: 'exit', from: 'Intrare plecări' })) as any).status).toBe('ready');
     state.blocked = ['G_CHECKIN_QUEUE'];
-    const r: any = await tools().routeTo({ to: 'exit' });
+    const r: any = await tools().routeTo({ to: 'exit', from: 'Intrare plecări' });
     // 07:00 with the gate closing at 09:10: still landside, at the check-in of group 2.
     expect(r).toMatchObject({ status: 'evacuation', from: 'check_in:2', to: 'exit_2', nodes: ['check_in:2', 'entrance', 'exit_2'] });
     expect(r.note).toMatch(/^Evacuare: /);

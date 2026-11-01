@@ -1,9 +1,10 @@
+import { RouteImages, resolveLandmark } from './airport-info.js';
 import { Auth, normalizePhone, parseLogin } from '../../../backend/src/auth.js';
 import { metaExplanation, type Observe } from './events.js';
 import { extractFacts, lookupNote, NOTES_MAX, type PassengerContext } from './context.js';
 import { urgentText, staffIncident } from './urgency.js';
 import { clearPrefix } from '../reset-store.js';
-import { say, language } from './texts.js';
+import { say, language, passengerText } from './texts.js';
 import { consumeJoin } from '../join.js';
 // Clarion on WhatsApp: one inbound message start to finish (Moni src/whatsapp.js turn() + src/core.js handleMessage).
 // State lives in the Tower's Durable Object storage instead of Moni's KV:
@@ -49,11 +50,13 @@ export class WhatsAppAgent {
   private chains = new Map<string, Promise<void>>();
   private fetcher: Fetch;
   private observe?: Observe;
+  private images: RouteImages;
   private traces = new Map<string, { tools: string[]; bubbles: number }>();
   constructor(private env: WaEnv, private store: WaStore, private view: AirportView,
     opts: { fetcher?: Fetch; pause?: number; toUnity?: (type: string, data: unknown) => boolean; evacWaitMs?: number; observe?: Observe; reportsChanged?: (reports: import('./reports.js').Report[]) => void } = {}) {
     this.fetcher = opts.fetcher ?? ((i, init) => fetch(i, init));
     this.observe = opts.observe;
+    this.images = new RouteImages(env.APP_URL ?? 'https://clarion-craiova.pages.dev', this.fetcher);
     this.wa = new WhatsAppClient(env, this.fetcher, opts.pause, async event => {
       const trace = event.phone && this.traces.get(event.phone.replace(/^\+/, ''));
       if (trace && (event.type === 'text' || event.type === 'interactive')) trace.bubbles++;
@@ -216,6 +219,9 @@ export class WhatsAppAgent {
       text = say(profile.lang, m.replyId === 'bag:yes' ? 'bagQueryYes' : 'bagQueryNo');
     }
 
+    const landmark = m.replyId?.startsWith('loc:') ? m.replyId.slice(4) : resolveLandmark(text, /sunt|aflu|from|at |check|duty|hol|poart|gate|intrare|entrance/i.test(text) ? await this.images.index() : null);
+    if (landmark && (profile.pendingRoute || !/wc|toalet|toilet|food|eat|cafe|coffee|atm|info|duty/i.test(text) || /sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text))) await save({ position: { node: landmark, at: Date.now() } });
+    const pending = landmark ? profile.pendingRoute : undefined;
     await save(extractFacts(redact(text)));
     const lastQuestion = ctx.history.filter(e => e.role === 'clarion').at(-1)?.text ?? '';
     if (/bagaj de cală|checked baggage/i.test(lastQuestion) && /^(da|nu|yes|no)[.! ]*$/i.test(text.trim())) {
@@ -226,7 +232,7 @@ export class WhatsAppAgent {
     const spokenFlight = code && findFlight(this.view.flights(), code);
     if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
-    const tools = toolsFor({ view: this.view, profile: () => profile, save, report: r => this.reports.add(r), evacRoute: f => this.messaging.evacRouteFor(f),
+    const tools = toolsFor({ routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add(r), evacRoute: f => this.messaging.evacRouteFor(f),
       pageLink: async () => {
         const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
         const stored = await this.profile(m.phone);
@@ -234,17 +240,33 @@ export class WhatsAppAgent {
         return link;
       } });
     let waitEstimate: Profile['lastWaitEstimate'];
+    let routeResult: any;
     const trackedTools = Object.fromEntries(Object.entries(tools).map(([name, fn]) => [name, async (input: any) => {
       this.traces.get(m.phone.replace(/^\+/, ''))?.tools.push(name);
       const result = await fn(input);
+      if (name === 'routeTo') routeResult = result;
       if (name === 'whenToArrive' && typeof (result as any)?.totalMin === 'number') waitEstimate = { at: clockText(this.view.clock().now), totalMin: (result as any).totalMin };
       const note = lookupNote(name, result);
       if (note) ctx.notes = [...(ctx.notes ?? []), { at: `${new Date().toISOString()} (airport clock ${clockText(this.view.clock().now)})`, tool: name, note }].slice(-NOTES_MAX);
       return result;
     }]));
-    const { bubbles, used } = await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
+    const answer = pending ? await (async () => {
+      const r = await trackedTools.routeTo!({ ...pending, from: landmark });
+      const result = r as any;
+      return { bubbles: [result.note, ...(result.link ? [result.link] : [])], used: ['routeTo'] };
+    })() : await reply({ env: this.env, fetcher: this.fetcher, profile, clock: this.view.clock(), history: ctx.history, memory: ctx, text: redact(text), tools: trackedTools, onError: async error => { await this.observe?.({ kind: 'agent-error', phone: m.phone, text: error }); } });
+    const { used } = answer;
+    const bubbles = (routeResult?.status === 'needs_location' ? [routeResult.note] : answer.bubbles).map(passengerText).filter(Boolean);
     if (quick && !bubbles.some(reactionOf)) await this.wa.sendReaction(m.phone, m.id, '');
-    const delivered = await this.wa.sendReplies(m.phone, bubbles, m.id);
+    const delivered = routeResult?.status === 'needs_location'
+      ? (await this.wa.sendButtons(m.phone, routeResult.note, routeResult.buttons)).ok
+      : await this.wa.sendReplies(m.phone, bubbles, m.id);
+    if (delivered && routeResult?.status === 'ready') {
+      try {
+        const image = await this.images.image(routeResult.from, routeResult.to);
+        if (image) await this.wa.sendImage(m.phone, image.link, `${routeResult.destination} · ~${Math.ceil(image.walkSec / 60)} min`);
+      } catch { /* Text delivery must never depend on a preview. */ }
+    }
     if (delivered && waitEstimate) await save({ lastWaitEstimate: waitEstimate });
     if (!initiallyBound && profile.flight) {
       const flight = findFlight(this.view.flights(), profile.flight);

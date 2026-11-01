@@ -519,5 +519,132 @@
     "Lista curentă a magazinelor și restaurantelor din terminal",
     "Tarif sau zonă kiss & ride, separat de cele 10 minute gratuite",
     "Taxa Wizz Air pentru check-in la aeroport (suma)"
+  ],
+  "amenities": [
+    {
+      "id": "G_WC",
+      "kind": "toilet",
+      "name": {
+        "ro": "Toalete",
+        "en": "Toilets"
+      },
+      "level": "G",
+      "side": "landside",
+      "aliases": [
+        "wc",
+        "toaleta",
+        "toalete",
+        "toilet",
+        "toilets",
+        "restroom",
+        "bathroom"
+      ]
+    },
+    {
+      "id": "U_WC",
+      "kind": "toilet",
+      "name": {
+        "ro": "Toalete airside",
+        "en": "Airside toilets"
+      },
+      "level": "U",
+      "side": "airside",
+      "aliases": [
+        "wc airside",
+        "toalete airside"
+      ]
+    },
+    {
+      "id": "G_CAFE",
+      "kind": "food",
+      "name": {
+        "ro": "Gourmet Bar",
+        "en": "Gourmet Bar"
+      },
+      "level": "G",
+      "side": "landside",
+      "aliases": [
+        "gourmet bar",
+        "mancare",
+        "mananc",
+        "food",
+        "eat",
+        "restaurant"
+      ]
+    },
+    {
+      "id": "U_CAFE",
+      "kind": "food",
+      "name": {
+        "ro": "Cafenea",
+        "en": "Café"
+      },
+      "level": "U",
+      "side": "airside",
+      "aliases": [
+        "cafenea",
+        "cafea",
+        "cafe",
+        "coffee"
+      ]
+    },
+    {
+      "id": "U_DUTY_FREE",
+      "kind": "shop",
+      "name": {
+        "ro": "Duty free",
+        "en": "Duty free"
+      },
+      "level": "U",
+      "side": "airside",
+      "aliases": [
+        "duty free",
+        "duty-free"
+      ]
+    },
+    {
+      "id": "G_INFO",
+      "kind": "info",
+      "name": {
+        "ro": "Informații",
+        "en": "Information desk"
+      },
+      "level": "G",
+      "side": "landside",
+      "aliases": [
+        "info",
+        "info desk",
+        "information desk",
+        "informatii"
+      ]
+    },
+    {
+      "id": "atm_bcr",
+      "kind": "atm",
+      "name": {
+        "ro": "ATM BCR",
+        "en": "BCR ATM"
+      },
+      "level": "G",
+      "side": "landside",
+      "aliases": [
+        "atm",
+        "bancomat",
+        "bcr"
+      ]
+    },
+    {
+      "id": "atm_euronet",
+      "kind": "atm",
+      "name": {
+        "ro": "ATM Euronet",
+        "en": "Euronet ATM"
+      },
+      "level": "G",
+      "side": "landside",
+      "aliases": [
+        "euronet"
+      ]
+    }
   ]
 }

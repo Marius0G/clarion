@@ -1,13 +1,13 @@
-import { airportInfo } from './airport-info.js';
+import { airportInfo, amenities, amenityKind, amenityDescription, resolveLandmark, LANDMARK_TTL_MS, type RouteIndex } from './airport-info.js';
 import { factPatch } from './context.js';
 import { flowRow, mapNodeId } from '../../../backend/src/mapIds.js';
 import { copy, say, nodeName, zoneName, EN_ISSUES, RO_ISSUES, type Lang } from './texts.js';
 import { route, zoneDensities } from '../../../backend/src/routing.js';
-import { terminalGraph, zoneAreas } from '../../../backend/src/terminal.js';
+import { terminalGraph, zoneAreas, points, zones } from '../../../backend/src/terminal.js';
 // The WhatsApp agent's tools (SPEC-v2 D15). Read-only views of the Tower: flights, queues and the arrival plan (D5).
 import { clockLabel, clockText, closeAt, etd, findFlight, gateName, type Clock, type Flight } from './flights.js';
 import { classifyIssue, isIssueKind, matchNode, type Report, type IssueKind } from './reports.js';
-import type { EvacRoute } from './messaging.js';
+import { estimateStage, type EvacRoute } from './messaging.js';
 
 export interface ZoneRow {
   density?: number | null; stale?: boolean; waiting: number; waitMin: number | null; peak?: number; staff?: number | null; capacity?: number | null;
@@ -28,6 +28,7 @@ export interface Profile {
   flight?: string; airline?: string; pageToken?: string; token?: string; verified?: boolean;
   groupSize?: number; needs?: { kids?: boolean; reducedMobility?: boolean; other?: string };
   gate?: string; lastWaitEstimate?: { at: string; totalMin: number };
+  position?: { node: string; at: number }; pendingRoute?: { to: string; flight?: string };
   hasCheckedBag?: boolean; lastInboundAt?: number; name?: string;
 }
 export type Tools = Record<string, (input: any) => Promise<unknown>>;
@@ -139,12 +140,14 @@ export interface ToolDeps {
   /** Stores a staff report (D11); absent in read-only contexts. */
   report?: (input: { kind: IssueKind; node: string | null; text: string; etaMin: number | null; policeEtaMin?: number | null }) => Promise<Report>;
   pageLink?: () => Promise<string>;
+  routeIndex?: () => Promise<RouteIndex | null>;
+  now?: () => number;
   /** During an evacuation: the latest evac.plan route for this passenger's estimated place (A10, D9); null otherwise. */
   evacRoute?: (flight: Flight | undefined) => Promise<EvacRoute | null>;
 }
 
 /** The five D15 tools for one person, using the shared provisional terminal graph. */
-export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: ToolDeps): Tools {
+export function toolsFor({ view, profile, save, report, pageLink, evacRoute, routeIndex, now = Date.now }: ToolDeps): Tools {
   const resolve = async (code?: string) => {
     const p = profile();
     const wanted = code || p.flight;
@@ -194,33 +197,64 @@ export function toolsFor({ view, profile, save, report, pageLink, evacRoute }: T
       if (!zones.length) return { available: false, note: say(profile().lang, 'noQueues'), now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
       return { available: true, zones, now: clockText(clock.now), clock: say(profile().lang, clock.sim ? 'simClock' : 'realClock') };
     },
-    async routeTo(input: { to?: string; flight?: string }) {
-      const to = input?.to ?? 'gate';
-      if (!['gate', 'check_in', 'exit'].includes(to)) return { error: 'invalid_destination' };
-      // Evacuation: the exit vision assigned to his estimated place (evac.plan), not the nearest one on the plain graph.
-      const evac = to === 'exit' && evacRoute ? await evacRoute(profile().flight ? findFlight(view.flights(), profile().flight!) : undefined) : null;
-      if (evac) return { status: 'evacuation', from: evac.from, to: evac.exit, exit: nodeName(evac.exit, profile().lang), nodes: evac.nodes,
-        steps: evac.nodes.map(n => nodeName(n, profile().lang)), note: copy.evacuationRoute(profile().lang, '', evac), ...(pageLink && { link: await pageLink() }) };
-      const density = zoneDensities(view.flow(), zoneAreas), blocked = view.blocked?.() ?? [];
-      // No passenger position is available on WhatsApp: explicitly start at the entrance.
-      let targets: string[];
-      if (to === 'exit') targets = terminalGraph.nodes.filter(n => n.kind === 'exit').map(n => n.id);
-      else {
+    async routeTo(input: { to?: string; from?: string; flight?: string }) {
+      const p = profile(), lang = p.lang;
+      let to = input?.to ?? 'gate';
+      if (['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to.toLowerCase())) to = to.toLowerCase();
+      const evac = to === 'exit' && evacRoute ? await evacRoute(p.flight ? findFlight(view.flights(), p.flight) : undefined) : null;
+      if (evac) return { status: 'evacuation', from: evac.from, to: evac.exit, nodes: evac.nodes,
+        note: copy.evacuationRoute(lang, '', evac), ...(pageLink && { link: await pageLink() }) };
+      let f = p.flight ? findFlight(view.flights(), p.flight) : undefined;
+      if (to === 'gate' || to === 'check_in') {
         const r = await resolve(input?.flight);
         if ('error' in r) return r;
-        targets = to === 'gate' ? [r.flight.gate] : r.flight.checkIn ? [r.flight.checkIn] : r.flight.checkInDesks;
+        f = r.flight;
       }
-      const best = targets.map(id => route(terminalGraph, 'entrance', id, density, blocked))
-        .filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
-      if (!best) return { status: 'unavailable', note: say(profile().lang, 'noRoute') };
-      const minutes = Math.ceil(best.totalSec / 60);
-      // Pitch: the gate and the walk to it from security, said explicitly.
-      const fromSec = to === 'gate' ? route(terminalGraph, 'security', best.nodes.at(-1)!, density, blocked) : null;
-      const fromSecurityMin = fromSec ? Math.ceil(fromSec.totalSec / 60) : null;
-      const securityNote = fromSecurityMin === null ? '' : ` ${say(profile().lang, 'fromSecurity', gateName(best.nodes.at(-1)!), fromSecurityMin)}`;
-      return { status: 'ready', ...best, minutes, from: 'entrance', to: best.nodes.at(-1), ...(fromSecurityMin !== null && { fromSecurityMin }),
-        steps: best.nodes.map(n => nodeName(n, profile().lang)), note: say(profile().lang, 'route', best.nodes.map(n => nodeName(n, profile().lang)).join(' → '), minutes) + securityNote,
-        ...(pageLink && { link: await pageLink() }), provisional: terminalGraph.provisional };
+      const index = await routeIndex?.() ?? null;
+      if (!['gate', 'check_in', 'exit', 'toilet', 'food', 'atm', 'info', 'shop'].includes(to)) to = resolveLandmark(to, index) ?? to;
+      if (!['gate', 'check_in', 'exit', ...new Set(amenities.map(a => a.kind))].includes(to) && !amenityKind(to) && !amenities.some(a => a.id === to) && !terminalGraph.nodes.some(n => n.id === mapNodeId(to))) return { error: 'invalid_destination' };
+      const stated = input?.from && (resolveLandmark(input.from, index) ?? (terminalGraph.nodes.some(n => n.id === mapNodeId(input.from!)) ? input.from : undefined));
+      if (stated) await save({ position: { node: stated, at: now() } });
+      const position = stated ? { node: stated, at: now() } : profile().position;
+      const stored = position && now() - position.at >= 0 && now() - position.at < LANDMARK_TTL_MS ? position.node : undefined;
+      const stage = estimateStage(f, view.clock().now);
+      const from = stated || stored || (stage === 'gate' ? f?.gate : stage === 'airside' ? 'airside' : undefined);
+      if (!from) {
+        await save({ pendingRoute: { to, ...(input.flight && { flight: input.flight }) } });
+        return { status: 'needs_location', note: lang === 'en' ? 'Where are you now?' : 'Unde ești acum?',
+          buttons: [
+            { id: 'loc:entrance', title: lang === 'en' ? 'Departures entrance' : 'Intrare plecări' },
+            { id: 'loc:G_CHECKIN_QUEUE', title: 'Check-in' },
+            { id: 'loc:U_DUTY_FREE', title: 'Duty free' },
+          ] };
+      }
+      const density = zoneDensities(view.flow(), zoneAreas), blocked = view.blocked?.() ?? [];
+      const kind = amenityKind(to);
+      const origin = terminalGraph.nodes.find(n => n.id === mapNodeId(from));
+      const originSide = zones.find(z => z.id === origin?.zone || z.id === origin?.id)?.side;
+      let targets = to === 'gate' ? [f!.gate] : to === 'check_in' ? (f!.checkIn ? [f!.checkIn] : f!.checkInDesks)
+        : to === 'exit' ? terminalGraph.nodes.filter(n => n.kind === 'exit').map(n => n.id)
+        : amenities.filter(a => (a.kind === kind || a.id === to) && (!originSide || a.side === originSide)).map(a => a.id);
+      if (!targets.length && terminalGraph.nodes.some(n => n.id === mapNodeId(to))) targets = [to];
+      // ATM points are not navigation nodes in the shared graph: connect them to the nearest mapped landside area.
+      const extra = amenities.filter(a => !terminalGraph.nodes.some(n => n.id === a.id)).flatMap(a => {
+        const point = points.find(p => p.id === a.id);
+        if (!point) return [];
+        const anchor = terminalGraph.nodes.filter(n => zones.some(z => z.id === n.id && z.side === a.side && z.level === a.level))
+          .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.z) - Math.hypot(b.x - point.x, b.y - point.z))[0];
+        return anchor ? [{ id: a.id, x: point.x, y: point.z, level: a.level, zone: anchor.id, anchor: anchor.id }] : [];
+      });
+      const graph = { ...terminalGraph, nodes: [...terminalGraph.nodes, ...extra], edges: [...terminalGraph.edges, ...extra.map(n => ({ from: n.id, to: n.anchor, walkSec: Math.hypot(n.x - terminalGraph.nodes.find(a => a.id === n.anchor)!.x, n.y - terminalGraph.nodes.find(a => a.id === n.anchor)!.y) / 1.34 }))] };
+      const best = targets.map(id => route(graph, from, id, density, blocked)).filter(r => r !== null).sort((a, b) => a.totalSec - b.totalSec)[0];
+      if (!best) return { status: 'unavailable', note: say(lang, 'noRoute') };
+      await save({ pendingRoute: undefined });
+      const minutes = Math.ceil(best.totalSec / 60), destination = best.nodes.at(-1)!;
+      const amenity = amenities.find(a => a.id === destination);
+      const name = (id: string) => amenities.find(a => a.id === id)?.name[lang === 'en' ? 'en' : 'ro'] ?? nodeName(id, lang);
+      const walk = lang === 'en' ? `~${minutes} min walking` : `~${minutes} min de mers`;
+      const note = `${amenity ? amenityDescription(amenity, lang) + ' ' : ''}${name(from)} → ${name(destination)}: ${walk}.`;
+      return { status: 'ready', ...best, minutes, from, to: destination, destination: name(destination),
+        steps: best.nodes.map(name), note, ...(pageLink && profile().flight && { link: await pageLink() }) };
     },
     async reportIssue(input: { text?: string; kind?: string; location?: string }) {
       if (profile().role !== 'staff') return { error: 'staff_only', note: say(profile().lang, 'staffOnly') };

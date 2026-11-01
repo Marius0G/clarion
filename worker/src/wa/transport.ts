@@ -174,6 +174,10 @@ export class WhatsAppClient {
   sendText(phone: string, body: string) {
     return this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'text', text: { body, preview_url: false } });
   }
+  /** Optional route preview hosted by the passenger site. */
+  sendImage(phone: string, link: string, caption: string) {
+    return this.graph({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to(phone), type: 'image', image: { link, caption } });
+  }
   /** Up to 3 reply buttons ({ id, title } with title <= 20 characters); the tap comes back with the id. */
   sendButtons(phone: string, body: string, buttons: { id: string; title: string }[]) {
     return this.graph({

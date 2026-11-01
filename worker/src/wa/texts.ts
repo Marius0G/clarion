@@ -163,6 +163,8 @@ export function zoneName(zone: string, lang?: Lang) {
 }
 /** Readable node: "gate_2" -> "Poarta 2", "exit_1" -> "Ieșirea 1", "check_in:2" -> "Check-in, grupul 2". */
 export function nodeName(id: string, lang?: Lang) {
+  const amenity = points.find(p => p.id === id && ['atm', 'information', 'wc', 'cafe', 'shop'].includes(p.type));
+  if (amenity) return amenity.type === 'atm' ? `ATM ${amenity.name}` : amenity.name;
   const n = /^(gate|exit)_(\d+)$/.exec(id);
   if (n) return copy.numberedNode(lang, n);
   return copy.places(lang)[id] ?? zoneName(id, lang);

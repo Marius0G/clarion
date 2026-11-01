@@ -1,3 +1,4 @@
+import { mapNodeId } from '../../../backend/src/mapIds.js';
 import guide from './airport-guide.json' with { type: 'json' };
 import { normalize } from './context.js';
 import type { Lang } from './texts.js';
@@ -44,6 +45,10 @@ const topicNames: Record<string, Topic> = {
 const words = (text: string) => normalize(text).match(/[a-z0-9]+/g) ?? [];
 
 export function airportInfo(input: { topic?: string; query?: string } = {}, lang?: Lang) {
+  const amenity = amenityKind(input.query ?? input.topic ?? '');
+  if (amenity) return { found: true, asOf: guide.accessed, amenities: amenities.filter(a => a.kind === amenity), facts: amenities.filter(a => a.kind === amenity).map(a => ({
+    text: amenityDescription(a, lang), source: 'Plan T2', official: true, label: '', status: 'map',
+  })) };
   const notFound = () => ({ found: false, error: 'not_found', facts: [], asOf: guide.accessed,
     note: lang === 'en' ? "I don't know; the airport guide has no matching information." : 'Nu știu; ghidul aeroportului nu conține informații corespunzătoare.' });
   const rawTopic = input.topic?.trim();
@@ -80,4 +85,68 @@ export function isAirportQuestion(text: string) {
   if (topic === 'wizz_checkin') return /online|wizz|rule|regul|deschid|inchid|open|close|cost|pret|fee/.test(t);
   if (/\b(queue|coada|cozi|crowd|gate|poarta|delay|status|route|traseu|ruta)\b/.test(t)) return false;
   return Boolean(topic);
+}
+
+export const amenities = guide.amenities;
+export function amenityKind(text: string): string | undefined {
+  const t = normalize(text);
+  if (/\b(wc|toalet\w*|toilet\w*|restroom|bathroom)\b/.test(t)) return 'toilet';
+  if (/\b(food|eat|manc\w*|mananc\w*|restaurant|cafenea|cafea|coffee|cafe|gourmet)\b/.test(t)) return 'food';
+  if (/\b(atm|bancomat|bcr|euronet)\b/.test(t)) return 'atm';
+  if (/\b(info|informatii|information desk)\b/.test(t)) return 'info';
+  if (/duty[ -]?free/.test(t)) return 'shop';
+}
+export function amenityDescription(a: typeof amenities[number], lang?: Lang) {
+  return lang === 'en' ? `${a.name.en}: ${a.level === 'G' ? 'ground floor' : 'first floor'}, ${a.side === 'landside' ? 'before security' : 'after security'}.`
+    : `${a.name.ro}: ${a.level === 'G' ? 'parter' : 'etajul 1'}, ${a.side === 'landside' ? 'înainte de securitate' : 'după securitate'}.`;
+}
+export interface RouteIndex {
+  points: { id: string; name: { ro: string; en: string }; aliases: string[] }[];
+  routes: Record<string, { file: string; walkSec: number; steps: unknown }>;
+}
+/** Per-agent cache includes absent indexes, so a missing deployment never floods the site. */
+export class RouteImages {
+  private cached?: { until: number; value: RouteIndex | null };
+  constructor(private appUrl: string, private fetcher: import('./transport.js').Fetch, private now = Date.now) {}
+  async index(): Promise<RouteIndex | null> {
+    if (this.cached && this.cached.until > this.now()) return this.cached.value;
+    let value: RouteIndex | null = null;
+    try {
+      const res = await this.fetcher(`${this.appUrl.replace(/\/$/, '')}/routes/index.json`, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) {
+        const json = await res.json() as RouteIndex;
+        if (Array.isArray(json.points) && json.routes && typeof json.routes === 'object' && json.points.every(p => p && typeof p.id === 'string' && p.name && typeof p.name.ro === 'string' && typeof p.name.en === 'string' && Array.isArray(p.aliases) && p.aliases.every(a => typeof a === 'string'))) value = json;
+      }
+    } catch { /* Images are optional. */ }
+    this.cached = { until: this.now() + 60000, value };
+    return value;
+  }
+  async image(from: string, to: string) {
+    const index = await this.index();
+    const id = (node: string) => index?.points.find(p => p.id === node)?.id ?? index?.points.find(p => mapNodeId(p.id) === mapNodeId(node) || p.aliases.some(a => normalize(a) === normalize(node)))?.id ?? node;
+    const entry = index?.routes[`${id(from)}__${id(to)}`];
+    if (!entry || typeof entry.file !== 'string' || !Number.isFinite(entry.walkSec) || entry.walkSec < 0) return null;
+    const root = new URL(`${this.appUrl.replace(/\/$/, '')}/routes/`);
+    const url = new URL(entry.file, root);
+    if (!url.href.startsWith(root.href)) return null;
+    return { link: url.href, walkSec: entry.walkSec };
+  }
+}
+export const LANDMARK_TTL_MS = 10 * 60 * 1000;
+const landmarks = [
+  { id: 'entrance', aliases: ['intrare plecari', 'intrarea plecari', 'departures entrance'] },
+  { id: 'G_CHECKIN_QUEUE', aliases: ['check-in', 'check in'] },
+  { id: 'G_CENTER', aliases: ['hol central', 'central hall'] },
+  { id: 'U_SECURITY_QUEUE', aliases: ['securitate', 'security'] },
+  ...amenities,
+];
+/** Only origin phrases are searched in full sentences; a destination must not become the origin. */
+export function resolveLandmark(text: string, index: RouteIndex | null = null): string | undefined {
+  let t = normalize(text).trim().replace(/[.!?]+$/, '');
+  const origin = /(?:sunt la|sunt in|ma aflu la|de la|din|i am at|i'm at|from|at)\s+(.+)/.exec(t);
+  if (origin) t = origin[1]!.split(/[.!?,;]|\b(?:spre|pana la|to|cum ajung|how)\b/)[0]!.trim();
+  const gate = /^(?:poarta|gate)\s+(\d+)$/.exec(t);
+  if (gate) return `gate_${gate[1]}`;
+  const candidates = [...(index?.points ?? []).map(p => ({ id: p.id, aliases: [p.id, p.name.ro, p.name.en, ...p.aliases] })), ...landmarks];
+  return candidates.find(p => p.id === t || p.aliases.some(a => normalize(a) === t))?.id;
 }

@@ -31,7 +31,7 @@ describe('passenger page profiles', () => {
     quiet();
     const h = harness(fakeSim().view);
     await h.store.put('wa:profile:+40712345678', { phone: '+40712345678', role: 'passenger', flight: 'W6 3751' });
-    await h.inbound('cum ajung la poarta?');
+    await h.inbound('Sunt la Intrare plecări. Cum ajung la poarta?');
     const p = await h.agent.profile('+40712345678');
     expect(p?.pageToken).toBeTruthy();
     expect(h.texts().some(m => m.text.includes('Poarta 2') && m.text.includes('~4 min'))).toBe(true);
@@ -407,7 +407,7 @@ describe('urgent automatic delivery', () => {
     h.graph.length = 0;
     await h.m.adminChanged({ id: 'ops-open', type: 'open', zone: 'security' } as any);
     expect(h.texts().map(t => t.to)).toEqual(['40712345678']);
-    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*De la securitate la poarta 2 faci ~\d+ min\./);
+    expect(h.texts()[0]!.text).toMatch(/^Terminalul s-a redeschis\. Zborul W6 3751 spre Londra Luton\. [\s\S]*Până la poarta 2 ~\d+ min de mers/);
     expect(await h.store.get('msg:evacuation')).toBeUndefined();
  });
 

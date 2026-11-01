@@ -24,6 +24,9 @@ export const SCRIPTS: Record<string, Step[]> = {
   arrival: [start, { text: 'Când să plec spre aeroport?', tool: 'whenToArrive' }],
   gate: [start, { text: 'Care este poarta mea?', tool: 'myFlight' }],
   route: [start, { text: 'Cum ajung la poartă?', tool: 'routeTo' }],
+  toilet: [{ text: 'Unde e toaleta? Sunt la Hol central.', tool: 'routeTo' }],
+  food: [{ text: 'English' }, { text: 'Where can I eat? I am at Duty free.', tool: 'routeTo' }],
+  landmarkRoute: [start, { text: 'Sunt la Hol central. Cum ajung la poartă?', tool: 'routeTo' }],
   airportInfo: [{ text: 'Cât costă parcarea la aeroport?', tool: 'airportInfo' }],
   unknownFact: [{ text: 'Care este parola Wi-Fi la aeroport?', tool: 'airportInfo', unknown: true }],
   english: [{ text: 'English' }, { text: 'How long is the security queue?', tool: 'queues' }, { text: 'When should I arrive for W6 3751?', tool: 'whenToArrive' }],
@@ -67,6 +70,7 @@ export function check(transcript: LabTurn[]): Violation[] {
       if (/abona(?:re|t|ți|ti|ză|za)|aboneaz|abonează/i.test(r)) bad('abonare', r);
       if (!t.evacuate && /\b(plecati|vino|veniti|grabeste|mergi|mergeti|urmeaza|indreapta-te|du-te|fii|leave now|hurry|go now|go to|head to|proceed to|come early|you must|you should|trebuie sa)\b/i.test(normalize(r))) bad('orders', r);
       if (/\b(?:[GU]_[A-Z][A-Z_0-9]*|(?:check_in|bag_drop|gate|security):[\w-]+|gate_\d+)\b/.test(r)) bad('raw-id', r);
+      if (/simulăr|simulation|estimare|demo/i.test(r)) bad('no-disclaimer', r);
       if (/\b(undefined|null|NaN)\b/.test(r)) bad('invalid-value', r);
     }
   });

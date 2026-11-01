@@ -1,4 +1,4 @@
-import { isAirportQuestion } from './airport-info.js';
+import { isAirportQuestion, amenityKind, resolveLandmark } from './airport-info.js';
 import { HISTORY_CAP, HISTORY_KEEP, SUMMARY_MAX, plainSummary, type PassengerContext } from './context.js';
 import { urgentText, staffIncident, urgentBubbles, urgentResult } from './urgency.js';
 import { say, passengerText, queueText, type Lang } from './texts.js';
@@ -172,11 +172,11 @@ export const TOOL_SPECS = [
   { name: 'myFlight', description: 'Zborul pasagerului: destinație, poartă, plecare, ora de închidere a porții, status, întârziere, ghișeul de check-in. Ore în ceasul din <context>.', input_schema: { type: 'object', properties: FLIGHT } },
   {
     name: 'whenToArrive',
-    description: 'Situația și prognoza: cozi acum și la ora probabilă a pasagerului, durata estimată intrare-poartă cu marjă și ora de închidere a porții. Redă situation; fără ordine.',
+    description: 'Situația și prognoza: cozi acum, mersul separat de cozi și ora de închidere a porții. Redă situation fără disclaimere sau marja internă; fără ordine.',
     input_schema: { type: 'object', properties: { ...FLIGHT, hasCheckedBag: { type: 'boolean', description: 'doar dacă pasagerul a spus' } } },
   },
   { name: 'queues', description: 'Cozile de acum pe zone: oameni care așteaptă, minute de așteptare, vârful din ultimele 30 min, angajați și prognoza (inMin, waitMin). yours=true = coada grupului lui de check-in.', input_schema: NONE },
-  { name: 'routeTo', description: 'Traseul de la intrare spre poartă, ghișeu sau cea mai apropiată ieșire liberă, cu pași, minute și link.', input_schema: { type: 'object', properties: { to: { type: 'string', enum: ['gate', 'check_in', 'exit'] } } } },
+  { name: 'routeTo', description: 'Route to gate, check-in, exit or map amenities (toilet, food, ATM, info, shop). Uses passenger landmark or flight stage. If needs_location, ask only note; interactive choices follow automatically. Otherwise describe returned origin and route, minutes and personal link.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Origin landmark explicitly stated by passenger; never invent.' }, to: { type: 'string', description: 'gate, check_in, exit, toilet, food, atm, info, shop, or a named map landmark' } } } },
   {
     name: 'reportIssue',
     description: 'Doar pentru angajați: trimite un incident din terminal pe harta din dashboard. Returnează id-ul, tipul și locul recunoscut.',
@@ -351,6 +351,10 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     if (r?.status !== 'sent') return [r?.note ?? r?.hint ?? say(lang, 'fallback')];
     return [say(lang, 'staffReport', r.id, r.kind, r.place, r.note)];
   }
+  if (amenityKind(text) && !/price|cost|pret|program|hours|open|inchid|deschid/.test(t)) {
+    const r = await call('routeTo', { to: amenityKind(text), ...(/sunt la|sunt in|ma aflu|from |i am at|i'm at/i.test(text) && { from: text }) });
+    return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
+  }
   if (isAirportQuestion(text)) {
     const r = await call('airportInfo', { query: text });
     if (!r.found) return [r.note];
@@ -365,7 +369,8 @@ export async function fallbackReply(text: string, tools: Tools, used: string[] =
     return [say(lang, 'flightInfo', r.flight, r.destination, r.gate, r.departure, r.gateCloseAt, r.clock, r.status === 'delayed' ? say(lang, 'delay', r.delayMin) : r.status === 'cancelled' ? say(lang, 'cancelled') : '')];
   };
   if (/(route|exit|trase|ruta|rută|cum ajung|cum merg|pe unde|ieșire|iesire)/.test(t)) {
-    const r = await call('routeTo', { to: /exit|ieșire|iesire/.test(t) ? 'exit' : /check|ghișeu|ghiseu/.test(t) ? 'check_in' : 'gate', ...(code && { flight: code }) });
+    const destination = /(?:ajung|merg|route|traseu|get|way)[^?]*?(?:la|to)\s+([^?.]+)/i.exec(text)?.[1];
+    const r = await call('routeTo', { from: text, to: (destination && resolveLandmark(destination)) || (/exit|ieșire|iesire/.test(destination ?? t) ? 'exit' : /check|ghișeu|ghiseu/.test(destination ?? t) ? 'check_in' : 'gate'), ...(code && { flight: code }) });
     if (noFlight(r)) return [askFlight];
     return [r.note ?? say(lang, 'fallback'), ...(r.link ? [r.link] : [])];
   }
