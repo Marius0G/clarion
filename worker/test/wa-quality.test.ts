@@ -220,6 +220,16 @@ describe('WhatsApp passenger quality regressions', () => {
     expect(result.bubbles.join(' ')).toContain('05:12');
     expect(await actual.whenToArrive!({})).toMatchObject({ late: false });
   });
+  it('10b: a place question the catalogue cannot answer goes to the model, not the greeting', async () => {
+    const clock = clockFrom(5 * 3600, false, Date.now());
+    const profile: Profile = { phone: '+40712345678', role: 'passenger', lang: 'ro', flight: flight.flight };
+    let calls = 0;
+    const result = await reply({ env: { ANTHROPIC_API_KEY: 'test' }, profile, clock, memory: { history: [] }, history: [], text: 'Unde fac check in pentru Birmingham',
+      tools: tools({}, undefined, view).tools,
+      fetcher: async () => { calls++; return Response.json({ content: [{ type: 'text', text: 'Check-in-ul pentru zborul tău e la ghișeele 1–4, la parter.' }] }); } });
+    expect(calls).toBeGreaterThan(0);
+    expect(result.bubbles.join(' ')).toContain('ghișeele 1–4');
+  });
   it('11: starts the exact reported gate route at the stated landmark, including index aliases', async () => {
     const h = harness({ points: [{ id: 'G_CENTER', name: { ro: 'Hol central', en: 'Central hall' }, aliases: ['lobby'] }], routes: {} });
     await h.receive('START W4 106'); h.sends.length = 0;
