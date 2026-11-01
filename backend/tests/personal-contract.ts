@@ -76,8 +76,19 @@ export function personalContract() {
       for (const state of ['taken', 'en_route', 'resolved']) expect((await h.call(`/api/reports/${r.id}/state`, undefined, { state }, true))?.status).toBe(200);
       const data = await (await h.call('/api/me', session))!.json() as any;
       expect(data.reports[0].state).toBe('resolved');
-      expect(data.timeline.map((a: any) => a.text).join(' ')).toMatch(/Trimis.*Preluat.*Echipa pe drum.*Rezolvat/);
+      expect(data.timeline.map((a: any) => a.text).join(' ')).toMatch(/Raportul tău de pe site a fost trimis:.*Preluat.*Echipa pe drum.*Rezolvat/);
       expect(h.sends.filter(m => m.type === 'text')).toHaveLength(4);
+    });
+    it.each(['open', 'expired', 'missing'] as const)('sends exactly one short web form confirmation only inside the WhatsApp window (%s)', async window => {
+      const h = setup(), session = await h.login(), phone = '+40712345678';
+      const last = window === 'open' ? Date.now() : Date.now() - 24 * 60 * 60_000;
+      if (window === 'missing') await h.store.delete(`wa:last:${phone}`);
+      else await h.store.put(`wa:last:${phone}`, last);
+      expect((await h.call('/api/reports', session, { type: 'crowd', place: { node: 'security', name: 'Securitate' }, text: 'Prea multă lume' }))!.status).toBe(201);
+      expect(h.sends).toHaveLength(window === 'open' ? 1 : 0);
+      if (window === 'open') expect(h.sends[0]).toMatchObject({ type: 'text', text: { body: 'Raportul tău de pe site a fost trimis: Aglomerație · Securitate. Te anunț când echipa îl preia.' } });
+      expect(await h.agent.reports.own(phone)).toHaveLength(1);
+      expect(await h.store.get(`wa:last:${phone}`)).toBe(window === 'missing' ? undefined : last);
     });
     it('validates graph places, type, text and photo before storing', async () => {
       const h = setup(), session = await h.login();

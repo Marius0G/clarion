@@ -16,7 +16,7 @@ import { consumeJoin } from '../join.js';
 import { reply, foldHistory, type HistoryEntry } from './agent.js';
 import { clockText, closeAt, findFlight, gateName } from './flights.js';
 import { Messaging, WINDOW_MS } from './messaging.js';
-import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType } from './reports.js';
+import { Reports, reportStateLabel, classifyReportType, clearProblem, matchNode, kindForType, REPORT_TYPES, type ReportType, type ReportInput } from './reports.js';
 import { toolsFor, type AirportView, type Profile } from './tools.js';
 import {
   WhatsAppClient, passengerBubbles, allowed, failedStatuses, masked, parseWebhook, quickReaction, reactionOf, redact, MEDIA,
@@ -120,6 +120,19 @@ export class WhatsAppAgent {
     return typeof last === 'number' && now - last < WINDOW_MS;
   }
   profile(phone: string) { return this.store.get<Profile>(`wa:profile:${phone}`); }
+
+  /** Web reports get one business-authored confirmation, never a mirror of the user's turn. */
+  async fileWebReport(input: ReportInput) {
+    const report = await this.reports.add(input, Date.now(), false);
+    if (report.phone) {
+      const type = { security: 'Securitate', medical: 'Medical', cleaning: 'Curățenie', 'lost item': 'Obiect pierdut', crowd: 'Aglomerație', other: 'Altele' }[report.type];
+      const place = report.node ? (mapNodeId(report.node) === 'U_SECURITY_QUEUE' ? 'Securitate' : nodeName(report.node, 'ro')) : report.place.name;
+      const labels = [type, place].filter(Boolean).join(' · ');
+      await this.messaging.notify({ channel: 'whatsapp', phone: report.phone }, { kind: 'admin', requested: true, crowdNotes: false,
+        text: `Raportul tău de pe site a fost trimis: ${labels}. Te anunț când echipa îl preia.` });
+    }
+    return report;
+  }
 
   /** Parsed webhook messages and isolated lab messages enter the same serialized turn. */
   receive(m: InboundMessage, channel: 'whatsapp' | 'web' = 'whatsapp', output: HistoryEntry[] = []) {
@@ -340,9 +353,11 @@ export class WhatsAppAgent {
       if (!draft.text) { await transport.sendText(m.phone, en ? 'Description' : 'Descriere'); return; }
       const path = route(terminalGraph,
         'team_post', draft.node, zoneDensities(this.view.flow(), zoneAreas), this.view.blocked?.());
-      const reported = await this.reports.add({ kind: kindForType(draft.type), type: draft.type, node: draft.node,
+      const reportInput: ReportInput = { kind: kindForType(draft.type), type: draft.type, node: draft.node,
         place: { node: draft.node, name: index?.points.find(p => p.id === draft!.node)?.name[en ? 'en' : 'ro'] ?? draft.node },
-        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: draft.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null }, Date.now(), channel === 'whatsapp' && !(profile.role === 'staff' && draft.type === 'crowd'));
+        text: draft.text, photo: draft.photo, phone: m.phone, source: profile.role, etaMin: draft.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null };
+      const reported = channel === 'web' ? await this.fileWebReport(reportInput)
+        : await this.reports.add(reportInput, Date.now(), !(profile.role === 'staff' && draft.type === 'crowd'));
       if (profile.role === 'staff' && draft.type === 'crowd') await transport.sendText(m.phone, en ? 'Passed on. Dispatch decides.' : 'Am transmis. Dispeceratul decide.');
       if (channel === 'web' && !(profile.role === 'staff' && draft.type === 'crowd')) await transport.sendText(m.phone, `${reported.id} · ${reportStateLabel(reported.state, en)}${reported.etaMin == null ? '' : ` · ETA ~${reported.etaMin} min`}`);
       if (draft.type === 'lost item') await transport.sendText(m.phone, en ? `${/security|securitate/i.test(draft.text) ? 'Items lost at security are kept by security staff. ' : ''}Lost & Found is at Information. I passed your description and location on to staff.`
@@ -371,7 +386,9 @@ export class WhatsAppAgent {
     const spokenFlight = code && findFlight(this.view.flights(), code);
     if (spokenFlight && profile.flight !== spokenFlight.flight && !text.includes('?')) await save({ flight: spokenFlight.flight, airline: spokenFlight.airline, gate: gateName(spokenFlight.gate), verified: false });
     const started = Date.now();
-    const tools = toolsFor({ reports: () => this.reports.list(), routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
+    const tools = toolsFor({ reports: () => this.reports.list(), routeIndex: () => this.images.index(), view: this.view, profile: () => profile, save, report: r => channel === 'web'
+      ? this.fileWebReport({ ...r, phone: m.phone, source: profile.role })
+      : this.reports.add({ ...r, phone: m.phone, source: profile.role }, Date.now(), false), evacRoute: f => this.messaging.evacRouteFor(f),
       pageLink: async () => {
         const link = await this.messaging.pageLink({ channel: 'whatsapp', phone: m.phone });
         const stored = await this.profile(m.phone);

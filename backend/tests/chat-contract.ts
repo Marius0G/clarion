@@ -9,10 +9,10 @@ import index from '../../app/public/routes/index.json' with { type: 'json' };
 export function chatContract() {
   describe('shared web and WhatsApp conversation', () => {
     function setup() {
-      const store = new MemoryStore(), sim = new SimStore(), calls: any[] = [], sends: any[] = [];
+      const store = new MemoryStore(), sim = new SimStore(), calls: any[] = [], sends: any[] = [], events: any[] = [];
       const view = airportView(sim, () => true), env = { STAFF_PHONES: '', ANTHROPIC_API_KEY: 'test', WA_TOKEN: 'test', WA_PHONE_NUMBER_ID: 'PN', APP_URL: 'https://app.example' };
       let tool = 'queues', input = {};
-      const agent = new WhatsAppAgent(env, store, view, { pause: 0, fetcher: async (url, init) => {
+      const agent = new WhatsAppAgent(env, store, view, { pause: 0, personEvent: (phone, event) => events.push({ phone, event }), fetcher: async (url, init) => {
         if (url.includes('/routes/index.json')) return Response.json(index);
         const body = JSON.parse(String(init?.body ?? '{}'));
         if (url.includes('anthropic')) {
@@ -29,7 +29,7 @@ export function chatContract() {
       const request = (session?: string, body?: unknown) => personalRoute(new Request('https://api.example/api/chat', {
         method: body === undefined ? 'GET' : 'POST', headers: session ? { Authorization: `Bearer ${session}` } : {}, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       }), { store, sim, view, env, agent, operator: false });
-      return { store, sim, agent, calls, sends, login, request, choose: (name: string, args = {}) => { tool = name; input = args; } };
+      return { store, sim, agent, calls, sends, events, login, request, choose: (name: string, args = {}) => { tool = name; input = args; } };
     }
     it('shares the exact prompt, tools, answer path and per-phone history in both directions', async () => {
       const h = setup(), session = await h.login(), phone = '+40712345678';
@@ -49,6 +49,31 @@ export function chatContract() {
       expect(JSON.stringify(h.calls[4].messages)).toContain('Securitate?');
       await h.agent.messaging.notify({ channel: 'whatsapp', phone }, { kind: 'flight', text: 'Poarta 4', requested: true });
       expect((await (await h.request(session))!.json() as any).history).toContainEqual(expect.objectContaining({ text: 'Poarta 4', channel: 'whatsapp' }));
+    });
+    it.each(['open', 'expired', 'missing'] as const)('confirms a web chat report once only in an open WhatsApp window (%s)', async window => {
+      const h = setup(), session = await h.login(), phone = '+40712345678';
+      const last = window === 'open' ? Date.now() : Date.now() - 24 * 60 * 60_000;
+      if (window !== 'missing') await h.store.put(`wa:last:${phone}`, last);
+      const text = 'Raportează: prea aglomerat la securitate';
+      expect((await h.request(session, { text }))!.status).toBe(200);
+      const messages = h.sends.filter(m => m.type === 'text');
+      expect(h.sends).toHaveLength(window === 'open' ? 1 : 0);
+      if (window === 'open') expect(messages).toMatchObject([{ to: '40712345678', text: { body: 'Raportul tău de pe site a fost trimis: Aglomerație · Securitate. Te anunț când echipa îl preia.' } }]);
+      expect(await h.store.get(`wa:last:${phone}`)).toBe(window === 'missing' ? undefined : last);
+      expect(await h.agent.reports.own(phone)).toHaveLength(1);
+      expect(h.events).toContainEqual(expect.objectContaining({ phone, event: { type: 'chat', entry: expect.objectContaining({ role: 'user', text, channel: 'web' }) } }));
+      expect((await h.agent.chatHistory(phone))).toContainEqual(expect.objectContaining({ role: 'user', text, channel: 'web' }));
+    });
+    it('confirms tool-filed web reports once and keeps plain web questions as shared context only', async () => {
+      const h = setup(), session = await h.login(), phone = '+40712345678';
+      await h.store.put(`wa:last:${phone}`, Date.now());
+      await h.request(session, { text: 'Unde este securitatea?' });
+      expect(h.sends).toHaveLength(0);
+      h.choose('reportLostItem', { text: 'Am pierdut telefonul la securitate' });
+      await h.request(session, { text: 'Ajută-mă cu obiectul' });
+      expect(await h.agent.reports.own(phone)).toHaveLength(1);
+      expect(h.sends).toHaveLength(1);
+      expect(h.sends[0]).toMatchObject({ type: 'text', text: { body: 'Raportul tău de pe site a fost trimis: Obiect pierdut · Securitate. Te anunț când echipa îl preia.' } });
     });
     it('exposes no task tools to either role and rejects forged calls and web role promotion', async () => {
       const h = setup(), passenger = await h.login(), staff = await h.login('+40711111111', 'staff');

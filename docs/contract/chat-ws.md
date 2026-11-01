@@ -12,7 +12,7 @@ Worker acceptă socket-urile cu tag `person:<telefon E.164>` și păstrează tel
 
 ## Server → browser
 
-- `{ "type": "chat", "entry": { "id": "...", "role": "user|clarion", "text": "...", "at": "HH:MM", "timestamp": 123, "channel": "whatsapp|web", "buttons": [{ "id": "...", "title": "..." }], "image": "https://..." } }`. `buttons`, `image` și timestamp-ul pentru istoricul vechi sunt opționale. Evenimentul urmează persistarea intrării; un turn poate avea mai multe bule. Include intrările WhatsApp, turnurile web, alertele proactive, schimbările de zbor, evacuarea și notificările de raport. Nu trimite mesajul web pe WhatsApp: turnul este disponibil următoarei conversații WhatsApp prin `wa:ctx:<telefon>`.
+- `{ "type": "chat", "entry": { "id": "...", "role": "user|clarion", "text": "...", "at": "HH:MM", "timestamp": 123, "channel": "whatsapp|web", "buttons": [{ "id": "...", "title": "..." }], "image": "https://..." } }`. `buttons`, `image` și timestamp-ul pentru istoricul vechi sunt opționale. Evenimentul urmează persistarea intrării; un turn poate avea mai multe bule. Include intrările WhatsApp, turnurile web, alertele proactive, schimbările de zbor, evacuarea și notificările de raport. Turnurile web obișnuite nu trimit mesaje WhatsApp: rămân context comun prin `wa:ctx:<telefon>` / `chatHistory` pentru următoarea conversație WhatsApp. Toate socket-urile telefonului primesc în continuare intrarea web ca eveniment `chat`.
 - `{ "type": "report", "report": { ... } }`: raportul propriu când se schimbă, inclusiv crearea. Staff vede numai rapoartele telefonului său.
 - `{ "type": "me" }`: invalidare; recitește `/api/me` (și `/api/staff` pentru staff). Se trimite după turnuri, asocierea zborului, `flight.update` și `sim.status` (etapa estimată din ceas). Poate apărea și când datele relevante nu s-au schimbat.
 - `{ "type": "typing", "on": true|false }`: agentul începe/termină un turn pentru telefonul respectiv, indiferent de canal; `false` apare și la eroare.
@@ -29,3 +29,15 @@ Limita comună HTTP/WS este **12 turnuri/minut/sesiune D3**, inclusiv toate tick
 Heartbeat opțional JSON `{ "type": "ping" }` → `{ "type": "pong" }`, fără consumarea limitei de chat. Nu impune timer nou pentru consolă; reconectarea și obținerea ticket-ului nou rămân responsabilitatea browserului.
 
 Intrările operaționale provin din camere, orar și rapoarte, conform D0; `truth.report` nu generează conversații personale.
+
+## Acțiuni web importante → WhatsApp
+
+WhatsApp Cloud API trimite numai din partea business-ului; nu poate afișa mesajele web ca mesaje proprii ale utilizatorului. Nu oglindim fiecare linie web.
+
+La crearea unui raport de pe site (formular HTTP sau turn de chat HTTP/WS, inclusiv instrumentele agentului), Clarion trimite **un singur mesaj scurt**, cu eticheta categoriei și a locului unite prin ` · `:
+
+> Raportul tău de pe site a fost trimis: Aglomerație · Securitate. Te anunț când echipa îl preia.
+
+Confirmarea se trimite numai în fereastra de customer service de 24h, urmărită prin `wa:last:<telefon>` (ultimul mesaj WhatsApp primit, timp real). La 24h sau mai târziu, ori fără un mesaj WhatsApp anterior, nu se trimite nimic pe WhatsApp și nu se folosește un template. Acțiunile web nu deschid și nu prelungesc această fereastră. Raportul și evenimentele browserului se păstrează și în afara ferestrei. Confirmarea livrată apare în istoricul comun ca mesaj Clarion pe canalul `whatsapp`.
+
+Notificările existente pentru schimbarea stării raportului rămân neschimbate. Orice alt turn web, inclusiv întrebările și răspunsurile agentului, rămâne doar în contextul comun și în evenimentele browserului, fără mesaj WhatsApp.

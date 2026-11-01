@@ -270,16 +270,16 @@ export class Messaging {
 
   /** The one way out for a passenger message: WhatsApp inside the 24h window, or agent.message to Unity. */
   private deliveryChain: Promise<unknown> = Promise.resolve();
-  notify(sub: Subscriber, m: { kind: NotifyKind; text: string; requested?: boolean; estimate?: Estimate }): Promise<Delivery> {
+  notify(sub: Subscriber, m: { kind: NotifyKind; text: string; requested?: boolean; estimate?: Estimate; crowdNotes?: boolean }): Promise<Delivery> {
     const next = this.deliveryChain.then(() => this.deliver(sub, m));
     this.deliveryChain = next.catch(() => {});
     return next;
   }
-  private async deliver(sub: Subscriber, { estimate, requested, ...m }: { kind: NotifyKind; text: string; requested?: boolean; estimate?: Estimate }): Promise<Delivery> {
+  private async deliver(sub: Subscriber, { estimate, requested, crowdNotes = true, ...m }: { kind: NotifyKind; text: string; requested?: boolean; estimate?: Estimate; crowdNotes?: boolean }): Promise<Delivery> {
     const linkKey = `msg:mapSent:${this.identity(sub)}`;
     const firstMap = m.kind === 'arrive' && !!estimate?.queues && !(await this.deps.store.get(linkKey));
     if (firstMap) m.text += `\n${await this.pageLink(sub)}`;
-    if (m.kind !== 'evacuate') {
+    if (crowdNotes && m.kind !== 'evacuate') {
       const p = await this.subscriberProfile(sub);
       const f = p?.flight ? findFlight(this.deps.view.flights(), p.flight) : undefined;
       if (f && p?.role !== 'staff') {

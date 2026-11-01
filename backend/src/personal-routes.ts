@@ -66,7 +66,7 @@ export async function personalRoute(request: Request, deps: PersonalRoutes): Pro
         typeof input.place.name !== 'string' || !input.place.name.trim() || input.place.name.length > 120 ||
         (input.photo !== undefined && (typeof input.photo !== 'string' || input.photo.length > 2000 || !/^https:\/\//.test(input.photo)))) throw new Error('Invalid report');
       const path = route(terminalGraph, 'team_post', input.place.node, zoneDensities(deps.view.flow(), zoneAreas), deps.view.blocked?.());
-      return json(await deps.agent.reports.add({ kind: kindForType(input.type), type: input.type, node: input.place.node,
+      return json(await deps.agent.fileWebReport({ kind: kindForType(input.type), type: input.type, node: input.place.node,
         place: input.place, text: input.text, photo: input.photo, phone, source: profile.role, etaMin: input.type === 'crowd' ? null : path ? Math.ceil(path.totalSec / 60) : null }), 201);
     }
     if (path === '/api/chat') {
