@@ -51,12 +51,12 @@ it('keeps the latest frame per camera, forwards it to consoles and serves it beh
   expect((await get('/cams/cctv_security_queue.jpg?token=op')).status).toBe(200);
   expect((await get('/cams/cctv_nowhere.jpg', 'op')).status).toBe(404);
 
-  // A second frame within the 1/s budget is dropped silently; a camera over no queue has zone null.
+  // Every frame vision sends replaces the last one (vision paces the cameras); a camera over no queue has zone null.
   vision.send('camera.frame', frame({ simTime: 54336 }));
   vision.send('camera.frame', frame({ camera: 'cctv_hall_east', zone: null, count: 3, detector: 'simulated' }));
   await expect.poll(async () => (await (await get('/cams', 'op')).json() as any[]).length).toBe(2);
   const cams = await (await get('/cams', 'op')).json() as any[];
-  expect(cams.map(c => [c.camera, c.zone, c.simTime])).toEqual([['cctv_hall_east', null, 54335], ['cctv_security_queue', 'U_SECURITY_QUEUE', 54335]]);
+  expect(cams.map(c => [c.camera, c.zone, c.simTime])).toEqual([['cctv_hall_east', null, 54335], ['cctv_security_queue', 'U_SECURITY_QUEUE', 54336]]);
   expect(vision.of('error')).toEqual([]);
   // Frames never enter the engine or the state broadcast.
   expect(((await (await get('/api/sim')).json()) as any).cams).toBeUndefined();
