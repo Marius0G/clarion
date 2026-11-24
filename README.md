@@ -172,7 +172,7 @@ Not here: the Unity digital twin, which stays private because it is built on thi
 ## How it was built
 
 - **One weekend.** The first commit landed on 30 October at 23:33 and the last on 1 November at 14:55, five minutes before the code freeze. Everything above was written during the event, apart from the WhatsApp and login layers, which Bogdan ported from his earlier project Moni.
-- **300 commits, about 630 automated tests** (151 backend, 210 Worker, 180 app, 92 vision) and CI on every push. The Worker's tests run in `workerd`, the same runtime as production.
+- **300 commits and 801 automated tests** that run in CI on every push (202 backend, 359 Worker, 146 app, 94 vision), plus Playwright end-to-end specs for the browser flows. The Worker's tests run in `workerd`, the same runtime as production.
 - **Contract first.** The twin, the vision service and the backend agreed on their messages on the first night, then each side was built and tested against the contract on its own.
 - **With AI agents.** We wrote the spec, the contracts and the briefs; AI coding agents (Claude Code and Codex) wrote much of the code on parallel branches, each change checked by tests before it reached `main`.
 
