@@ -1,0 +1,4 @@
+# Known false positives: RSA keys generated at runtime by the Wallet and WhatsApp tests, and a made-up page token in a test.
+4f734dac592af48f0701ab5867e570b5a2baa45c:backend/tests/chat-ws-contract.ts:generic-api-key:25
+8a38a9c43dad1bf8ca88cf35512d776bb3586ca0:worker/test/e2e-wa-runner.test.ts:private-key:15
+be77bd8315cd82235381a97a5c61f1c454561c63:worker/test/wallet.test.ts:private-key:44
