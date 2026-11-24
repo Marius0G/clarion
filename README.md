@@ -178,7 +178,7 @@ Not here: the Unity digital twin, which stays private because it is built on thi
 
 ## Team
 
-| | Built |
+| Who | Built |
 |---|---|
 | [Marius Manea](https://github.com/Marius0G) | The algorithms (camera vision, queues, waits, forecast, evacuation, the ML), the digital twin as the test environment, the A/B and accuracy evaluation, and the film |
 | [Bogdan Caraeane](https://github.com/Bogdan-ca) | The backend (Cloudflare Worker and Durable Object), the admin console, the WhatsApp agent, Google Wallet and login |
