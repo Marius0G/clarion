@@ -8,13 +8,15 @@ let mf: Miniflare;
 const persist = resolve('.test-state', crypto.randomUUID());
 const sockets: { close(): void }[] = [];
 const envelope = (type: string, data = {}) => ({ type, ts: new Date().toISOString(), data });
+// The fixture flight is always an hour away: a subscription expires 48 h after its flight, so a fixed date fails later.
+const soon = () => Math.floor(Date.now() / 1000) + 3600;
 function start(simSpeed = '60000') {
   return new Miniflare(convertV4MiniflareOptions({
     name: 'clarion-test', modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-10-30',
     durableObjects: { TOWER: { className: 'Tower', useSQLite: true } },
     resourcePersistencePath: persist, unsafeInspectDurableObjects: true,
     outboundService: async request => Response.json(request.url.startsWith('https://fids.flightradar.live/') ? [{
-      flight_iata: 'W63412', dep_iata: 'BGY', arr_iata: 'CRA', dep_time_ts: 1793462400, arr_time_ts: 1793469600,
+      flight_iata: 'W63412', dep_iata: 'BGY', arr_iata: 'CRA', dep_time_ts: soon(), arr_time_ts: soon() + 7200,
     }] : []),
     bindings: { SIM_SPEED: simSpeed,
       WHATSAPP_VERIFY_TOKEN: 'verify-me', WHATSAPP_APP_SECRET: 'meta-secret' },
