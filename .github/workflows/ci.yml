@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: Backend, Worker and App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Backend (Node, local engine)
+        working-directory: backend
+        run: npm ci && npm run build && npm test
+      - name: Worker (Cloudflare Worker + Durable Object, in workerd)
+        working-directory: worker
+        run: npm ci && npm run typecheck && npm test
+      - name: App (React)
+        working-directory: app
+        run: npm ci && npm run lint && npm run build && npx vitest run
+
+  vision:
+    name: Vision service (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vision
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # YOLO (ultralytics) is only needed for --source yolo; the tests use the recorded camera snapshots
+      - run: pip install numpy scipy httpx websockets pytest lightgbm opencv-python-headless
+      - run: python -m pytest -q
