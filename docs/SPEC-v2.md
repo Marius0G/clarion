@@ -265,7 +265,7 @@ Gri deschis, plat, o culoare = un singur sens. Normalul e o rampă de gri, nu ve
 În consola adminului, fiecare decizie rămâne o sarcină: recomandare → Trimite → trimis / confirmat / făcut → efectul măsurat de camere față de prognoza fără acțiune. Adminul decide capacitatea și urmărește starea aici. Sarcinile nu se trimit pe telefoanele angajaților și nu cer confirmare sau execuție de la ei.
 **În spate nu se schimbă nimic:** se trimite tot `ops.command` din D12 către Unity (`staff`, `redirect`, `evacuate`, `close`, `open`), cu efectele scrise de Marius (secțiunea „Pentru Marius”, punctul 4). „Confirmat” = `ops.ack`. „Făcut” = efectul văzut în `flow.report`.
 
-### D31. Bug-uri cunoscute pe partea backend (din d600f1a)
+### D31. Bug-uri cunoscute pe partea backend (din 12036d4)
 - `Messaging.plan` trimite ruta de evacuare tuturor abonaților. La o evacuare parțială trebuie să plece doar celor estimați în zonele blocate sau care le traversează.
 - `webSocketClose` din `worker/src/index.ts` aruncă eroare la codul 1006. Trebuie tratat ca 1005, cu `ws.close(1000)`.
 - `SIM_SPEED` în `worker/wrangler.toml` e 60, iar demo-ul cere 10.
