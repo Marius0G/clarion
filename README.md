@@ -23,11 +23,13 @@
   <a href="https://marius0g.github.io/clarion/"><img src="docs/media/teaser.webp" alt="Clarion in twelve seconds: an hourglass of people turns into the logo, a passenger gets the queues on WhatsApp, the cameras count the security queue, the admin opens a lane, the crowd in the digital twin reacts" width="100%"></a>
 </p>
 <p align="center">
-  <a href="https://marius0g.github.io/clarion/"><b>▶ Watch the 3-minute film</b></a> (sound on: Romanian voice, English subtitles)
-  · <a href="https://github.com/Marius0G/clarion/releases/latest">download it</a>
+  <a href="#the-film"><b>▶ Watch the 3-minute film</b></a> (sound on: Romanian voice, English subtitles)
+  · <a href="https://marius0g.github.io/clarion/">full quality</a>
+  · <a href="https://github.com/Marius0G/clarion/releases/latest">download</a>
 </p>
 <p align="center">
   <a href="#clarion-in-30-seconds">Overview</a> ·
+  <a href="#the-film">Film</a> ·
   <a href="#what-it-looks-like">Screens</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#results">Results</a> ·
@@ -57,6 +59,12 @@ We tested it on a digital twin of Craiova's Terminal 2, in which every simulated
 | Evacuation: last person out | 224 s | **178 s** |
 
 How we measured it, and what these numbers do *not* show, is under [Results](#results).
+
+## The film
+
+https://github.com/user-attachments/assets/dd9e1555-8b49-47e5-a915-b1c9d2130239
+
+<sub>Three minutes, sound on: Romanian voice, English subtitles, music made in code for the film. The [full-quality version](https://marius0g.github.io/clarion/) plays in the browser, or [download it](https://github.com/Marius0G/clarion/releases/latest).</sub>
 
 ## What it looks like
 
