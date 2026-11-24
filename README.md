@@ -12,9 +12,10 @@
 
 <p align="center">
   <a href="https://github.com/Marius0G/clarion/actions/workflows/ci.yml"><img src="https://github.com/Marius0G/clarion/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/TypeScript-React%20%C2%B7%20Cloudflare%20Workers-2563EB" alt="TypeScript, React, Cloudflare Workers">
-  <img src="https://img.shields.io/badge/Python-YOLO11%20%C2%B7%20Kalman%20%C2%B7%20LightGBM%20%C2%B7%20max--flow-2563EB" alt="Python, YOLO11, Kalman, LightGBM, max-flow">
-  <img src="https://img.shields.io/badge/WhatsApp%20agent-Claude%20%2B%20tools-2563EB" alt="WhatsApp agent: Claude with tools">
+  <a href="#how-it-was-built"><img src="https://img.shields.io/badge/tests-801%20passing-2EA043?logo=githubactions&logoColor=white" alt="801 tests passing"></a>
+  <a href="https://github.com/Marius0G/clarion/releases/latest"><img src="https://img.shields.io/github/v/release/Marius0G/clarion?logo=github&color=2563EB" alt="Latest release"></a>
+  <a href="https://clarion-craiova.pages.dev"><img src="https://img.shields.io/badge/live%20demo-clarion--craiova.pages.dev-F38020?logo=cloudflare&logoColor=white" alt="Live demo"></a>
+  <img src="https://img.shields.io/badge/Craiova%20Hackathon%202026-CONTROL%20TOWER-7C3AED" alt="Craiova Hackathon 2026, CONTROL TOWER challenge">
 </p>
 
 <p align="center">
@@ -23,6 +24,15 @@
 <p align="center">
   <a href="https://marius0g.github.io/clarion/"><b>▶ Watch the 3-minute film</b></a> (sound on: Romanian voice, English subtitles)
   · <a href="https://github.com/Marius0G/clarion/releases/latest">download it</a>
+</p>
+<p align="center">
+  <a href="#clarion-in-30-seconds">Overview</a> ·
+  <a href="#what-it-looks-like">Screens</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#results">Results</a> ·
+  <a href="#try-it">Try it</a> ·
+  <a href="#team">Team</a> ·
+  <a href="#track-record">Track record</a>
 </p>
 
 ---
@@ -110,6 +120,17 @@ flowchart LR
 
 The full design, decision by decision (D0 to D34), is the team spec [`docs/SPEC-v2.md`](docs/SPEC-v2.md). The messages between the twin, the vision service and the backend are a frozen contract in [`docs/contract/`](docs/contract/), which let the three of us build in parallel from the first night.
 
+### Built with
+
+| Part | Stack |
+|---|---|
+| Vision service | ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white) ![YOLO11](https://img.shields.io/badge/YOLO11-042AFF?logo=ultralytics&logoColor=white) ![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white) ![LightGBM](https://img.shields.io/badge/LightGBM-334155) ![SciPy](https://img.shields.io/badge/SciPy-0054A6?logo=scipy&logoColor=white) ![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white) |
+| Backend | ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare%20Workers-F38020?logo=cloudflareworkers&logoColor=white) ![Durable Objects](https://img.shields.io/badge/Durable%20Objects-F38020?logo=cloudflare&logoColor=white) ![Node.js](https://img.shields.io/badge/Node.js-5FA04E?logo=nodedotjs&logoColor=white) |
+| Console and passenger app | ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB) ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white) |
+| Digital twin | ![Unity](https://img.shields.io/badge/Unity-000000?logo=unity&logoColor=white) |
+| Passenger channels | ![WhatsApp Cloud API](https://img.shields.io/badge/WhatsApp%20Cloud%20API-25D366?logo=whatsapp&logoColor=white) ![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=white) ![Google Wallet](https://img.shields.io/badge/Google%20Wallet-4285F4?logo=google&logoColor=white) |
+| Tests and CI | ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white) ![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white) |
+
 ## Results
 
 **The A/B test** ([`docs/d19-ab.md`](docs/d19-ab.md)): 12 seeds in the `rush` scenario (×2.5 load, 2 security lanes at the start). The same seed means the same day and the same passengers in both arms; figures are medians over the pairs.
@@ -171,33 +192,41 @@ Not here: the Unity digital twin, which stays private because it is built on thi
 
 ## How it was built
 
-- **One weekend.** The first commit landed on 30 October at 23:33 and the last on 1 November at 14:55, five minutes before the code freeze. Everything above was written during the event, apart from the WhatsApp and login layers, which Bogdan ported from his earlier project Moni.
+- **One weekend.** The first commit landed on 30 October at 23:33 and the last on 1 November at 14:55, five minutes before the code freeze. Everything above was written during the event, apart from the WhatsApp and login layers, which Bogdan ported from his earlier project [Moni](https://joinmoni.tech).
 - **300 commits and 801 automated tests** that run in CI on every push (202 backend, 359 Worker, 146 app, 94 vision), plus Playwright end-to-end specs for the browser flows. The Worker's tests run in `workerd`, the same runtime as production.
 - **Contract first.** The twin, the vision service and the backend agreed on their messages on the first night, then each side was built and tested against the contract on its own.
 - **With AI agents.** We wrote the spec, the contracts and the briefs; AI coding agents (Claude Code and Codex) wrote much of the code on parallel branches, each change checked by tests before it reached `main`.
 
 ## Team
 
-| Who | Built |
-|---|---|
-| [Marius Manea](https://github.com/Marius0G) | The algorithms (camera vision, queues, waits, forecast, evacuation, the ML), the digital twin as the test environment, the A/B and accuracy evaluation, and the film |
-| [Bogdan Caraeane](https://github.com/Bogdan-ca) | The backend (Cloudflare Worker and Durable Object), the admin console, the WhatsApp agent, Google Wallet and login |
-| [Diana Istrate](https://github.com/dianaistrate) | Business and the pitch |
+<table>
+  <tr>
+    <td align="center" valign="top" width="25%"><a href="https://github.com/Marius0G"><img src="https://avatars.githubusercontent.com/u/65153740?v=4&s=192" width="96" alt=""><br><b>Marius Manea</b></a><br><sub>The algorithms (camera vision, queues, waits, forecast, evacuation, the ML), the digital twin as the test environment, the A/B and accuracy evaluation, and the film</sub></td>
+    <td align="center" valign="top" width="25%"><a href="https://github.com/Bogdan-ca"><img src="https://avatars.githubusercontent.com/u/184916932?v=4&s=192" width="96" alt=""><br><b>Bogdan Caraeane</b></a><br><sub>The backend (Cloudflare Worker and Durable Object), the admin console, the WhatsApp agent, Google Wallet and login</sub></td>
+    <td align="center" valign="top" width="25%"><a href="https://github.com/dianaistrate"><img src="https://avatars.githubusercontent.com/u/272910152?v=4&s=192" width="96" alt=""><br><b>Diana Istrate</b></a><br><sub>Business and the pitch</sub></td>
+    <td align="center" valign="top" width="25%"><a href="https://github.com/bristiana"><img src="https://avatars.githubusercontent.com/u/184617056?v=4&s=192" width="96" alt=""><br><b>Cristiana Constantin</b></a><br><sub>Built with us on the first day of the event</sub></td>
+  </tr>
+</table>
 
-[Cristiana Constantin](https://github.com/bristiana) built with us on the first day of the event.
+### Track record
 
-### Before Clarion
+Between us: nine results at hackathons and competitions in Romania since 2025, with four first places, Adobe's Best Innovation Prize, a second place and three thirds.
 
-Between us: three first places and three more podiums at hackathons and competitions in Romania.
-
-- **1st**, Hackitall II, P&G challenge (April 2026): AI procurement intelligence that links every supplier insight to its evidence. [Post](https://www.linkedin.com/feed/update/urn:li:activity:7446908357283704833/)
-- **1st**, VibeHack, Veridion challenge (March 2026): reliable insights from large-scale unstructured data.
-- **1st**, Best Engineering Marathon by BEST Bucharest, AI for Human Benefit (December 2025). [Post](https://www.linkedin.com/feed/update/urn:li:activity:7406114078751903744/)
-- **3rd**, Cluj Hackathon 2026 (May 2026): DoctoRO, an assistant that writes up the medical consultation.
-- **3rd**, EESTEC Olympics, 13th edition, Bitdefender Capture the Flag (October 2025). [Post](https://www.linkedin.com/posts/mariusmanea05_eestecolympics-bitdefender-ctf-activity-7388307980435406850-XIWT)
-- **3rd**, Cluj Hackathon 2025 (May 2025): AngelAI, a hands-free voice assistant for emergencies. [Post](https://www.linkedin.com/posts/mariusmanea05_ai-hackathon-clujhackathon-activity-7333501174135799809-lNE_)
+| | Result | What we built | When |
+|:-:|---|---|---|
+| 🏆 | **Best Innovation Prize (Adobe)**<br>SmartHack 2026, team of five | **Pandora**: a home network check that finds open ports, explains each risk in plain language and proves every fix with a re-scan, plus a 3D-printed ESP32 box | Nov 2026 |
+| 🥇 | **1st, Stripe challenge**<br>NEXXT AI Hackathon 2026, 60+ teams | **[Moni](https://joinmoni.tech)**: an AI money companion that reads real bank accounts and talks to you on WhatsApp, with a browser extension that shows at checkout what a purchase means for your savings goal | Oct 2026 |
+| 🥇 | **1st, Procter & Gamble challenge**<br>Hackitall II, team of three | Procurement intelligence for sourcing buyers: supplier data and risk signals from unstructured public data, with verifiable evidence for every insight, built in 24 hours. [Post](https://www.linkedin.com/feed/update/urn:li:activity:7446908357283704833/) | Apr 2026 |
+| 🥇 | **1st, Veridion challenge**<br>VibeHack | A company ranking and qualification system that decides whether a company truly matches a request, tested on 12 queries with a focus on algorithmic efficiency | Mar 2026 |
+| 🥇 | **1st, AI for Human Benefit**<br>Best Engineering Marathon (BEST Bucharest), team of four | A human-centric AI prototype for a social challenge. [Post](https://www.linkedin.com/feed/update/urn:li:activity:7406114078751903744/) | Dec 2025 |
+| 🥈 | **2nd**<br>Innovation Labs AI Validation Bootcamp (ITFest), team of two | **Lore**: watches Teams and Slack, spots when daily practice drifts from the company's documents and proposes the edit, with the evidence. On a public company handbook's real history, 24 of the 25 pages it flagged were later corrected by the company itself, after a median of 263 days. It earned a place at the Innovation Labs hackathon | Oct 2026 |
+| 🥉 | **3rd**<br>Cluj Hackathon 2026 | **DoctoRO**: transcribes the consultation live and writes the structured consultation sheet, with QR-based record ownership for patients. Our second podium in a row at Romania's largest hackathon | May 2026 |
+| 🥉 | **3rd, Capture the Flag**<br>EESTEC Olympics, 13th edition | Team Hackelina, among teams hand-picked by Bitdefender: 20+ hours of exploiting and patching real vulnerabilities. [Post](https://www.linkedin.com/posts/mariusmanea05_eestecolympics-bitdefender-ctf-activity-7388307980435406850-XIWT) | Oct 2025 |
+| 🥉 | **3rd**<br>Cluj Hackathon 2025 | **AngelAI**: a voice assistant for real-time emergency guidance on web and Android, covering 30+ countries. [Post](https://www.linkedin.com/posts/mariusmanea05_ai-hackathon-clujhackathon-activity-7333501174135799809-lNE_) | May 2025 |
 
 We were also selected for two international hackathons in June 2026: the EU Civic Tech Hackathon in Brussels, with [EU Youth Buddy](https://github.com/Marius0G/CivicTech), and the EuroTech x HKTE Hackathon in Munich, with [SkyObs](https://github.com/Mosquito-Control/skyobs).
+
+<p align="center"><img src="docs/media/track-record.webp" alt="Four photos of Marius: with the EESTEC Olympics CTF third-place cheque, with the Cluj Hackathon 2026 third prize, at the EU Civic Tech Hackathon in Brussels, and at the EuroTech x HKTE Hackathon in Munich" width="100%"></p>
 
 ## Privacy
 
@@ -221,5 +250,7 @@ There is no license file yet: the code is public so it can be read and reviewed.
 Clarion e un sistem de crowd control pentru Aeroportul Craiova, construit într-un weekend la Craiova Hackathon 2026 (provocarea CONTROL TOWER). Camerele pe care aeroportul le are deja numără oamenii din fiecare coadă, fără fețe și fără nume. Pasagerii primesc pe WhatsApp cât se așteaptă acum și peste o oră, iar adminul vede pe un singur ecran unde trebuie deschisă încă o linie. La o evacuare, fiecare pasager primește drumul spre cea mai apropiată ieșire liberă.
 
 L-am testat pe un geamăn digital al terminalului T2, în care fiecare om ia singur decizii. Pe 12 zile simulate, rulate de două ori, cu și fără Clarion, așteptarea medie la securitate a scăzut de la 14,3 la 7,2 minute, iar la evacuare ultimul om a ieșit după 178 de secunde în loc de 224. Specul echipei e în [`docs/SPEC-v2.md`](docs/SPEC-v2.md), iar cifrele măsurate și limitele lor, în [`vision/RESULTS.md`](vision/RESULTS.md).
+
+Echipa: Marius Manea, Bogdan Caraeane și Diana Istrate. Între noi, nouă rezultate la hackathoane și competiții din România din 2025 încoace: patru locuri I, Best Innovation Prize de la Adobe, un loc II și trei locuri III. Lista completă e mai sus, la [Track record](#track-record).
 
 </details>
