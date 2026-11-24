@@ -16,6 +16,7 @@
   <a href="https://github.com/Marius0G/clarion/releases/latest"><img src="https://img.shields.io/github/v/release/Marius0G/clarion?logo=github&color=2563EB" alt="Latest release"></a>
   <a href="https://clarion-craiova.pages.dev"><img src="https://img.shields.io/badge/live%20demo-clarion--craiova.pages.dev-F38020?logo=cloudflare&logoColor=white" alt="Live demo"></a>
   <img src="https://img.shields.io/badge/Craiova%20Hackathon%202026-CONTROL%20TOWER-7C3AED" alt="Craiova Hackathon 2026, CONTROL TOWER challenge">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748B" alt="MIT License"></a>
 </p>
 
 <p align="center">
@@ -234,13 +235,13 @@ We were also selected for two international hackathons in June 2026: the EU Civi
 - Passengers opt in. The boarding pass is decoded in the browser; the image never reaches the backend.
 - No phone numbers, personal screenshots or secrets in this repository. Credentials live in Cloudflare and in local `.env` files.
 
-## Credits
+## Credits and license
 
 - Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL 1.0); passenger statistics from Eurostat.
 - [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics) (AGPL-3.0), ByteTrack, [LightGBM](https://github.com/microsoft/LightGBM) (MIT) and the libraries in each `package.json` and `requirements.txt`.
 - The film's music and sound effects were made in code for it. The digital twin's third-party assets are listed in [`docs/CREDITS.md`](docs/CREDITS.md).
 
-There is no license file yet: the code is public so it can be read and reviewed. Ask us before reusing it.
+The code is released under the [MIT License](LICENSE). Third-party data, models and assets keep their own licenses, listed above and in [`docs/CREDITS.md`](docs/CREDITS.md); the vision service uses Ultralytics YOLO11, which is licensed under AGPL-3.0.
 
 ---
 
