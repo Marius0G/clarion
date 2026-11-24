@@ -2,3 +2,9 @@ web-search/
 .DS_Store
 .env
 node_modules/
+dist/
+.wrangler/
+__pycache__/
+.pytest_cache/
+vision/runs/
+*.log
