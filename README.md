@@ -124,6 +124,9 @@ The full design, decision by decision (D0 to D34), is the team spec [`docs/SPEC-
 
 What B means, exactly: a simple local rule stands in for the vision service's advice and the admin follows it (one more lane when the wait passes 10 minutes, one fewer under 3, a lane takes 5 simulated minutes to open), and evacuees are split across exits by door capacity. In A, the planned lanes stay all day and everyone leaves by the nearest door. **How passengers react to Clarion's messages is not modelled**, so the passenger side of the benefit is not in these numbers.
 
+<p align="center"><img src="docs/media/evacuation.jpg" alt="The same evacuation of Terminal 2 in the twin: on the left everyone heads for the nearest door, on the right Clarion splits people across the exits by capacity" width="100%"><br>
+<sub>The same evacuation in the twin. Left: everyone heads for the nearest door. Right: Clarion splits people across the exits by capacity.</sub></p>
+
 **How well the cameras see** ([`vision/RESULTS.md`](vision/RESULTS.md)), on seeds held out of training, `rush` scenario:
 
 | Queue | People in it, on average | Count error, raw → Clarion | Wait error, physics only → Clarion |
